@@ -1,0 +1,1265 @@
+// ============================================================
+// 원가 정확도 개선 프로젝트 - schema.prisma v2
+// Prisma 7 + Next.js 16 (Turbopack) 호환
+// 모델 62개, Enum 25개
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS (25개)
+// ============================================================
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  @@map("user_status")
+}
+
+enum ScopeRole {
+  SYSTEM_ADMIN
+  COMPANY_ADMIN
+  MEMBER
+  @@map("scope_role")
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  EXPORT
+  @@map("permission_action")
+}
+
+enum MaterialType {
+  RAW
+  PROCESSED
+  SEASONING
+  OTHER
+  @@map("material_type")
+}
+
+enum ItemType {
+  MATERIAL
+  SUBSIDIARY
+  @@map("item_type")
+}
+
+enum OwnerType {
+  RECIPE_VARIANT
+  SEMI_PRODUCT
+  @@map("owner_type")
+}
+
+enum BOMStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  @@map("bom_status")
+}
+
+enum MealPlanStatus {
+  DRAFT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  @@map("meal_plan_status")
+}
+
+enum MealSlotType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+  @@map("meal_slot_type")
+}
+
+enum POStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RECEIVED
+  CANCELLED
+  @@map("po_status")
+}
+
+enum TransactionType {
+  PURCHASE
+  CONSUMPTION
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN
+  DISPOSAL
+  @@map("transaction_type")
+}
+
+enum TransferStatus {
+  REQUESTED
+  DRAFT
+  CONFIRMED
+  RECEIVED
+  CANCELLED
+  @@map("transfer_status")
+}
+
+enum TransferType {
+  PUSH
+  PULL
+  @@map("transfer_type")
+}
+
+enum StockTakeStatus {
+  DRAFT
+  IN_PROGRESS
+  PENDING_REVIEW
+  COMPLETED
+  @@map("stock_take_status")
+}
+
+enum ShippingStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  @@map("shipping_status")
+}
+
+enum CookingPlanStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  REPLACED
+  @@map("cooking_plan_status")
+}
+
+enum ReservationReleaseReason {
+  CONSUMED
+  AUTO_EXPIRED
+  MANUAL_CANCEL
+  @@map("reservation_release_reason")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  @@map("notification_channel")
+}
+
+enum NotificationLogStatus {
+  PENDING
+  SENT
+  FAILED
+  @@map("notification_log_status")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  STATUS_CHANGE
+  LOGIN
+  OVERRIDE
+  @@map("audit_action")
+}
+
+enum SnapshotType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  @@map("snapshot_type")
+}
+
+enum CostType {
+  ESTIMATED
+  ORDER_BASED
+  ACTUAL
+  @@map("cost_type")
+}
+
+enum UnitCategory {
+  WEIGHT
+  VOLUME
+  COUNT
+  LENGTH
+  @@map("unit_category")
+}
+
+enum ProductionLineStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  @@map("production_line_status")
+}
+
+enum AutoGenStatus {
+  PENDING
+  GENERATED
+  FAILED
+  @@map("auto_gen_status")
+}
+
+// ============================================================
+// MODELS (62개)
+// ============================================================
+
+// ---- 1. 조직 ----
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  bizNo     String?  @map("biz_no")
+  address   String?
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  users              UserScope[]
+  locations          Location[]
+  productionLines    ProductionLine[]
+  lineups            Lineup[]
+  materialMasters    MaterialMaster[]
+  subsidiaryMasters  SubsidiaryMaster[]
+  suppliers          Supplier[]
+  containerGroups    ContainerGroup[]
+  recipes            Recipe[]
+  semiProducts       SemiProduct[]
+  boms               BOM[]
+  mealTemplates      MealTemplate[]
+  mealPlanGroups     MealPlanGroup[]
+  autoGenLogs        AutoGenLog[]
+  purchaseOrders     PurchaseOrder[]
+  inventoryLots      InventoryLot[]
+  inventoryTransactions InventoryTransaction[]
+  inventoryReservations InventoryReservation[]
+  inventoryTransfers InventoryTransfer[]
+  stockTakes         StockTake[]
+  shippingOrders     ShippingOrder[]
+  cookingPlans       CookingPlan[]
+  costSnapshots      CostSnapshot[]
+  monthEndSnapshots  MonthEndSnapshot[]
+  monthEndAdjustments MonthEndAdjustment[]
+  notificationRules  NotificationRule[]
+  notificationLogs   NotificationLog[]
+  auditLogs          AuditLog[]
+
+  @@map("companies")
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  address   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company            Company @relation(fields: [companyId], references: [id])
+  productionLines    ProductionLine[]
+  lineupLocationMaps LineupLocationMap[]
+  inventoryLots      InventoryLot[]
+  inventoryTransactions InventoryTransaction[]
+  stockTakes         StockTake[]
+  transfersFrom      InventoryTransfer[] @relation("TransferFrom")
+  transfersTo        InventoryTransfer[] @relation("TransferTo")
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("locations")
+}
+
+model ProductionLine {
+  id         String                @id @default(cuid())
+  companyId  String                @map("company_id")
+  locationId String                @map("location_id")
+  name       String
+  status     ProductionLineStatus  @default(ACTIVE)
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+
+  company    Company  @relation(fields: [companyId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+
+  @@index([companyId])
+  @@index([locationId])
+  @@map("production_lines")
+}
+
+// ---- 2. 사용자 / 권한 ----
+
+model User {
+  id              String     @id @default(cuid())
+  providerUserId  String     @unique @map("provider_user_id")
+  email           String     @unique
+  name            String
+  avatarUrl       String?    @map("avatar_url")
+  status          UserStatus @default(ACTIVE)
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+
+  scopes               UserScope[]
+  auditLogs            AuditLog[]
+  monthEndAdjustments  MonthEndAdjustment[]
+
+  @@map("users")
+}
+
+model UserScope {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  companyId       String    @map("company_id")
+  role            ScopeRole
+  permissionSetId String?   @map("permission_set_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id])
+  permissionSet PermissionSet? @relation(fields: [permissionSetId], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("user_scopes")
+}
+
+model PermissionSet {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items      PermissionSetItem[]
+  userScopes UserScope[]
+
+  @@map("permission_sets")
+}
+
+model PermissionSetItem {
+  id              String           @id @default(cuid())
+  permissionSetId String           @map("permission_set_id")
+  resource        String
+  action          PermissionAction
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  permissionSet PermissionSet @relation(fields: [permissionSetId], references: [id])
+
+  @@unique([permissionSetId, resource, action])
+  @@index([permissionSetId])
+  @@map("permission_set_items")
+}
+
+// ---- 3. 식자재 / 부자재 ----
+
+model MaterialMaster {
+  id           String       @id @default(cuid())
+  companyId    String       @map("company_id")
+  name         String
+  code         String
+  materialType MaterialType @map("material_type")
+  unit         String
+  unitCategory UnitCategory @map("unit_category")
+  minStock     Float?       @map("min_stock")
+  maxStock     Float?       @map("max_stock")
+  shelfLifeDays Int?        @map("shelf_life_days")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  deletedAt    DateTime?    @map("deleted_at")
+
+  company               Company @relation(fields: [companyId], references: [id])
+  supplierItems         SupplierItem[]
+  bomItems              BOMItem[]
+  unitConversionsFrom   UnitConversion[] @relation("ConversionFrom")
+  unitConversionsTo     UnitConversion[] @relation("ConversionTo")
+  inventoryLots         InventoryLot[]
+  inventoryTransactions InventoryTransaction[]
+  inventoryReservations InventoryReservation[]
+  costSnapshotItems     CostSnapshotItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("material_masters")
+}
+
+model SubsidiaryMaster {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  unit      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company       Company @relation(fields: [companyId], references: [id])
+  supplierItems SupplierItem[]
+  bomItems      BOMItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("subsidiary_masters")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  contactName  String? @map("contact_name")
+  contactPhone String? @map("contact_phone")
+  contactEmail String? @map("contact_email")
+  address   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company        Company @relation(fields: [companyId], references: [id])
+  supplierItems  SupplierItem[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("suppliers")
+}
+
+model SupplierItem {
+  id                String   @id @default(cuid())
+  supplierId        String   @map("supplier_id")
+  itemType          ItemType @map("item_type")
+  materialMasterId  String?  @map("material_master_id")
+  subsidiaryMasterId String? @map("subsidiary_master_id")
+  supplierItemCode  String?  @map("supplier_item_code")
+  supplyUnit        String   @map("supply_unit")
+  supplyUnitQty     Float    @map("supply_unit_qty")
+  currentPrice      Float    @map("current_price")
+  leadTimeDays      Int      @default(1) @map("lead_time_days")
+  moq               Float?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  supplier          Supplier          @relation(fields: [supplierId], references: [id])
+  materialMaster    MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster  SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
+  priceHistories    SupplierItemPriceHistory[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@index([supplierId])
+  @@index([materialMasterId])
+  @@index([subsidiaryMasterId])
+  @@map("supplier_items")
+}
+
+model SupplierItemPriceHistory {
+  id             String   @id @default(cuid())
+  supplierItemId String   @map("supplier_item_id")
+  price          Float
+  effectiveFrom  DateTime @map("effective_from")
+  effectiveTo    DateTime? @map("effective_to")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  supplierItem SupplierItem @relation(fields: [supplierItemId], references: [id])
+
+  @@index([supplierItemId])
+  @@map("supplier_item_price_histories")
+}
+
+// ---- 4. 용기 ----
+
+model ContainerGroup {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company    Company @relation(fields: [companyId], references: [id])
+  slots      ContainerSlot[]
+  accessories ContainerAccessory[]
+  mealTemplates MealTemplate[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("container_groups")
+}
+
+model ContainerSlot {
+  id               String @id @default(cuid())
+  containerGroupId String @map("container_group_id")
+  slotIndex        Int    @map("slot_index")
+  label            String
+  volumeMl         Float? @map("volume_ml")
+
+  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
+
+  @@unique([containerGroupId, slotIndex])
+  @@index([containerGroupId])
+  @@map("container_slots")
+}
+
+model ContainerAccessory {
+  id               String @id @default(cuid())
+  containerGroupId String @map("container_group_id")
+  name             String
+  description      String?
+
+  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
+
+  @@index([containerGroupId])
+  @@map("container_accessories")
+}
+
+// ---- 5. 레시피 / BOM ----
+
+model Recipe {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  name        String
+  code        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company  Company @relation(fields: [companyId], references: [id])
+  variants RecipeVariant[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("recipes")
+}
+
+model RecipeVariant {
+  id          String   @id @default(cuid())
+  recipeId    String   @map("recipe_id")
+  variantName String   @map("variant_name")
+  servings    Int      @default(1)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  recipe        Recipe @relation(fields: [recipeId], references: [id])
+  boms          BOM[]
+  mealPlanSlots MealPlanSlot[]
+
+  @@index([recipeId])
+  @@map("recipe_variants")
+}
+
+model SemiProduct {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  unit      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+  boms    BOM[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("semi_products")
+}
+
+model BOM {
+  id              String    @id @default(cuid())
+  companyId       String    @map("company_id")
+  ownerType       OwnerType @map("owner_type")
+  recipeVariantId String?   @map("recipe_variant_id")
+  semiProductId   String?   @map("semi_product_id")
+  version         Int       @default(1)
+  status          BOMStatus @default(DRAFT)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  recipeVariant RecipeVariant? @relation(fields: [recipeVariantId], references: [id])
+  semiProduct   SemiProduct?   @relation(fields: [semiProductId], references: [id])
+  items         BOMItem[]
+
+  @@index([companyId])
+  @@index([recipeVariantId])
+  @@index([semiProductId])
+  @@map("boms")
+}
+
+model BOMItem {
+  id                 String   @id @default(cuid())
+  bomId              String   @map("bom_id")
+  itemType           ItemType @map("item_type")
+  materialMasterId   String?  @map("material_master_id")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  quantity           Float
+  unit               String
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  bom              BOM               @relation(fields: [bomId], references: [id])
+  materialMaster   MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
+
+  @@index([bomId])
+  @@index([materialMasterId])
+  @@index([subsidiaryMasterId])
+  @@map("bom_items")
+}
+
+model UnitConversion {
+  id             String       @id @default(cuid())
+  fromMaterialId String       @map("from_material_id")
+  toMaterialId   String       @map("to_material_id")
+  fromUnit       String       @map("from_unit")
+  toUnit         String       @map("to_unit")
+  factor         Float
+  unitCategory   UnitCategory @map("unit_category")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  fromMaterial MaterialMaster @relation("ConversionFrom", fields: [fromMaterialId], references: [id])
+  toMaterial   MaterialMaster @relation("ConversionTo", fields: [toMaterialId], references: [id])
+
+  @@index([fromMaterialId])
+  @@index([toMaterialId])
+  @@map("unit_conversions")
+}
+
+// ---- 6. 식단 템플릿 ----
+
+model MealTemplate {
+  id               String @id @default(cuid())
+  companyId        String @map("company_id")
+  name             String
+  containerGroupId String @map("container_group_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
+  slots          MealTemplateSlot[]
+  accessories    MealTemplateAccessory[]
+
+  @@index([companyId])
+  @@index([containerGroupId])
+  @@map("meal_templates")
+}
+
+model MealTemplateSlot {
+  id             String @id @default(cuid())
+  mealTemplateId String @map("meal_template_id")
+  slotIndex      Int    @map("slot_index")
+  label          String
+  isRequired     Boolean @default(true) @map("is_required")
+
+  mealTemplate MealTemplate @relation(fields: [mealTemplateId], references: [id])
+
+  @@unique([mealTemplateId, slotIndex])
+  @@index([mealTemplateId])
+  @@map("meal_template_slots")
+}
+
+model MealTemplateAccessory {
+  id             String @id @default(cuid())
+  mealTemplateId String @map("meal_template_id")
+  name           String
+  isRequired     Boolean @default(false) @map("is_required")
+
+  mealTemplate MealTemplate @relation(fields: [mealTemplateId], references: [id])
+
+  @@index([mealTemplateId])
+  @@map("meal_template_accessories")
+}
+
+// ---- 7. 식단 계획 ----
+
+model MealPlanGroup {
+  id        String         @id @default(cuid())
+  companyId String         @map("company_id")
+  lineupId  String         @map("lineup_id")
+  planDate  DateTime       @map("plan_date") @db.Date
+  status    MealPlanStatus @default(DRAFT)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  lineup     Lineup     @relation(fields: [lineupId], references: [id])
+  mealPlans  MealPlan[]
+  mealCounts MealCount[]
+
+  @@unique([companyId, lineupId, planDate])
+  @@index([companyId])
+  @@index([lineupId])
+  @@index([planDate])
+  @@map("meal_plan_groups")
+}
+
+model MealPlan {
+  id              String       @id @default(cuid())
+  mealPlanGroupId String       @map("meal_plan_group_id")
+  slotType        MealSlotType @map("slot_type")
+  mealTemplateId  String?      @map("meal_template_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  mealPlanGroup MealPlanGroup @relation(fields: [mealPlanGroupId], references: [id])
+  slots         MealPlanSlot[]
+
+  @@unique([mealPlanGroupId, slotType])
+  @@index([mealPlanGroupId])
+  @@map("meal_plans")
+}
+
+model MealPlanSlot {
+  id              String @id @default(cuid())
+  mealPlanId      String @map("meal_plan_id")
+  slotIndex       Int    @map("slot_index")
+  recipeVariantId String? @map("recipe_variant_id")
+  quantity        Int    @default(0)
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  mealPlan      MealPlan       @relation(fields: [mealPlanId], references: [id])
+  recipeVariant RecipeVariant? @relation(fields: [recipeVariantId], references: [id])
+
+  @@unique([mealPlanId, slotIndex])
+  @@index([mealPlanId])
+  @@index([recipeVariantId])
+  @@map("meal_plan_slots")
+}
+
+model MealCount {
+  id              String @id @default(cuid())
+  mealPlanGroupId String @map("meal_plan_group_id")
+  slotType        MealSlotType @map("slot_type")
+  estimatedCount  Int?   @map("estimated_count")
+  finalCount      Int?   @map("final_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  mealPlanGroup MealPlanGroup @relation(fields: [mealPlanGroupId], references: [id])
+
+  @@unique([mealPlanGroupId, slotType])
+  @@index([mealPlanGroupId])
+  @@map("meal_counts")
+}
+
+// ---- 8. 라인업 ----
+
+model Lineup {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company        Company @relation(fields: [companyId], references: [id])
+  locationMaps   LineupLocationMap[]
+  mealPlanGroups MealPlanGroup[]
+  shippingOrders ShippingOrder[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("lineups")
+}
+
+model LineupLocationMap {
+  id         String @id @default(cuid())
+  lineupId   String @map("lineup_id")
+  locationId String @map("location_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  lineup   Lineup   @relation(fields: [lineupId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([lineupId, locationId])
+  @@index([lineupId])
+  @@index([locationId])
+  @@map("lineup_location_maps")
+}
+
+// ---- 9. 자동 생성 ----
+
+model AutoGenLog {
+  id          String       @id @default(cuid())
+  companyId   String       @map("company_id")
+  triggerType String       @map("trigger_type")
+  status      AutoGenStatus @default(PENDING)
+  inputJson   Json?        @map("input_json")
+  outputJson  Json?        @map("output_json")
+  errorMsg    String?      @map("error_msg")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("auto_gen_logs")
+}
+
+// ---- 10. 발주 ----
+
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  supplierId  String   @map("supplier_id")
+  orderNumber String   @unique @map("order_number")
+  status      POStatus @default(DRAFT)
+  orderDate   DateTime @map("order_date") @db.Date
+  deliveryDate DateTime? @map("delivery_date") @db.Date
+  totalAmount Float?   @map("total_amount")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company  Company @relation(fields: [companyId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@index([companyId])
+  @@index([supplierId])
+  @@index([orderDate])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String @id @default(cuid())
+  purchaseOrderId String @map("purchase_order_id")
+  supplierItemId  String @map("supplier_item_id")
+  quantity        Float
+  unitPrice       Float  @map("unit_price")
+  totalPrice      Float  @map("total_price")
+  receivedQty     Float  @default(0) @map("received_qty")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  supplierItem  SupplierItem  @relation(fields: [supplierItemId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([supplierItemId])
+  @@map("purchase_order_items")
+}
+
+// ---- 11. 재고 ----
+
+model InventoryLot {
+  id               String   @id @default(cuid())
+  companyId        String   @map("company_id")
+  locationId       String   @map("location_id")
+  materialMasterId String   @map("material_master_id")
+  lotNumber        String   @map("lot_number")
+  initialQty       Float    @map("initial_qty")
+  remainingQty     Float    @map("remaining_qty")
+  unitPrice        Float    @map("unit_price")
+  expirationDate   DateTime? @map("expiration_date") @db.Date
+  receivedAt       DateTime @default(now()) @map("received_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  location       Location       @relation(fields: [locationId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+  transactions   InventoryTransaction[]
+  reservations   InventoryReservation[]
+
+  @@index([companyId])
+  @@index([locationId])
+  @@index([materialMasterId])
+  @@index([lotNumber])
+  @@map("inventory_lots")
+}
+
+model InventoryTransaction {
+  id               String          @id @default(cuid())
+  companyId        String          @map("company_id")
+  locationId       String          @map("location_id")
+  materialMasterId String          @map("material_master_id")
+  inventoryLotId   String?         @map("inventory_lot_id")
+  transactionType  TransactionType @map("transaction_type")
+  quantity         Float
+  unitPrice        Float?          @map("unit_price")
+  referenceType    String?         @map("reference_type")
+  referenceId      String?         @map("reference_id")
+  note             String?
+  transactionDate  DateTime        @default(now()) @map("transaction_date")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  location       Location       @relation(fields: [locationId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+  inventoryLot   InventoryLot?  @relation(fields: [inventoryLotId], references: [id])
+
+  @@index([companyId])
+  @@index([locationId])
+  @@index([materialMasterId])
+  @@index([inventoryLotId])
+  @@index([transactionDate])
+  @@map("inventory_transactions")
+}
+
+model InventoryReservation {
+  id               String                   @id @default(cuid())
+  companyId        String                   @map("company_id")
+  inventoryLotId   String                   @map("inventory_lot_id")
+  materialMasterId String                   @map("material_master_id")
+  referenceType    String                   @map("reference_type")
+  referenceId      String                   @map("reference_id")
+  quantity         Float
+  useDate          DateTime                 @map("use_date") @db.Date
+  reservedAt       DateTime                 @default(now()) @map("reserved_at")
+  releasedAt       DateTime?                @map("released_at")
+  releaseReason    ReservationReleaseReason? @map("release_reason")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  inventoryLot   InventoryLot   @relation(fields: [inventoryLotId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+
+  @@index([companyId])
+  @@index([inventoryLotId])
+  @@index([materialMasterId])
+  @@index([useDate])
+  @@map("inventory_reservations")
+}
+
+model InventoryTransfer {
+  id             String         @id @default(cuid())
+  companyId      String         @map("company_id")
+  fromLocationId String         @map("from_location_id")
+  toLocationId   String         @map("to_location_id")
+  transferType   TransferType   @map("transfer_type")
+  status         TransferStatus @default(DRAFT)
+  requestedAt    DateTime       @default(now()) @map("requested_at")
+  confirmedAt    DateTime?      @map("confirmed_at")
+  receivedAt     DateTime?      @map("received_at")
+  note           String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  company      Company  @relation(fields: [companyId], references: [id])
+  fromLocation Location @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location @relation("TransferTo", fields: [toLocationId], references: [id])
+  items        InventoryTransferItem[]
+
+  @@index([companyId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("inventory_transfers")
+}
+
+model InventoryTransferItem {
+  id                  String @id @default(cuid())
+  inventoryTransferId String @map("inventory_transfer_id")
+  materialMasterId    String @map("material_master_id")
+  quantity            Float
+  note                String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  inventoryTransfer InventoryTransfer @relation(fields: [inventoryTransferId], references: [id])
+
+  @@index([inventoryTransferId])
+  @@map("inventory_transfer_items")
+}
+
+model StockTake {
+  id         String          @id @default(cuid())
+  companyId  String          @map("company_id")
+  locationId String          @map("location_id")
+  status     StockTakeStatus @default(DRAFT)
+  takeDate   DateTime        @map("take_date") @db.Date
+  note       String?
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  company  Company @relation(fields: [companyId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  items    StockTakeItem[]
+
+  @@index([companyId])
+  @@index([locationId])
+  @@map("stock_takes")
+}
+
+model StockTakeItem {
+  id             String @id @default(cuid())
+  stockTakeId    String @map("stock_take_id")
+  materialMasterId String @map("material_master_id")
+  systemQty      Float  @map("system_qty")
+  actualQty      Float  @map("actual_qty")
+  difference     Float
+  note           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  stockTake StockTake @relation(fields: [stockTakeId], references: [id])
+
+  @@index([stockTakeId])
+  @@map("stock_take_items")
+}
+
+// ---- 12. 출하 / 소비 ----
+
+model ShippingOrder {
+  id          String         @id @default(cuid())
+  companyId   String         @map("company_id")
+  lineupId    String         @map("lineup_id")
+  shippingDate DateTime      @map("shipping_date") @db.Date
+  status      ShippingStatus @default(PENDING)
+  note        String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+  lineup  Lineup  @relation(fields: [lineupId], references: [id])
+  items   ShippingOrderItem[]
+
+  @@index([companyId])
+  @@index([lineupId])
+  @@index([shippingDate])
+  @@map("shipping_orders")
+}
+
+model ShippingOrderItem {
+  id              String @id @default(cuid())
+  shippingOrderId String @map("shipping_order_id")
+  materialMasterId String @map("material_master_id")
+  quantity        Float
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  shippingOrder ShippingOrder @relation(fields: [shippingOrderId], references: [id])
+
+  @@index([shippingOrderId])
+  @@map("shipping_order_items")
+}
+
+// ---- 13. 조리계획서 ----
+
+model CookingPlan {
+  id              String            @id @default(cuid())
+  companyId       String            @map("company_id")
+  mealPlanGroupId String            @map("meal_plan_group_id")
+  version         Int               @default(1)
+  status          CookingPlanStatus @default(DRAFT)
+  expectedMeals   Int               @map("expected_meals")
+  actualMeals     Int?              @map("actual_meals")
+  replacedById    String?           @map("replaced_by_id")
+  note            String?
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  company       Company      @relation(fields: [companyId], references: [id])
+  replacedBy    CookingPlan? @relation("CookingPlanReplace", fields: [replacedById], references: [id])
+  replacedPlans CookingPlan[] @relation("CookingPlanReplace")
+
+  @@index([companyId])
+  @@index([mealPlanGroupId])
+  @@map("cooking_plans")
+}
+
+// ---- 14. 원가 ----
+
+model CostSnapshot {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  costType    CostType @map("cost_type")
+  targetMonth DateTime @map("target_month") @db.Date
+  totalCost   Float    @map("total_cost")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+  items   CostSnapshotItem[]
+
+  @@index([companyId])
+  @@index([targetMonth])
+  @@map("cost_snapshots")
+}
+
+model CostSnapshotItem {
+  id               String @id @default(cuid())
+  costSnapshotId   String @map("cost_snapshot_id")
+  materialMasterId String @map("material_master_id")
+  quantity         Float
+  unitPrice        Float  @map("unit_price")
+  totalPrice       Float  @map("total_price")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  costSnapshot   CostSnapshot   @relation(fields: [costSnapshotId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+
+  @@index([costSnapshotId])
+  @@index([materialMasterId])
+  @@map("cost_snapshot_items")
+}
+
+// ---- 15. 월말 마감 ----
+
+model MonthEndSnapshot {
+  id          String       @id @default(cuid())
+  companyId   String       @map("company_id")
+  targetMonth DateTime     @map("target_month") @db.Date
+  snapshotType SnapshotType @map("snapshot_type")
+  dataJson    Json         @map("data_json")
+  isLocked    Boolean      @default(false) @map("is_locked")
+  lockedAt    DateTime?    @map("locked_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  company     Company @relation(fields: [companyId], references: [id])
+  adjustments MonthEndAdjustment[]
+
+  @@unique([companyId, targetMonth, snapshotType])
+  @@index([companyId])
+  @@index([targetMonth])
+  @@map("month_end_snapshots")
+}
+
+model MonthEndAdjustment {
+  id                  String   @id @default(cuid())
+  companyId           String   @map("company_id")
+  monthEndSnapshotId  String   @map("month_end_snapshot_id")
+  adjustmentNumber    Int      @map("adjustment_number")
+  reason              String
+  adjustedById        String   @map("adjusted_by_id")
+  beforeSnapshot      Json     @map("before_snapshot")
+  afterSnapshot       Json     @map("after_snapshot")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company          Company          @relation(fields: [companyId], references: [id])
+  monthEndSnapshot MonthEndSnapshot @relation(fields: [monthEndSnapshotId], references: [id])
+  adjustedBy       User             @relation(fields: [adjustedById], references: [id])
+  items            MonthEndAdjustmentItem[]
+
+  @@index([companyId])
+  @@index([monthEndSnapshotId])
+  @@map("month_end_adjustments")
+}
+
+model MonthEndAdjustmentItem {
+  id           String @id @default(cuid())
+  adjustmentId String @map("adjustment_id")
+  materialId   String @map("material_id")
+  itemName     String @map("item_name")
+  field        String
+  beforeValue  Float  @map("before_value")
+  afterValue   Float  @map("after_value")
+  note         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  adjustment MonthEndAdjustment @relation(fields: [adjustmentId], references: [id])
+
+  @@index([adjustmentId])
+  @@map("month_end_adjustment_items")
+}
+
+// ---- 16. 알림 ----
+
+model NotificationTagDef {
+  id          String @id @default(cuid())
+  tagKey      String @unique @map("tag_key")
+  label       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("notification_tag_defs")
+}
+
+model NotificationRule {
+  id          String              @id @default(cuid())
+  companyId   String              @map("company_id")
+  eventType   String              @map("event_type")
+  channel     NotificationChannel
+  templateId  String              @map("template_id")
+  isActive    Boolean             @default(true) @map("is_active")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  company  Company              @relation(fields: [companyId], references: [id])
+  template NotificationTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([companyId])
+  @@index([eventType])
+  @@map("notification_rules")
+}
+
+model NotificationTemplate {
+  id          String @id @default(cuid())
+  name        String
+  subject     String?
+  bodyTemplate String @map("body_template")
+  channel     NotificationChannel
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rules NotificationRule[]
+
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id          String                @id @default(cuid())
+  companyId   String                @map("company_id")
+  recipientId String                @map("recipient_id")
+  channel     NotificationChannel
+  subject     String?
+  body        String
+  status      NotificationLogStatus @default(PENDING)
+  sentAt      DateTime?             @map("sent_at")
+  errorMsg    String?               @map("error_msg")
+  createdAt   DateTime              @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([recipientId])
+  @@index([createdAt])
+  @@map("notification_logs")
+}
+
+// ---- 17. 감사 로그 ----
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  companyId   String?     @map("company_id")
+  userId      String?     @map("user_id")
+  action      AuditAction
+  entityType  String      @map("entity_type")
+  entityId    String      @map("entity_id")
+  before      Json?
+  after       Json?
+  ipAddress   String?     @map("ip_address")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  company Company? @relation(fields: [companyId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
