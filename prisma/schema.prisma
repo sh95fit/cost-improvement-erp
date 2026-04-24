@@ -1,7 +1,7 @@
 // ============================================================
-// 원가 정확도 개선 프로젝트 - schema.prisma v2
+// 원가 정확도 개선 프로젝트 - schema.prisma v3
 // Prisma 7 + Next.js 16 (Turbopack) 호환
-// 모델 62개, Enum 25개
+// 모델 65개, Enum 28개
 // ============================================================
 
 generator client {
@@ -13,7 +13,7 @@ datasource db {
 }
 
 // ============================================================
-// ENUMS (25개)
+// ENUMS (28개)
 // ============================================================
 
 enum UserStatus {
@@ -212,8 +212,27 @@ enum AutoGenStatus {
   @@map("auto_gen_status")
 }
 
+enum ReceivingNoteStatus {
+  DRAFT
+  CONFIRMED
+  @@map("receiving_note_status")
+}
+
+enum ConsumptionStatus {
+  DRAFT
+  CONFIRMED
+  @@map("consumption_status")
+}
+
+enum MonthEndStatus {
+  DRAFT
+  LOCKED
+  @@map("month_end_status")
+}
+
+
 // ============================================================
-// MODELS (62개)
+// MODELS (65개)
 // ============================================================
 
 // ---- 1. 조직 ----
@@ -257,6 +276,12 @@ model Company {
   notificationRules  NotificationRule[]
   notificationLogs   NotificationLog[]
   auditLogs          AuditLog[]
+  invitations        Invitation[]
+  receivingNotes     ReceivingNote[]
+  materialRequirements MaterialRequirement[]
+  consumptionItems   ConsumptionItem[]
+  costCalculations   CostCalculation[]
+  overheadCosts      OverheadCost[]
 
   @@map("companies")
 }
@@ -279,6 +304,7 @@ model Location {
   stockTakes         StockTake[]
   transfersFrom      InventoryTransfer[] @relation("TransferFrom")
   transfersTo        InventoryTransfer[] @relation("TransferTo")
+  shippingOrders ShippingOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -296,6 +322,8 @@ model ProductionLine {
 
   company    Company  @relation(fields: [companyId], references: [id])
   location   Location @relation(fields: [locationId], references: [id])
+  cookingPlans CookingPlan[]
+
 
   @@index([companyId])
   @@index([locationId])
@@ -319,6 +347,9 @@ model User {
   scopes               UserScope[]
   auditLogs            AuditLog[]
   monthEndAdjustments  MonthEndAdjustment[]
+  invitations          Invitation[]
+  createdPurchaseOrders PurchaseOrder[]
+
 
   @@map("users")
 }
@@ -369,6 +400,27 @@ model PermissionSetItem {
   @@map("permission_set_items")
 }
 
+model Invitation {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  email       String
+  role        ScopeRole
+  invitedById String   @map("invited_by_id")
+  token       String   @unique
+  expiresAt   DateTime @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company   Company @relation(fields: [companyId], references: [id])
+  invitedBy User    @relation(fields: [invitedById], references: [id])
+
+  @@index([companyId])
+  @@index([email])
+  @@index([token])
+  @@map("invitations")
+}
+
+
 // ---- 3. 식자재 / 부자재 ----
 
 model MaterialMaster {
@@ -395,6 +447,14 @@ model MaterialMaster {
   inventoryTransactions InventoryTransaction[]
   inventoryReservations InventoryReservation[]
   costSnapshotItems     CostSnapshotItem[]
+  materialRequirements  MaterialRequirement[]
+  cookingPlanItems      CookingPlanItem[]
+  consumptionItems      ConsumptionItem[]
+  costCalculationItems  CostCalculationItem[]
+  inventoryTransferItems InventoryTransferItem[]
+  purchaseOrderItems    PurchaseOrderItem[]
+  shippingOrderItems    ShippingOrderItem[]
+
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -414,6 +474,11 @@ model SubsidiaryMaster {
   company       Company @relation(fields: [companyId], references: [id])
   supplierItems SupplierItem[]
   bomItems      BOMItem[]
+  mealPlanAccessories MealPlanAccessory[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  inventoryLots       InventoryLot[]
+  shippingOrderItems  ShippingOrderItem[]
+
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -562,6 +627,8 @@ model RecipeVariant {
   recipe        Recipe @relation(fields: [recipeId], references: [id])
   boms          BOM[]
   mealPlanSlots MealPlanSlot[]
+  cookingPlanSlots CookingPlanSlot[]
+
 
   @@index([recipeId])
   @@map("recipe_variants")
@@ -707,6 +774,10 @@ model MealPlanGroup {
   lineup     Lineup     @relation(fields: [lineupId], references: [id])
   mealPlans  MealPlan[]
   mealCounts MealCount[]
+  materialRequirements MaterialRequirement[]
+  purchaseOrders   PurchaseOrder[]
+  shippingOrders   ShippingOrder[]
+
 
   @@unique([companyId, lineupId, planDate])
   @@index([companyId])
@@ -725,6 +796,8 @@ model MealPlan {
 
   mealPlanGroup MealPlanGroup @relation(fields: [mealPlanGroupId], references: [id])
   slots         MealPlanSlot[]
+  accessories   MealPlanAccessory[]
+
 
   @@unique([mealPlanGroupId, slotType])
   @@index([mealPlanGroupId])
@@ -765,6 +838,23 @@ model MealCount {
   @@index([mealPlanGroupId])
   @@map("meal_counts")
 }
+
+model MealPlanAccessory {
+  id                 String @id @default(cuid())
+  mealPlanId         String @map("meal_plan_id")
+  subsidiaryMasterId String @map("subsidiary_master_id")
+  quantity           Float
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  mealPlan         MealPlan         @relation(fields: [mealPlanId], references: [id])
+  subsidiaryMaster SubsidiaryMaster @relation(fields: [subsidiaryMasterId], references: [id])
+
+  @@index([mealPlanId])
+  @@index([subsidiaryMasterId])
+  @@map("meal_plan_accessories")
+}
+
 
 // ---- 8. 라인업 ----
 
@@ -821,6 +911,26 @@ model AutoGenLog {
   @@map("auto_gen_logs")
 }
 
+model MaterialRequirement {
+  id               String   @id @default(cuid())
+  companyId        String   @map("company_id")
+  mealPlanGroupId  String   @map("meal_plan_group_id")
+  materialMasterId String   @map("material_master_id")
+  requiredQty      Float    @map("required_qty")
+  unit             String
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  mealPlanGroup  MealPlanGroup  @relation(fields: [mealPlanGroupId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+
+  @@index([companyId])
+  @@index([mealPlanGroupId])
+  @@index([materialMasterId])
+  @@map("material_requirements")
+}
+
+
 // ---- 10. 발주 ----
 
 model PurchaseOrder {
@@ -833,12 +943,20 @@ model PurchaseOrder {
   deliveryDate DateTime? @map("delivery_date") @db.Date
   totalAmount Float?   @map("total_amount")
   note        String?
+  isManual         Boolean   @default(false) @map("is_manual")
+  mealPlanGroupId  String?   @map("meal_plan_group_id")
+  createdByUserId  String?   @map("created_by_user_id")
+  approvedAt       DateTime? @map("approved_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   company  Company @relation(fields: [companyId], references: [id])
   supplier Supplier @relation(fields: [supplierId], references: [id])
+  mealPlanGroup MealPlanGroup? @relation(fields: [mealPlanGroupId], references: [id])
+  createdByUser User?          @relation(fields: [createdByUserId], references: [id])
   items    PurchaseOrderItem[]
+  receivingNotes ReceivingNote[]
+
 
   @@index([companyId])
   @@index([supplierId])
@@ -850,6 +968,13 @@ model PurchaseOrderItem {
   id              String @id @default(cuid())
   purchaseOrderId String @map("purchase_order_id")
   supplierItemId  String @map("supplier_item_id")
+  itemType           ItemType @default(MATERIAL) @map("item_type")
+  materialMasterId   String?  @map("material_master_id")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  systemQuantity     Float?   @map("system_quantity")
+  adjustedQuantity   Float?   @map("adjusted_quantity")
+  adjustmentReason   String?  @map("adjustment_reason")
+  sourceType         String?  @map("source_type")
   quantity        Float
   unitPrice       Float  @map("unit_price")
   totalPrice      Float  @map("total_price")
@@ -859,11 +984,52 @@ model PurchaseOrderItem {
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   supplierItem  SupplierItem  @relation(fields: [supplierItemId], references: [id])
+  materialMaster    MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster  SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
+  receivingNoteItems ReceivingNoteItem[]
 
   @@index([purchaseOrderId])
   @@index([supplierItemId])
   @@map("purchase_order_items")
 }
+
+model ReceivingNote {
+  id              String              @id @default(cuid())
+  companyId       String              @map("company_id")
+  purchaseOrderId String              @map("purchase_order_id")
+  receiveNumber   String              @unique @map("receive_number")
+  status          ReceivingNoteStatus @default(DRAFT)
+  receivedDate    DateTime            @map("received_date") @db.Date
+  note            String?
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id])
+  items         ReceivingNoteItem[]
+
+  @@index([companyId])
+  @@index([purchaseOrderId])
+  @@map("receiving_notes")
+}
+
+model ReceivingNoteItem {
+  id              String @id @default(cuid())
+  receivingNoteId String @map("receiving_note_id")
+  purchaseOrderItemId String @map("purchase_order_item_id")
+  receivedQty     Float  @map("received_qty")
+  unitPrice       Float  @map("unit_price")
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  receivingNote     ReceivingNote     @relation(fields: [receivingNoteId], references: [id])
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+
+  @@index([receivingNoteId])
+  @@index([purchaseOrderItemId])
+  @@map("receiving_note_items")
+}
+
 
 // ---- 11. 재고 ----
 
@@ -872,6 +1038,9 @@ model InventoryLot {
   companyId        String   @map("company_id")
   locationId       String   @map("location_id")
   materialMasterId String   @map("material_master_id")
+  itemType           ItemType @default(MATERIAL) @map("item_type")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  receivingNoteItemId String? @map("receiving_note_item_id")
   lotNumber        String   @map("lot_number")
   initialQty       Float    @map("initial_qty")
   remainingQty     Float    @map("remaining_qty")
@@ -884,8 +1053,11 @@ model InventoryLot {
   company        Company        @relation(fields: [companyId], references: [id])
   location       Location       @relation(fields: [locationId], references: [id])
   materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster  SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
   transactions   InventoryTransaction[]
   reservations   InventoryReservation[]
+  consumptionLotDetails ConsumptionLotDetail[]
+
 
   @@index([companyId])
   @@index([locationId])
@@ -981,6 +1153,8 @@ model InventoryTransferItem {
   createdAt           DateTime @default(now()) @map("created_at")
 
   inventoryTransfer InventoryTransfer @relation(fields: [inventoryTransferId], references: [id])
+  materialMaster    MaterialMaster @relation(fields: [materialMasterId], references: [id])
+
 
   @@index([inventoryTransferId])
   @@map("inventory_transfer_items")
@@ -1027,6 +1201,8 @@ model ShippingOrder {
   id          String         @id @default(cuid())
   companyId   String         @map("company_id")
   lineupId    String         @map("lineup_id")
+  mealPlanGroupId String? @map("meal_plan_group_id")
+  locationId      String? @map("location_id")
   shippingDate DateTime      @map("shipping_date") @db.Date
   status      ShippingStatus @default(PENDING)
   note        String?
@@ -1035,6 +1211,8 @@ model ShippingOrder {
 
   company Company @relation(fields: [companyId], references: [id])
   lineup  Lineup  @relation(fields: [lineupId], references: [id])
+  mealPlanGroup MealPlanGroup? @relation(fields: [mealPlanGroupId], references: [id])
+  location      Location?      @relation(fields: [locationId], references: [id])
   items   ShippingOrderItem[]
 
   @@index([companyId])
@@ -1044,17 +1222,62 @@ model ShippingOrder {
 }
 
 model ShippingOrderItem {
-  id              String @id @default(cuid())
-  shippingOrderId String @map("shipping_order_id")
-  materialMasterId String @map("material_master_id")
-  quantity        Float
-  note            String?
-  createdAt       DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(cuid())
+  shippingOrderId    String   @map("shipping_order_id")
+  materialMasterId   String?  @map("material_master_id")
+  itemType           ItemType @default(MATERIAL) @map("item_type")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  quantity           Float
+  note               String?
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  shippingOrder ShippingOrder @relation(fields: [shippingOrderId], references: [id])
+  shippingOrder    ShippingOrder     @relation(fields: [shippingOrderId], references: [id])
+  materialMaster   MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
 
   @@index([shippingOrderId])
   @@map("shipping_order_items")
+}
+
+model ConsumptionItem {
+  id               String            @id @default(cuid())
+  companyId        String            @map("company_id")
+  cookingPlanId    String            @map("cooking_plan_id")
+  materialMasterId String            @map("material_master_id")
+  consumedQty      Float             @map("consumed_qty")
+  unit             String
+  status           ConsumptionStatus @default(DRAFT)
+  consumedDate     DateTime          @map("consumed_date") @db.Date
+  note             String?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  company        Company        @relation(fields: [companyId], references: [id])
+  cookingPlan    CookingPlan    @relation(fields: [cookingPlanId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+  lotDetails     ConsumptionLotDetail[]
+
+  @@index([companyId])
+  @@index([cookingPlanId])
+  @@index([materialMasterId])
+  @@index([consumedDate])
+  @@map("consumption_items")
+}
+
+model ConsumptionLotDetail {
+  id                String @id @default(cuid())
+  consumptionItemId String @map("consumption_item_id")
+  inventoryLotId    String @map("inventory_lot_id")
+  quantity          Float
+  unitPrice         Float  @map("unit_price")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  consumptionItem ConsumptionItem @relation(fields: [consumptionItemId], references: [id])
+  inventoryLot    InventoryLot    @relation(fields: [inventoryLotId], references: [id])
+
+  @@index([consumptionItemId])
+  @@index([inventoryLotId])
+  @@map("consumption_lot_details")
 }
 
 // ---- 13. 조리계획서 ----
@@ -1063,6 +1286,7 @@ model CookingPlan {
   id              String            @id @default(cuid())
   companyId       String            @map("company_id")
   mealPlanGroupId String            @map("meal_plan_group_id")
+  productionLineId String? @map("production_line_id")
   version         Int               @default(1)
   status          CookingPlanStatus @default(DRAFT)
   expectedMeals   Int               @map("expected_meals")
@@ -1073,13 +1297,54 @@ model CookingPlan {
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
   company       Company      @relation(fields: [companyId], references: [id])
+  productionLine ProductionLine? @relation(fields: [productionLineId], references: [id])
   replacedBy    CookingPlan? @relation("CookingPlanReplace", fields: [replacedById], references: [id])
   replacedPlans CookingPlan[] @relation("CookingPlanReplace")
+  items             CookingPlanItem[]
+  slots             CookingPlanSlot[]
+  consumptionItems  ConsumptionItem[]
+
 
   @@index([companyId])
   @@index([mealPlanGroupId])
   @@map("cooking_plans")
 }
+
+model CookingPlanItem {
+  id               String @id @default(cuid())
+  cookingPlanId    String @map("cooking_plan_id")
+  materialMasterId String @map("material_master_id")
+  requiredQty      Float  @map("required_qty")
+  unit             String
+  note             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  cookingPlan    CookingPlan    @relation(fields: [cookingPlanId], references: [id])
+  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+
+  @@index([cookingPlanId])
+  @@index([materialMasterId])
+  @@map("cooking_plan_items")
+}
+
+model CookingPlanSlot {
+  id              String       @id @default(cuid())
+  cookingPlanId   String       @map("cooking_plan_id")
+  slotType        MealSlotType @map("slot_type")
+  recipeVariantId String?      @map("recipe_variant_id")
+  servings        Int          @default(0)
+  note            String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  cookingPlan   CookingPlan    @relation(fields: [cookingPlanId], references: [id])
+  recipeVariant RecipeVariant? @relation(fields: [recipeVariantId], references: [id])
+
+  @@unique([cookingPlanId, slotType])
+  @@index([cookingPlanId])
+  @@index([recipeVariantId])
+  @@map("cooking_plan_slots")
+}
+
 
 // ---- 14. 원가 ----
 
@@ -1116,6 +1381,58 @@ model CostSnapshotItem {
   @@map("cost_snapshot_items")
 }
 
+model CostCalculation {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  costType    CostType @map("cost_type")
+  targetMonth DateTime @map("target_month") @db.Date
+  totalCost   Float    @map("total_cost")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+  items   CostCalculationItem[]
+
+  @@index([companyId])
+  @@index([targetMonth])
+  @@map("cost_calculations")
+}
+
+model CostCalculationItem {
+  id                String @id @default(cuid())
+  costCalculationId String @map("cost_calculation_id")
+  materialMasterId  String @map("material_master_id")
+  quantity          Float
+  unitPrice         Float  @map("unit_price")
+  totalPrice        Float  @map("total_price")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  costCalculation CostCalculation @relation(fields: [costCalculationId], references: [id])
+  materialMaster  MaterialMaster  @relation(fields: [materialMasterId], references: [id])
+
+  @@index([costCalculationId])
+  @@index([materialMasterId])
+  @@map("cost_calculation_items")
+}
+
+model OverheadCost {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  targetMonth DateTime @map("target_month") @db.Date
+  category    String
+  name        String
+  amount      Float
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([targetMonth])
+  @@map("overhead_costs")
+}
+
 // ---- 15. 월말 마감 ----
 
 model MonthEndSnapshot {
@@ -1124,6 +1441,12 @@ model MonthEndSnapshot {
   targetMonth DateTime     @map("target_month") @db.Date
   snapshotType SnapshotType @map("snapshot_type")
   dataJson    Json         @map("data_json")
+  totalMaterialCost   Float?          @map("total_material_cost")
+  totalSubsidiaryCost Float?          @map("total_subsidiary_cost")
+  totalOverheadCost   Float?          @map("total_overhead_cost")
+  totalMealCount      Int?            @map("total_meal_count")
+  costPerMeal         Float?          @map("cost_per_meal")
+  status              MonthEndStatus  @default(DRAFT)
   isLocked    Boolean      @default(false) @map("is_locked")
   lockedAt    DateTime?    @map("locked_at")
   createdAt   DateTime     @default(now()) @map("created_at")

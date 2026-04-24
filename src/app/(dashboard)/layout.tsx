@@ -19,10 +19,10 @@ export default async function DashboardLayout({
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
-          userName={session.email}
+          userName={session.name}
           userEmail={session.email}
-          userAvatar={null}
-          companyName={undefined}
+          userAvatar={session.avatarUrl}
+          companyName={session.companyName ?? undefined}
         />
         <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
           {children}

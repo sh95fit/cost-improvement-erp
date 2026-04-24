@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 export type AppSession = {
   userId: string;
   companyId: string | null;
+  companyName: string | null;
   email: string;
+  name: string;
+  avatarUrl: string | null;
   systemRole: "SYSTEM_ADMIN" | "COMPANY_ADMIN" | "MEMBER" | "NONE";
   permissions: string[];
   scopes: Array<{ scopeType: string; scopeId: string }>;
@@ -59,6 +62,7 @@ export async function getSession(): Promise<AppSession | null> {
   // 첫 번째 스코프에서 companyId와 role 추출
   const primaryScope = scopes[0] ?? null;
   const companyId = primaryScope?.companyId ?? null;
+  const companyName = primaryScope?.company?.name ?? null;
 
   // ScopeRole → systemRole 매핑
   let systemRole: AppSession["systemRole"] = "NONE";
@@ -94,7 +98,10 @@ export async function getSession(): Promise<AppSession | null> {
   return {
     userId: user.id,
     companyId,
+    companyName,
     email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
     systemRole,
     permissions,
     scopes: scopes.map((s) => ({
