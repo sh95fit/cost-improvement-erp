@@ -8,8 +8,8 @@ type CreateAuditLogParams = {
   action: AuditAction;
   entityType: string;
   entityId: string;
-  before?: Prisma.InputJsonValue | null;
-  after?: Prisma.InputJsonValue | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
   ipAddress?: string | null;
 };
 
@@ -22,7 +22,7 @@ type CreateAuditLogParams = {
  *   action: "CREATE",
  *   entityType: "MaterialMaster",
  *   entityId: material.id,
- *   after: material as unknown as Prisma.InputJsonValue,
+ *   after: material as unknown as Record<string, unknown>,
  * });
  */
 export async function createAuditLog({
@@ -42,8 +42,8 @@ export async function createAuditLog({
         action,
         entityType,
         entityId,
-        before: before ?? undefined,
-        after: after ?? undefined,
+        before: before ? (JSON.parse(JSON.stringify(before)) as Prisma.InputJsonValue) : undefined,
+        after: after ? (JSON.parse(JSON.stringify(after)) as Prisma.InputJsonValue) : undefined,
         ipAddress,
       },
     });

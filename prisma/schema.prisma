@@ -13,7 +13,7 @@ datasource db {
 }
 
 // ============================================================
-// ENUMS (28개)
+// ENUMS (29개)
 // ============================================================
 
 enum UserStatus {
@@ -230,6 +230,13 @@ enum MonthEndStatus {
   @@map("month_end_status")
 }
 
+enum StockGrade {
+  A
+  B
+  C
+  @@map("stock_grade")
+}
+
 
 // ============================================================
 // MODELS (65개)
@@ -434,6 +441,8 @@ model MaterialMaster {
   minStock     Float?       @map("min_stock")
   maxStock     Float?       @map("max_stock")
   shelfLifeDays Int?        @map("shelf_life_days")
+  stockGrade          StockGrade @default(C) @map("stock_grade")
+  stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
   deletedAt    DateTime?    @map("deleted_at")
@@ -467,6 +476,8 @@ model SubsidiaryMaster {
   name      String
   code      String
   unit      String
+  stockGrade          StockGrade @default(C) @map("stock_grade")
+  stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
