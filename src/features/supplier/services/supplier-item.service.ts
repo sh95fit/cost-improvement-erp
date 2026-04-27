@@ -28,10 +28,11 @@ export async function getSupplierItemById(id: string) {
   });
 }
 
-// ── 공급 품목 중복 확인 (같은 업체 + 같은 자재/부자재) ──
+// ── 공급 품목 중복 확인 (같은 업체 + 같은 자재/부자재 + 같은 제품명) ──
 export async function findDuplicateSupplierItem(
   supplierId: string,
   itemType: string,
+  productName: string,
   materialMasterId?: string,
   subsidiaryMasterId?: string
 ) {
@@ -39,6 +40,7 @@ export async function findDuplicateSupplierItem(
     where: {
       supplierId,
       itemType: itemType as "MATERIAL" | "SUBSIDIARY",
+      productName,
       ...(itemType === "MATERIAL" && { materialMasterId }),
       ...(itemType === "SUBSIDIARY" && { subsidiaryMasterId }),
     },
@@ -57,6 +59,8 @@ export async function createSupplierItem(
         itemType: input.itemType,
         materialMasterId: input.materialMasterId ?? null,
         subsidiaryMasterId: input.subsidiaryMasterId ?? null,
+        productName: input.productName,
+        spec: input.spec ?? null,
         supplyUnit: input.supplyUnit,
         supplyUnitQty: input.supplyUnitQty,
         currentPrice: input.currentPrice,

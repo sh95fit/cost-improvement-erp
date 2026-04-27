@@ -180,7 +180,6 @@ export async function getSupplierItemsAction(
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "READ");
 
-    // 해당 업체가 내 회사 소속인지 확인
     const supplier = await supplierService.getSupplierById(session.companyId, supplierId);
     if (!supplier) {
       return actionFail("NOT_FOUND", "업체를 찾을 수 없습니다");
@@ -214,15 +213,16 @@ export async function createSupplierItemAction(
 
     const input = createSupplierItemSchema.parse(rawInput);
 
-    // 중복 확인 (같은 업체 + 같은 자재/부자재)
+    // 중복 확인 (같은 업체 + 같은 자재/부자재 + 같은 제품명)
     const duplicate = await supplierItemService.findDuplicateSupplierItem(
       supplierId,
       input.itemType,
+      input.productName,
       input.materialMasterId,
       input.subsidiaryMasterId
     );
     if (duplicate) {
-      return actionFail("DUPLICATE_ITEM", "이미 등록된 공급 품목입니다");
+      return actionFail("DUPLICATE_ITEM", "동일한 제품명의 공급 품목이 이미 등록되어 있습니다");
     }
 
     const item = await supplierItemService.createSupplierItem(supplierId, input);

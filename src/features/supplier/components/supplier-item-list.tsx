@@ -47,6 +47,8 @@ type SupplierItemRow = {
   id: string;
   itemType: string;
   supplierItemCode: string | null;
+  productName: string;
+  spec: string | null;
   supplyUnit: string;
   supplyUnitQty: number;
   currentPrice: number;
@@ -178,6 +180,8 @@ export function SupplierItemList({
                 <TableRow>
                   <TableHead>유형</TableHead>
                   <TableHead>자재/부자재</TableHead>
+                  <TableHead>제품명</TableHead>
+                  <TableHead>규격</TableHead>
                   <TableHead>공급단위</TableHead>
                   <TableHead className="text-right">단위수량</TableHead>
                   <TableHead className="text-right">단가</TableHead>
@@ -199,12 +203,18 @@ export function SupplierItemList({
                         {ITEM_TYPE_LABELS[item.itemType] ?? item.itemType}
                       </span>
                     </TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell>
                       {item.materialMaster
                         ? `${item.materialMaster.code} - ${item.materialMaster.name}`
                         : item.subsidiaryMaster
                           ? `${item.subsidiaryMaster.code} - ${item.subsidiaryMaster.name}`
                           : "-"}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {item.productName}
+                    </TableCell>
+                    <TableCell className="text-gray-500">
+                      {item.spec ?? "-"}
                     </TableCell>
                     <TableCell>{item.supplyUnit}</TableCell>
                     <TableCell className="text-right">
@@ -261,9 +271,8 @@ export function SupplierItemList({
           <AlertDialogHeader>
             <AlertDialogTitle>공급 품목 삭제</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.materialMaster?.name ??
-                deleteTarget?.subsidiaryMaster?.name}{" "}
-              품목을 삭제하시겠습니까? 관련 가격 이력도 함께 삭제됩니다.
+              &quot;{deleteTarget?.productName}&quot; 품목을 삭제하시겠습니까?
+              관련 가격 이력도 함께 삭제됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

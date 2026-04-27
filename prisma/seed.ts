@@ -301,12 +301,12 @@ async function main() {
 
   // ---- 11. SupplierItems ----
   const supplierItems = [
-    { supplierId: supplierA.id, materialCode: "MAT-001", supplyUnit: "포(20kg)", supplyUnitQty: 20, currentPrice: 52000 },
-    { supplierId: supplierA.id, materialCode: "MAT-002", supplyUnit: "kg", supplyUnitQty: 1, currentPrice: 8500 },
-    { supplierId: supplierA.id, materialCode: "MAT-003", supplyUnit: "망(10kg)", supplyUnitQty: 10, currentPrice: 15000 },
-    { supplierId: supplierB.id, materialCode: "MAT-004", supplyUnit: "병(1.8L)", supplyUnitQty: 1.8, currentPrice: 4500 },
-    { supplierId: supplierB.id, materialCode: "MAT-005", supplyUnit: "병(500ml)", supplyUnitQty: 0.5, currentPrice: 8000 },
-    { supplierId: supplierB.id, materialCode: "MAT-006", supplyUnit: "봉(1kg)", supplyUnitQty: 1, currentPrice: 6500 },
+    { supplierId: supplierA.id, materialCode: "MAT-001", productName: "국내산 쌀 20kg", spec: "20kg", supplyUnit: "포(20kg)", supplyUnitQty: 20, currentPrice: 52000 },
+    { supplierId: supplierA.id, materialCode: "MAT-002", productName: "냉장 닭가슴살", spec: "1kg", supplyUnit: "kg", supplyUnitQty: 1, currentPrice: 8500 },
+    { supplierId: supplierA.id, materialCode: "MAT-003", productName: "국내산 양파 망", spec: "10kg", supplyUnit: "망(10kg)", supplyUnitQty: 10, currentPrice: 15000 },
+    { supplierId: supplierB.id, materialCode: "MAT-004", productName: "샘표 양조간장", spec: "1.8L", supplyUnit: "병(1.8L)", supplyUnitQty: 1.8, currentPrice: 4500 },
+    { supplierId: supplierB.id, materialCode: "MAT-005", productName: "오뚜기 참기름", spec: "500ml", supplyUnit: "병(500ml)", supplyUnitQty: 0.5, currentPrice: 8000 },
+    { supplierId: supplierB.id, materialCode: "MAT-006", productName: "고향냉동만두", spec: "1kg", supplyUnit: "봉(1kg)", supplyUnitQty: 1, currentPrice: 6500 },
   ];
 
   const supplierItemRecords: string[] = [];
@@ -315,6 +315,7 @@ async function main() {
       where: {
         supplierId: si.supplierId,
         materialMasterId: materialRecords[si.materialCode],
+        productName: si.productName,
       },
     });
     if (existing) {
@@ -325,6 +326,8 @@ async function main() {
           supplierId: si.supplierId,
           itemType: "MATERIAL",
           materialMasterId: materialRecords[si.materialCode],
+          productName: si.productName,
+          spec: si.spec,
           supplyUnit: si.supplyUnit,
           supplyUnitQty: si.supplyUnitQty,
           currentPrice: si.currentPrice,

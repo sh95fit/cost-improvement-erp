@@ -32,6 +32,8 @@ type SubsidiaryOption = { id: string; name: string; code: string };
 type SupplierItemData = {
   id: string;
   itemType: string;
+  productName: string;
+  spec: string | null;
   supplyUnit: string;
   supplyUnitQty: number;
   currentPrice: number;
@@ -58,6 +60,8 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
   const [subsidiaryMasterId, setSubsidiaryMasterId] = useState(
     item?.subsidiaryMaster?.id ?? ""
   );
+  const [productName, setProductName] = useState(item?.productName ?? "");
+  const [spec, setSpec] = useState(item?.spec ?? "");
   const [supplyUnit, setSupplyUnit] = useState(item?.supplyUnit ?? "");
   const [supplyUnitQty, setSupplyUnitQty] = useState(
     item?.supplyUnitQty != null ? String(item.supplyUnitQty) : ""
@@ -74,7 +78,6 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 자재/부자재 목록 로드
   useEffect(() => {
     const loadOptions = async () => {
       if (itemType === "MATERIAL") {
@@ -122,6 +125,8 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
     try {
       if (isEdit) {
         const input = {
+          productName,
+          spec: spec || undefined,
           supplyUnit,
           supplyUnitQty: Number(supplyUnitQty),
           currentPrice: Number(currentPrice),
@@ -140,6 +145,8 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
             itemType === "MATERIAL" ? materialMasterId : undefined,
           subsidiaryMasterId:
             itemType === "SUBSIDIARY" ? subsidiaryMasterId : undefined,
+          productName,
+          spec: spec || undefined,
           supplyUnit,
           supplyUnitQty: Number(supplyUnitQty),
           currentPrice: Number(currentPrice),
@@ -170,7 +177,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
             <CardTitle>{isEdit ? "공급 품목 수정" : "공급 품목 등록"}</CardTitle>
             <CardDescription>
               {isEdit
-                ? "공급 단위, 단가, 리드타임을 수정합니다"
+                ? "공급 품목 정보를 수정합니다"
                 : "새로운 공급 품목을 등록합니다"}
             </CardDescription>
           </div>
@@ -248,6 +255,40 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* 제품 정보 */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700">제품 정보</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="productName">제품명 *</Label>
+                <Input
+                  id="productName"
+                  placeholder="예: 고향냉동만두, 백설냉동만두"
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  required
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500">
+                  공급업체에서 납품하는 실제 제품명
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="spec">규격</Label>
+                <Input
+                  id="spec"
+                  placeholder="예: 1.4kg, 500ml, 20개입"
+                  value={spec}
+                  onChange={(e) => setSpec(e.target.value)}
+                  maxLength={50}
+                />
+                <p className="text-xs text-gray-500">
+                  용량, 중량, 포장단위 등
+                </p>
               </div>
             </div>
           </div>

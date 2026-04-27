@@ -520,26 +520,30 @@ model Supplier {
 }
 
 model SupplierItem {
-  id                String   @id @default(cuid())
-  supplierId        String   @map("supplier_id")
-  itemType          ItemType @map("item_type")
-  materialMasterId  String?  @map("material_master_id")
-  subsidiaryMasterId String? @map("subsidiary_master_id")
-  supplierItemCode  String?  @map("supplier_item_code")
-  supplyUnit        String   @map("supply_unit")
-  supplyUnitQty     Float    @map("supply_unit_qty")
-  currentPrice      Float    @map("current_price")
-  leadTimeDays      Int      @default(1) @map("lead_time_days")
-  moq               Float?
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  supplierId         String   @map("supplier_id")
+  itemType           ItemType @map("item_type")
+  materialMasterId   String?  @map("material_master_id")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  supplierItemCode   String?  @map("supplier_item_code")
+  productName        String   @map("product_name")          // 신규: 공급업체 제품명
+  spec               String?  @map("spec")                   // 신규: 규격/용량
+  supplyUnit         String   @map("supply_unit")
+  supplyUnitQty      Float    @map("supply_unit_qty")
+  currentPrice       Float    @map("current_price")
+  leadTimeDays       Int      @default(1) @map("lead_time_days")
+  moq                Float?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  supplier          Supplier          @relation(fields: [supplierId], references: [id])
-  materialMaster    MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
-  subsidiaryMaster  SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
-  priceHistories    SupplierItemPriceHistory[]
+  supplier           Supplier          @relation(fields: [supplierId], references: [id])
+  materialMaster     MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster   SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
+  priceHistories     SupplierItemPriceHistory[]
   purchaseOrderItems PurchaseOrderItem[]
 
+  @@unique([supplierId, itemType, materialMasterId, productName], map: "uq_supplier_material_product")
+  @@unique([supplierId, itemType, subsidiaryMasterId, productName], map: "uq_supplier_subsidiary_product")
   @@index([supplierId])
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])

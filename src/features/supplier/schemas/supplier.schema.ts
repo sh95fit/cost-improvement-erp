@@ -33,6 +33,11 @@ export const createSupplierItemSchema = z.object({
   itemType: z.enum(itemTypeValues).transform((v) => v as ItemType),
   materialMasterId: z.string().optional(),
   subsidiaryMasterId: z.string().optional(),
+  productName: z
+    .string()
+    .min(1, "제품명은 필수입니다")
+    .max(100, "제품명은 100자 이내여야 합니다"),
+  spec: z.string().max(50, "규격은 50자 이내여야 합니다").optional(),
   supplyUnit: z
     .string()
     .min(1, "공급 단위는 필수입니다")
@@ -59,6 +64,8 @@ export const createSupplierItemSchema = z.object({
 
 // ── SupplierItem 수정 스키마 ──
 export const updateSupplierItemSchema = z.object({
+  productName: z.string().min(1).max(100).optional(),
+  spec: z.string().max(50).optional(),
   supplyUnit: z.string().min(1).max(30).optional(),
   supplyUnitQty: z.number().positive().optional(),
   currentPrice: z.number().min(0).optional(),
