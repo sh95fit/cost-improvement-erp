@@ -261,6 +261,7 @@ model Company {
   lineups            Lineup[]
   materialMasters    MaterialMaster[]
   subsidiaryMasters  SubsidiaryMaster[]
+  unitConversions    UnitConversion[]
   suppliers          Supplier[]
   containerGroups    ContainerGroup[]
   recipes            Recipe[]
@@ -450,8 +451,7 @@ model MaterialMaster {
   company               Company @relation(fields: [companyId], references: [id])
   supplierItems         SupplierItem[]
   bomItems              BOMItem[]
-  unitConversionsFrom   UnitConversion[] @relation("ConversionFrom")
-  unitConversionsTo     UnitConversion[] @relation("ConversionTo")
+  unitConversions       UnitConversion[]
   inventoryLots         InventoryLot[]
   inventoryTransactions InventoryTransaction[]
   inventoryReservations InventoryReservation[]
@@ -712,20 +712,21 @@ model BOMItem {
 }
 
 model UnitConversion {
-  id             String       @id @default(cuid())
-  fromMaterialId String       @map("from_material_id")
-  toMaterialId   String       @map("to_material_id")
-  fromUnit       String       @map("from_unit")
-  toUnit         String       @map("to_unit")
-  factor         Float
-  unitCategory   UnitCategory @map("unit_category")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  id               String       @id @default(cuid())
+  companyId        String       @map("company_id")
+  materialMasterId String?      @map("material_master_id")
+  fromUnit         String       @map("from_unit")
+  toUnit           String       @map("to_unit")
+  factor           Float
+  unitCategory     UnitCategory @map("unit_category")
+  createdAt        DateTime     @default(now()) @map("created_at")
 
-  fromMaterial MaterialMaster @relation("ConversionFrom", fields: [fromMaterialId], references: [id])
-  toMaterial   MaterialMaster @relation("ConversionTo", fields: [toMaterialId], references: [id])
+  company        Company         @relation(fields: [companyId], references: [id])
+  materialMaster MaterialMaster? @relation(fields: [materialMasterId], references: [id])
 
-  @@index([fromMaterialId])
-  @@index([toMaterialId])
+  @@unique([companyId, materialMasterId, fromUnit, toUnit])
+  @@index([companyId])
+  @@index([materialMasterId])
   @@map("unit_conversions")
 }
 

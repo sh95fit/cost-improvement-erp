@@ -543,15 +543,22 @@ async function main() {
 
   // ---- 16. UnitConversions ----
   const unitConversions = [
-    { fromCode: "MAT-001", toCode: "MAT-001", fromUnit: "포(20kg)", toUnit: "kg", factor: 20, unitCategory: "WEIGHT" as const },
-    { fromCode: "MAT-004", toCode: "MAT-004", fromUnit: "병(1.8L)", toUnit: "L", factor: 1.8, unitCategory: "VOLUME" as const },
-    { fromCode: "MAT-005", toCode: "MAT-005", fromUnit: "병(500ml)", toUnit: "L", factor: 0.5, unitCategory: "VOLUME" as const },
+    // 글로벌 환산 (materialMasterId = null)
+    { materialCode: null, fromUnit: "kg", toUnit: "g", factor: 1000, unitCategory: "WEIGHT" as const },
+    { materialCode: null, fromUnit: "L", toUnit: "mL", factor: 1000, unitCategory: "VOLUME" as const },
+    // 자재별 환산
+    { materialCode: "MAT-001", fromUnit: "포(20kg)", toUnit: "kg", factor: 20, unitCategory: "WEIGHT" as const },
+    { materialCode: "MAT-004", fromUnit: "병(1.8L)", toUnit: "L", factor: 1.8, unitCategory: "VOLUME" as const },
+    { materialCode: "MAT-005", fromUnit: "병(500ml)", toUnit: "mL", factor: 500, unitCategory: "VOLUME" as const },
+    { materialCode: "MAT-006", fromUnit: "봉(1kg)", toUnit: "kg", factor: 1, unitCategory: "WEIGHT" as const },
+    { materialCode: "MAT-006", fromUnit: "봉(1kg)", toUnit: "개", factor: 30, unitCategory: "COUNT" as const },
   ];
   for (const uc of unitConversions) {
+    const materialMasterId = uc.materialCode ? materialRecords[uc.materialCode] : null;
     const existing = await prisma.unitConversion.findFirst({
       where: {
-        fromMaterialId: materialRecords[uc.fromCode],
-        toMaterialId: materialRecords[uc.toCode],
+        companyId: company.id,
+        materialMasterId: materialMasterId,
         fromUnit: uc.fromUnit,
         toUnit: uc.toUnit,
       },
@@ -559,8 +566,8 @@ async function main() {
     if (!existing) {
       await prisma.unitConversion.create({
         data: {
-          fromMaterialId: materialRecords[uc.fromCode],
-          toMaterialId: materialRecords[uc.toCode],
+          companyId: company.id,
+          materialMasterId: materialMasterId,
           fromUnit: uc.fromUnit,
           toUnit: uc.toUnit,
           factor: uc.factor,
@@ -569,7 +576,7 @@ async function main() {
       });
     }
   }
-  console.log("✅ UnitConversions: 3개");
+  console.log("✅ UnitConversions: 7개 생성");
 
   // ---- 17. MealTemplate ----
   let mealTemplate = await prisma.mealTemplate.findFirst({

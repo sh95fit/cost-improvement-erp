@@ -5,40 +5,48 @@ import type {
   UnitConversionListQuery,
 } from "../schemas/unit-conversion.schema";
 
-// ── 목록 조회 (회사 소속 자재 기준 필터) ──
+// ── 목록 조회 ──
 export async function getUnitConversions(
   companyId: string,
   query: UnitConversionListQuery
 ) {
-  const { page, limit, search, materialId } = query;
+  const { page, limit, search, materialId, scope } = query;
   const skip = (page - 1) * limit;
 
-  const where = {
-    fromMaterial: { companyId },
-    ...(materialId && {
-      OR: [
-        { fromMaterialId: materialId },
-        { toMaterialId: materialId },
-      ],
-    }),
-    ...(search && {
-      OR: [
-        { fromUnit: { contains: search, mode: "insensitive" as const } },
-        { toUnit: { contains: search, mode: "insensitive" as const } },
-        { fromMaterial: { name: { contains: search, mode: "insensitive" as const } } },
-        { toMaterial: { name: { contains: search, mode: "insensitive" as const } } },
-      ],
-    }),
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = { companyId };
+
+  // 스코프 필터
+  if (scope === "global") {
+    where.materialMasterId = null;
+  } else if (scope === "material") {
+    where.materialMasterId = { not: null };
+  }
+
+  // 특정 자재 필터
+  if (materialId) {
+    where.materialMasterId = materialId;
+  }
+
+  // 검색
+  if (search) {
+    where.OR = [
+      { fromUnit: { contains: search, mode: "insensitive" } },
+      { toUnit: { contains: search, mode: "insensitive" } },
+      { materialMaster: { name: { contains: search, mode: "insensitive" } } },
+    ];
+  }
 
   const [items, total] = await Promise.all([
     prisma.unitConversion.findMany({
       where,
       include: {
-        fromMaterial: { select: { id: true, name: true, code: true, unit: true } },
-        toMaterial: { select: { id: true, name: true, code: true, unit: true } },
+        materialMaster: { select: { id: true, name: true, code: true, unit: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { materialMasterId: { sort: "asc", nulls: "first" } },
+        { createdAt: "desc" },
+      ],
       skip,
       take: limit,
     }),
@@ -61,23 +69,22 @@ export async function getUnitConversionById(id: string) {
   return prisma.unitConversion.findFirst({
     where: { id },
     include: {
-      fromMaterial: { select: { id: true, name: true, code: true, unit: true } },
-      toMaterial: { select: { id: true, name: true, code: true, unit: true } },
+      materialMaster: { select: { id: true, name: true, code: true, unit: true } },
     },
   });
 }
 
-// ── 중복 확인 (같은 자재 + 같은 단위 조합) ──
+// ── 중복 확인 ──
 export async function findDuplicateConversion(
-  fromMaterialId: string,
-  toMaterialId: string,
+  companyId: string,
+  materialMasterId: string | null,
   fromUnit: string,
   toUnit: string
 ) {
   return prisma.unitConversion.findFirst({
     where: {
-      fromMaterialId,
-      toMaterialId,
+      companyId,
+      materialMasterId,
       fromUnit,
       toUnit,
     },
@@ -85,11 +92,14 @@ export async function findDuplicateConversion(
 }
 
 // ── 생성 ──
-export async function createUnitConversion(input: CreateUnitConversionInput) {
+export async function createUnitConversion(
+  companyId: string,
+  input: CreateUnitConversionInput
+) {
   return prisma.unitConversion.create({
     data: {
-      fromMaterialId: input.fromMaterialId,
-      toMaterialId: input.toMaterialId,
+      companyId,
+      materialMasterId: input.materialMasterId,
       fromUnit: input.fromUnit,
       toUnit: input.toUnit,
       factor: input.factor,
@@ -114,10 +124,6 @@ export async function deleteUnitConversion(id: string) {
   const conversion = await prisma.unitConversion.findFirst({
     where: { id },
   });
-
   if (!conversion) return null;
-
-  return prisma.unitConversion.delete({
-    where: { id },
-  });
+  return prisma.unitConversion.delete({ where: { id } });
 }

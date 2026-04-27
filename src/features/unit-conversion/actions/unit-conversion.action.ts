@@ -52,8 +52,8 @@ export async function createUnitConversionAction(
 
     // 중복 확인
     const duplicate = await conversionService.findDuplicateConversion(
-      input.fromMaterialId,
-      input.toMaterialId,
+      session.companyId,
+      input.materialMasterId,
       input.fromUnit,
       input.toUnit
     );
@@ -61,7 +61,10 @@ export async function createUnitConversionAction(
       return actionFail("DUPLICATE_CONVERSION", "이미 등록된 단위 환산입니다");
     }
 
-    const conversion = await conversionService.createUnitConversion(input);
+    const conversion = await conversionService.createUnitConversion(
+      session.companyId,
+      input
+    );
 
     await createAuditLog({
       session,

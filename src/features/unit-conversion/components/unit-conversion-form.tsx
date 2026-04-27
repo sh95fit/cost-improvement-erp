@@ -33,32 +33,31 @@ type UnitConversionData = {
   toUnit: string;
   factor: number;
   unitCategory: string;
-  fromMaterial: MaterialOption;
-  toMaterial: MaterialOption;
+  materialMasterId: string | null;
+  materialMaster: MaterialOption | null;
 };
 
 type Props = {
   item?: UnitConversionData | null;
-  defaultFromMaterialId?: string;
+  defaultMaterialId?: string;
   onBack: () => void;
   onSaved: () => void;
   compact?: boolean;
 };
 
+const SCOPE_GLOBAL = "__GLOBAL__";
+
 export function UnitConversionForm({
   item,
-  defaultFromMaterialId,
+  defaultMaterialId,
   onBack,
   onSaved,
   compact = false,
 }: Props) {
   const isEdit = !!item;
 
-  const [fromMaterialId, setFromMaterialId] = useState(
-    item?.fromMaterial?.id ?? defaultFromMaterialId ?? ""
-  );
-  const [toMaterialId, setToMaterialId] = useState(
-    item?.toMaterial?.id ?? defaultFromMaterialId ?? ""
+  const [conversionScope, setConversionScope] = useState<string>(
+    item?.materialMasterId ?? defaultMaterialId ?? SCOPE_GLOBAL
   );
   const [fromUnit, setFromUnit] = useState(item?.fromUnit ?? "");
   const [toUnit, setToUnit] = useState(item?.toUnit ?? "");
@@ -97,8 +96,8 @@ export function UnitConversionForm({
     loadMaterials();
   }, []);
 
-  const selectedFrom = materials.find((m) => m.id === fromMaterialId);
-  const selectedTo = materials.find((m) => m.id === toMaterialId);
+  const isGlobal = conversionScope === SCOPE_GLOBAL;
+  const selectedMaterial = materials.find((m) => m.id === conversionScope);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,8 +120,7 @@ export function UnitConversionForm({
         }
       } else {
         const input = {
-          fromMaterialId,
-          toMaterialId,
+          materialMasterId: isGlobal ? null : conversionScope,
           fromUnit,
           toUnit,
           factor: Number(factor),
@@ -150,62 +148,36 @@ export function UnitConversionForm({
         </div>
       )}
 
-      {/* 자재 선택 */}
+      {/* 환산 범위 선택 */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700">자재 선택</h3>
-        <div className={`grid gap-4 ${compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-5"}`}>
-          <div className={`space-y-2 ${compact ? "" : "sm:col-span-2"}`}>
-            <Label>변환 전 자재 *</Label>
-            <Select
-              value={fromMaterialId}
-              onValueChange={setFromMaterialId}
-              disabled={isEdit || !!defaultFromMaterialId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="자재를 선택하세요" />
-              </SelectTrigger>
-              <SelectContent>
-                {materials.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.code} - {m.name} ({m.unit})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!compact && (
-            <div className="flex items-end justify-center pb-2">
-              <ArrowRight className="h-5 w-5 text-gray-400" />
-            </div>
-          )}
-
-          <div className={`space-y-2 ${compact ? "" : "sm:col-span-2"}`}>
-            <Label>변환 후 자재 *</Label>
-            <Select
-              value={toMaterialId}
-              onValueChange={setToMaterialId}
-              disabled={isEdit}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="자재를 선택하세요" />
-              </SelectTrigger>
-              <SelectContent>
-                {materials.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.code} - {m.name} ({m.unit})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {fromMaterialId && toMaterialId && fromMaterialId === toMaterialId && (
-          <p className="text-xs text-blue-600">
-            같은 자재 내 단위 환산입니다 (예: 망 → kg)
+        <h3 className="text-sm font-semibold text-gray-700">환산 범위</h3>
+        <div className="space-y-2">
+          <Label>적용 대상 *</Label>
+          <Select
+            value={conversionScope}
+            onValueChange={setConversionScope}
+            disabled={isEdit || !!defaultMaterialId}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="적용 대상을 선택하세요" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SCOPE_GLOBAL}>
+                🌐 글로벌 (모든 자재 공통)
+              </SelectItem>
+              {materials.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  📦 {m.code} - {m.name} ({m.unit})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-gray-500">
+            {isGlobal
+              ? "글로벌 환산: kg→g, L→mL 등 모든 자재에 공통 적용됩니다"
+              : `자재별 환산: ${selectedMaterial?.name ?? "선택된 자재"}에만 적용됩니다`}
           </p>
-        )}
+        </div>
       </div>
 
       {/* 환산 정보 */}
@@ -216,7 +188,7 @@ export function UnitConversionForm({
             <Label htmlFor="fromUnit">변환 전 단위 *</Label>
             <Input
               id="fromUnit"
-              placeholder={selectedFrom ? "예: 박스, 망" : "자재 선택 필요"}
+              placeholder={isGlobal ? "예: kg, L" : "예: 팩, 봉, 망"}
               value={fromUnit}
               onChange={(e) => setFromUnit(e.target.value)}
               required
@@ -226,7 +198,7 @@ export function UnitConversionForm({
             <Label htmlFor="toUnit">변환 후 단위 *</Label>
             <Input
               id="toUnit"
-              placeholder={selectedTo ? `예: ${selectedTo.unit}` : "자재 선택 필요"}
+              placeholder={isGlobal ? "예: g, mL" : `예: ${selectedMaterial?.unit ?? "kg"}, 개`}
               value={toUnit}
               onChange={(e) => setToUnit(e.target.value)}
               required
@@ -239,14 +211,11 @@ export function UnitConversionForm({
               type="number"
               min={0}
               step="any"
-              placeholder="예: 10"
+              placeholder="예: 1000"
               value={factor}
               onChange={(e) => setFactor(e.target.value)}
               required
             />
-            <p className="text-xs text-gray-500">
-              1 {fromUnit || "변환전"} = {factor || "?"} {toUnit || "변환후"}
-            </p>
           </div>
           <div className="space-y-2">
             <Label>단위 분류 *</Label>
@@ -269,10 +238,19 @@ export function UnitConversionForm({
       {fromUnit && toUnit && factor && (
         <div className="rounded-md bg-blue-50 p-4 text-sm text-blue-800">
           <p className="font-medium">환산 미리보기</p>
-          <p className="mt-1">
-            {selectedFrom?.name ?? "변환전 자재"} 1 {fromUnit} ={" "}
-            {selectedTo?.name ?? "변환후 자재"} {factor} {toUnit}
+          <p className="mt-1 flex items-center gap-2">
+            {!isGlobal && selectedMaterial && (
+              <span className="font-semibold">{selectedMaterial.name}:</span>
+            )}
+            1 {fromUnit}
+            <ArrowRight className="h-4 w-4" />
+            {factor} {toUnit}
           </p>
+          {isGlobal && (
+            <p className="mt-1 text-xs text-blue-600">
+              이 환산은 모든 자재에 공통 적용됩니다
+            </p>
+          )}
         </div>
       )}
 
@@ -311,7 +289,7 @@ export function UnitConversionForm({
             <CardDescription>
               {isEdit
                 ? "환산 단위와 계수를 수정합니다"
-                : "자재 간 단위 환산 규칙을 등록합니다"}
+                : "글로벌 또는 자재별 단위 환산 규칙을 등록합니다"}
             </CardDescription>
           </div>
         </div>

@@ -4,8 +4,7 @@ import { UnitCategory } from "@prisma/client";
 const unitCategoryValues = Object.values(UnitCategory) as [string, ...string[]];
 
 export const createUnitConversionSchema = z.object({
-  fromMaterialId: z.string().min(1, "변환 전 자재를 선택해야 합니다"),
-  toMaterialId: z.string().min(1, "변환 후 자재를 선택해야 합니다"),
+  materialMasterId: z.string().nullable().default(null),
   fromUnit: z.string().min(1, "변환 전 단위는 필수입니다").max(20),
   toUnit: z.string().min(1, "변환 후 단위는 필수입니다").max(20),
   factor: z.number().positive("환산 계수는 0보다 커야 합니다"),
@@ -29,6 +28,7 @@ export const unitConversionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   materialId: z.string().optional(),
+  scope: z.enum(["all", "global", "material"]).default("all"),
 });
 
 export type CreateUnitConversionInput = z.output<typeof createUnitConversionSchema>;

@@ -9,15 +9,9 @@ import { UnitConversionForm } from "@/features/unit-conversion/components/unit-c
 import type { MaterialMaster } from "@prisma/client";
 import { Pencil, X } from "lucide-react";
 
-type UnitConversionData = {
-  id: string;
-  fromUnit: string;
-  toUnit: string;
-  factor: number;
-  unitCategory: string;
-  fromMaterial: { id: string; name: string; code: string; unit: string };
-  toMaterial: { id: string; name: string; code: string; unit: string };
-};
+import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
+
+type UnitConversionData = UnitConversionRow;
 
 type ConversionView =
   | { mode: "list" }
@@ -145,7 +139,7 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
     if (conversionView.mode === "new") {
       return (
         <UnitConversionForm
-          defaultFromMaterialId={material.id}
+          defaultMaterialId={material.id}
           onBack={() => setConversionView({ mode: "list" })}
           onSaved={() => setConversionView({ mode: "list" })}
           compact
@@ -168,7 +162,7 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
       <UnitConversionList
         materialId={material.id}
         onNew={() => setConversionView({ mode: "new" })}
-        onEdit={(item: UnitConversionData) =>
+        onEdit={(item) =>
           setConversionView({ mode: "edit", item })
         }
         compact
