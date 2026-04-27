@@ -14,11 +14,13 @@ import {
   Bell,
   ClipboardCheck,
   CalendarCheck,
+  Building2,
 } from "lucide-react";
 
 const navigation = [
   { name: "식단 계획", href: "/meal-plans", icon: CalendarDays },
   { name: "자재 관리", href: "/materials", icon: Package },
+  { name: "공급업체 관리", href: "/suppliers", icon: Building2 },
   { name: "레시피 관리", href: "/recipes", icon: UtensilsCrossed },
   { name: "발주 관리", href: "/purchasing", icon: ShoppingCart },
   { name: "입고 관리", href: "/receiving", icon: ClipboardCheck },
