@@ -48,8 +48,10 @@ type UnitConversionRow = {
 };
 
 type Props = {
+  materialId?: string;
   onNew: () => void;
   onEdit: (item: UnitConversionRow) => void;
+  compact?: boolean;
 };
 
 const UNIT_CATEGORY_LABELS: Record<string, string> = {
@@ -59,7 +61,7 @@ const UNIT_CATEGORY_LABELS: Record<string, string> = {
   LENGTH: "길이",
 };
 
-export function UnitConversionList({ onNew, onEdit }: Props) {
+export function UnitConversionList({ materialId, onNew, onEdit, compact = false }: Props) {
   const [items, setItems] = useState<UnitConversionRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -81,6 +83,7 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
           page,
           limit: 20,
           search: search || undefined,
+          materialId: materialId || undefined,
         });
         if (result.success) {
           const data = result.data as {
@@ -94,7 +97,7 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
         setLoading(false);
       }
     },
-    [search]
+    [search, materialId]
   );
 
   useEffect(() => {
@@ -118,17 +121,19 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
     <div className="space-y-4">
       {/* 상단: 검색 + 등록 */}
       <div className="flex items-center gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="자재명, 단위로 검색"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="pl-10"
-          />
-        </div>
-        <Button onClick={onNew} className="ml-auto">
+        {!compact && (
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              placeholder="자재명, 단위로 검색"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="pl-10"
+            />
+          </div>
+        )}
+        <Button onClick={onNew} size={compact ? "sm" : "default"} className={compact ? "" : "ml-auto"}>
           <Plus className="mr-2 h-4 w-4" />
           환산 등록
         </Button>
@@ -139,21 +144,21 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>변환 전 자재</TableHead>
+              {!compact && <TableHead>변환 전 자재</TableHead>}
               <TableHead>변환 전 단위</TableHead>
               <TableHead className="w-[40px] text-center" />
-              <TableHead>변환 후 자재</TableHead>
+              {!compact && <TableHead>변환 후 자재</TableHead>}
               <TableHead>변환 후 단위</TableHead>
               <TableHead className="text-right">환산 계수</TableHead>
-              <TableHead>단위 분류</TableHead>
-              <TableHead className="w-[100px] text-right">관리</TableHead>
+              <TableHead>분류</TableHead>
+              <TableHead className="w-[80px] text-right">관리</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={compact ? 6 : 8}
                   className="h-24 text-center text-gray-500"
                 >
                   불러오는 중...
@@ -162,7 +167,7 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={compact ? 6 : 8}
                   className="h-24 text-center text-gray-500"
                 >
                   등록된 단위 환산이 없습니다
@@ -171,16 +176,20 @@ export function UnitConversionList({ onNew, onEdit }: Props) {
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">
-                    {item.fromMaterial.code} - {item.fromMaterial.name}
-                  </TableCell>
+                  {!compact && (
+                    <TableCell className="font-medium">
+                      {item.fromMaterial.code} - {item.fromMaterial.name}
+                    </TableCell>
+                  )}
                   <TableCell>{item.fromUnit}</TableCell>
                   <TableCell className="text-center">
                     <ArrowRight className="mx-auto h-4 w-4 text-gray-400" />
                   </TableCell>
-                  <TableCell className="font-medium">
-                    {item.toMaterial.code} - {item.toMaterial.name}
-                  </TableCell>
+                  {!compact && (
+                    <TableCell className="font-medium">
+                      {item.toMaterial.code} - {item.toMaterial.name}
+                    </TableCell>
+                  )}
                   <TableCell>{item.toUnit}</TableCell>
                   <TableCell className="text-right font-mono">
                     {item.factor}
