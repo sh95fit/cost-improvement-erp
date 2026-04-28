@@ -359,3 +359,24 @@ export async function getSupplierItemsByMaterialAction(
     return actionFail("INTERNAL_ERROR", "자재별 공급 품목 조회에 실패했습니다");
   }
 }
+
+// ── 부자재별 공급 품목 조회 ──
+export async function getSupplierItemsBySubsidiaryAction(
+  subsidiaryMasterId: string
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "supplier", "READ");
+
+    const items = await supplierItemService.getSupplierItemsBySubsidiaryId(subsidiaryMasterId);
+    return actionOk(items);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED") return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "부자재별 공급 품목 조회에 실패했습니다");
+  }
+}
+

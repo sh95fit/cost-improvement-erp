@@ -26,7 +26,18 @@ import type { MaterialMaster } from "@prisma/client";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 
 type Props = {
-  material?: MaterialMaster | null;
+  material?: {
+    id: string;
+    code: string;
+    name: string;
+    materialType: string;
+    unit: string;
+    unitCategory: string;
+    stockGrade: string;
+    shelfLifeDays?: number | null;
+    minStock?: number | null;
+    maxStock?: number | null;
+  } | null;
   onBack: () => void;
   onSaved: () => void;
   compact?: boolean;

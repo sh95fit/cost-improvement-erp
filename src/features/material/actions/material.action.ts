@@ -24,7 +24,7 @@ import type { MaterialMaster, SubsidiaryMaster } from "@prisma/client";
 export async function getMaterialsAction(
   rawQuery: Record<string, unknown>
 ): Promise<ActionResult<{
-  items: MaterialMaster[];
+  items: Awaited<ReturnType<typeof materialService.getMaterials>>["items"];
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }>> {
   try {
@@ -176,7 +176,7 @@ export async function deleteMaterialAction(
 export async function getSubsidiariesAction(
   rawQuery: Record<string, unknown>
 ): Promise<ActionResult<{
-  items: SubsidiaryMaster[];
+  items: Awaited<ReturnType<typeof subsidiaryService.getSubsidiaries>>["items"];
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }>> {
   try {
@@ -297,5 +297,77 @@ export async function deleteSubsidiaryAction(
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
     }
     return actionFail("INTERNAL_ERROR", "부자재 삭제에 실패했습니다");
+  }
+}
+
+// ════════════════════════════════════════
+// Default SupplierItem Actions
+// ════════════════════════════════════════
+
+// ── 자재 기본 공급 품목 설정 ──
+export async function setMaterialDefaultSupplierItemAction(
+  materialId: string,
+  supplierItemId: string | null
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "material", "UPDATE");
+
+    const material = await materialService.setDefaultSupplierItem(
+      session.companyId,
+      materialId,
+      supplierItemId
+    );
+
+    await createAuditLog({
+      session,
+      action: "UPDATE",
+      entityType: "MaterialMaster",
+      entityId: materialId,
+      after: { defaultSupplierItemId: supplierItemId } as unknown as Record<string, unknown>,
+    });
+
+    return actionOk(material);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED") return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "기본 공급 품목 설정에 실패했습니다");
+  }
+}
+
+// ── 부자재 기본 공급 품목 설정 ──
+export async function setSubsidiaryDefaultSupplierItemAction(
+  subsidiaryId: string,
+  supplierItemId: string | null
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "subsidiary", "UPDATE");
+
+    const subsidiary = await subsidiaryService.setDefaultSupplierItem(
+      session.companyId,
+      subsidiaryId,
+      supplierItemId
+    );
+
+    await createAuditLog({
+      session,
+      action: "UPDATE",
+      entityType: "SubsidiaryMaster",
+      entityId: subsidiaryId,
+      after: { defaultSupplierItemId: supplierItemId } as unknown as Record<string, unknown>,
+    });
+
+    return actionOk(subsidiary);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED") return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "기본 공급 품목 설정에 실패했습니다");
   }
 }

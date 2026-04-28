@@ -11,26 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MaterialForm } from "./material-form";
-import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
-import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
+import { SubsidiaryForm } from "./subsidiary-form";
 import {
-  getSupplierItemsByMaterialAction,
+  getSupplierItemsBySubsidiaryAction,
 } from "@/features/supplier/actions/supplier.action";
 import {
-  setMaterialDefaultSupplierItemAction,
+  setSubsidiaryDefaultSupplierItemAction,
 } from "../actions/material.action";
 import { Pencil, X, Loader2, Star } from "lucide-react";
 
-import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
-import type { MaterialRow } from "./material-list";
-
-type UnitConversionData = UnitConversionRow;
-
-type ConversionView =
-  | { mode: "list" }
-  | { mode: "new" }
-  | { mode: "edit"; item: UnitConversionData };
+import type { SubsidiaryRow } from "./subsidiary-list";
 
 type SupplierItemRow = {
   id: string;
@@ -43,24 +33,9 @@ type SupplierItemRow = {
 };
 
 type Props = {
-  material: MaterialRow;
+  subsidiary: SubsidiaryRow;
   onClose: () => void;
   onUpdated: () => void;
-};
-
-const MATERIAL_TYPE_LABELS: Record<string, string> = {
-  RAW: "원자재",
-  SEASONING: "양념류",
-  PROCESSED: "가공식품",
-  SEMI: "반제품",
-  OTHER: "기타",
-};
-
-const UNIT_CATEGORY_LABELS: Record<string, string> = {
-  WEIGHT: "중량",
-  VOLUME: "용량",
-  COUNT: "수량",
-  LENGTH: "길이",
 };
 
 const GRADE_LABELS: Record<string, string> = {
@@ -72,17 +47,14 @@ const GRADE_LABELS: Record<string, string> = {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
 
-export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
+export function SubsidiaryDetailPanel({ subsidiary, onClose, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
-  const [conversionView, setConversionView] = useState<ConversionView>({
-    mode: "list",
-  });
 
   // 공급 품목 상태
   const [supplierItems, setSupplierItems] = useState<SupplierItemRow[]>([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [defaultItemId, setDefaultItemId] = useState<string | null>(
-    material.defaultSupplierItemId
+    subsidiary.defaultSupplierItemId
   );
   const [settingDefault, setSettingDefault] = useState(false);
 
@@ -90,28 +62,28 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
   const loadSupplierItems = useCallback(async () => {
     setSupplierLoading(true);
     try {
-      const result = await getSupplierItemsByMaterialAction(material.id);
+      const result = await getSupplierItemsBySubsidiaryAction(subsidiary.id);
       if (result.success) {
         setSupplierItems(result.data as SupplierItemRow[]);
       }
     } finally {
       setSupplierLoading(false);
     }
-  }, [material.id]);
+  }, [subsidiary.id]);
 
   useEffect(() => {
     loadSupplierItems();
   }, [loadSupplierItems]);
 
   useEffect(() => {
-    setDefaultItemId(material.defaultSupplierItemId);
-  }, [material.defaultSupplierItemId]);
+    setDefaultItemId(subsidiary.defaultSupplierItemId);
+  }, [subsidiary.defaultSupplierItemId]);
 
   const handleSetDefault = async (supplierItemId: string) => {
     setSettingDefault(true);
     try {
-      const result = await setMaterialDefaultSupplierItemAction(
-        material.id,
+      const result = await setSubsidiaryDefaultSupplierItemAction(
+        subsidiary.id,
         supplierItemId
       );
       if (result.success) {
@@ -126,8 +98,8 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
   const handleClearDefault = async () => {
     setSettingDefault(true);
     try {
-      const result = await setMaterialDefaultSupplierItemAction(
-        material.id,
+      const result = await setSubsidiaryDefaultSupplierItemAction(
+        subsidiary.id,
         null
       );
       if (result.success) {
@@ -143,14 +115,19 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
   const renderInfoTab = () => {
     if (isEditing) {
       return (
-        <MaterialForm
-          material={material}
+        <SubsidiaryForm
+          item={{
+            id: subsidiary.id,
+            name: subsidiary.name,
+            code: subsidiary.code,
+            unit: subsidiary.unit,
+            stockGrade: subsidiary.stockGrade,
+          }}
           onBack={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
             onUpdated();
           }}
-          compact
         />
       );
     }
@@ -166,65 +143,45 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
 
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-gray-500">자재 코드</p>
-            <p className="font-mono font-medium">{material.code}</p>
+            <p className="text-gray-500">부자재 코드</p>
+            <p className="font-mono font-medium">{subsidiary.code}</p>
           </div>
           <div>
-            <p className="text-gray-500">자재명</p>
-            <p className="font-medium">{material.name}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">유형</p>
-            <p>{MATERIAL_TYPE_LABELS[material.materialType] ?? material.materialType}</p>
+            <p className="text-gray-500">부자재명</p>
+            <p className="font-medium">{subsidiary.name}</p>
           </div>
           <div>
             <p className="text-gray-500">단위</p>
-            <p>{material.unit}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">단위 분류</p>
-            <p>{UNIT_CATEGORY_LABELS[material.unitCategory] ?? material.unitCategory}</p>
+            <p>{subsidiary.unit}</p>
           </div>
           <div>
             <p className="text-gray-500">재고 등급</p>
             <p>
               <span
                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                  material.stockGrade === "A"
+                  subsidiary.stockGrade === "A"
                     ? "bg-red-50 text-red-700"
-                    : material.stockGrade === "B"
+                    : subsidiary.stockGrade === "B"
                       ? "bg-yellow-50 text-yellow-700"
                       : "bg-green-50 text-green-700"
                 }`}
               >
-                {GRADE_LABELS[material.stockGrade] ?? material.stockGrade}
+                {GRADE_LABELS[subsidiary.stockGrade] ?? subsidiary.stockGrade}
               </span>
             </p>
           </div>
           <div>
-            <p className="text-gray-500">최소 재고</p>
-            <p>{material.minStock ?? "-"}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">최대 재고</p>
-            <p>{material.maxStock ?? "-"}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">유통기한 (일)</p>
-            <p>{material.shelfLifeDays ?? "-"}</p>
-          </div>
-          <div>
             <p className="text-gray-500">등록일</p>
-            <p>{new Date(material.createdAt).toLocaleDateString("ko-KR")}</p>
+            <p>{new Date(subsidiary.createdAt).toLocaleDateString("ko-KR")}</p>
           </div>
-          <div className="col-span-2">
+          <div>
             <p className="text-gray-500">기본 공급업체</p>
-            {material.defaultSupplierItem ? (
+            {subsidiary.defaultSupplierItem ? (
               <p className="font-medium">
-                {material.defaultSupplierItem.supplier.name}
+                {subsidiary.defaultSupplierItem.supplier.name}
                 <span className="ml-2 text-sm text-gray-500">
-                  {material.defaultSupplierItem.productName} ·{" "}
-                  {formatCurrency(material.defaultSupplierItem.currentPrice)}
+                  {subsidiary.defaultSupplierItem.productName} ·{" "}
+                  {formatCurrency(subsidiary.defaultSupplierItem.currentPrice)}
                 </span>
               </p>
             ) : (
@@ -233,40 +190,6 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
           </div>
         </div>
       </div>
-    );
-  };
-
-  // ── 단위 환산 탭 ──
-  const renderConversionTab = () => {
-    if (conversionView.mode === "new") {
-      return (
-        <UnitConversionForm
-          defaultMaterialId={material.id}
-          onBack={() => setConversionView({ mode: "list" })}
-          onSaved={() => setConversionView({ mode: "list" })}
-          compact
-        />
-      );
-    }
-
-    if (conversionView.mode === "edit") {
-      return (
-        <UnitConversionForm
-          item={conversionView.item}
-          onBack={() => setConversionView({ mode: "list" })}
-          onSaved={() => setConversionView({ mode: "list" })}
-          compact
-        />
-      );
-    }
-
-    return (
-      <UnitConversionList
-        materialId={material.id}
-        onNew={() => setConversionView({ mode: "new" })}
-        onEdit={(item) => setConversionView({ mode: "edit", item })}
-        compact
-      />
     );
   };
 
@@ -283,7 +206,7 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
     if (supplierItems.length === 0) {
       return (
         <p className="py-8 text-center text-sm text-gray-500">
-          이 자재에 연결된 공급 품목이 없습니다.
+          이 부자재에 연결된 공급 품목이 없습니다.
           공급업체 관리에서 품목을 등록해 주세요.
         </p>
       );
@@ -370,8 +293,8 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
       {/* 헤더 */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h2 className="text-lg font-semibold">{material.name}</h2>
-          <p className="text-sm text-gray-500">{material.code}</p>
+          <h2 className="text-lg font-semibold">{subsidiary.name}</h2>
+          <p className="text-sm text-gray-500">{subsidiary.code}</p>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -385,18 +308,12 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
             <TabsTrigger value="info" className="flex-1">
               기본정보
             </TabsTrigger>
-            <TabsTrigger value="conversions" className="flex-1">
-              단위 환산
-            </TabsTrigger>
             <TabsTrigger value="suppliers" className="flex-1">
               공급 품목 ({supplierItems.length})
             </TabsTrigger>
           </TabsList>
           <TabsContent value="info" className="mt-4">
             {renderInfoTab()}
-          </TabsContent>
-          <TabsContent value="conversions" className="mt-4">
-            {renderConversionTab()}
           </TabsContent>
           <TabsContent value="suppliers" className="mt-4">
             {renderSuppliersTab()}

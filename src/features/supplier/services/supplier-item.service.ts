@@ -146,3 +146,19 @@ export async function getSupplierItemsByMaterialId(materialMasterId: string) {
     orderBy: { currentPrice: "asc" },
   });
 }
+
+// ── 부자재별 공급 품목 조회 (부자재 상세 패널용) ──
+export async function getSupplierItemsBySubsidiaryId(subsidiaryMasterId: string) {
+  return prisma.supplierItem.findMany({
+    where: {
+      subsidiaryMasterId,
+      itemType: "SUBSIDIARY",
+    },
+    include: {
+      supplier: { select: { id: true, name: true, code: true } },
+    },
+    orderBy: { currentPrice: "asc" },
+  });
+}
+
+

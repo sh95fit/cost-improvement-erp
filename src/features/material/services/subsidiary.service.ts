@@ -43,6 +43,13 @@ export async function getSubsidiaries(
   const [items, total] = await Promise.all([
     prisma.subsidiaryMaster.findMany({
       where,
+      include: {
+        defaultSupplierItem: {
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+        },
+      },
       orderBy: { [sortBy]: sortOrder },
       skip,
       take: limit,
@@ -65,6 +72,18 @@ export async function getSubsidiaries(
 export async function getSubsidiaryById(companyId: string, id: string) {
   return prisma.subsidiaryMaster.findFirst({
     where: { id, companyId },
+    include: {
+      defaultSupplierItem: {
+        select: {
+          id: true,
+          productName: true,
+          currentPrice: true,
+          supplyUnit: true,
+          supplyUnitQty: true,
+          supplier: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
 }
 
@@ -77,19 +96,19 @@ export async function getSubsidiaryByCode(companyId: string, code: string) {
 
 // ── 부자재 생성 (코드 자동 채번) ──
 export async function createSubsidiary(
-    companyId: string,
-    input: CreateSubsidiaryInput
-  ) {
-    const code = await generateSubsidiaryCode(companyId);
-  
-    return prisma.subsidiaryMaster.create({
-      data: {
-        ...input,
-        companyId,
-        code,
-      },
-    });
-  }
+  companyId: string,
+  input: CreateSubsidiaryInput
+) {
+  const code = await generateSubsidiaryCode(companyId);
+
+  return prisma.subsidiaryMaster.create({
+    data: {
+      ...input,
+      companyId,
+      code,
+    },
+  });
+}
 
 // ── 부자재 수정 ──
 export async function updateSubsidiary(
@@ -115,3 +134,16 @@ export async function deleteSubsidiary(companyId: string, id: string) {
     where: { id },
   });
 }
+
+// ── 기본 공급 품목 설정 ──
+export async function setDefaultSupplierItem(
+  companyId: string,
+  subsidiaryId: string,
+  supplierItemId: string | null
+) {
+  return prisma.subsidiaryMaster.update({
+    where: { id: subsidiaryId },
+    data: { defaultSupplierItemId: supplierItemId },
+  });
+}
+

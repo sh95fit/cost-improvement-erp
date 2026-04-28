@@ -12,7 +12,7 @@ import { MaterialDetailPanel } from "@/features/material/components/material-det
 import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
 import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
 import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
-import type { MaterialMaster } from "@prisma/client";
+import type { MaterialRow } from "@/features/material/components/material-list";
 
 type MaterialView =
   | { mode: "list" }
@@ -26,8 +26,14 @@ type ConversionView =
 export default function MaterialsPage() {
   const [materialView, setMaterialView] = useState<MaterialView>({ mode: "list" });
   const [conversionView, setConversionView] = useState<ConversionView>({ mode: "list" });
-  const [selectedMaterial, setSelectedMaterial] = useState<MaterialMaster | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialRow | null>(null);
   const [activeTab, setActiveTab] = useState("materials");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleMaterialUpdated = () => {
+    setSelectedMaterial(null);
+    setRefreshKey((k) => k + 1);
+  };
 
   // ── 자재 탭 콘텐츠 ──
   const renderMaterialTab = () => {
@@ -42,8 +48,9 @@ export default function MaterialsPage() {
 
     return (
       <MaterialList
+        key={refreshKey}
         onNew={() => setMaterialView({ mode: "new" })}
-        onSelect={(material: MaterialMaster) => setSelectedMaterial(material)}
+        onSelect={(material) => setSelectedMaterial(material)}
       />
     );
   };
@@ -106,15 +113,12 @@ export default function MaterialsPage() {
           if (!open) setSelectedMaterial(null);
         }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
+        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl">
           {selectedMaterial && (
             <MaterialDetailPanel
               material={selectedMaterial}
               onClose={() => setSelectedMaterial(null)}
-              onUpdated={() => {
-                setSelectedMaterial(null);
-                setMaterialView({ mode: "list" });
-              }}
+              onUpdated={handleMaterialUpdated}
             />
           )}
         </SheetContent>

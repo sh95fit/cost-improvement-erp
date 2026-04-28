@@ -444,11 +444,13 @@ model MaterialMaster {
   shelfLifeDays Int?        @map("shelf_life_days")
   stockGrade          StockGrade @default(C) @map("stock_grade")
   stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
+  defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
   deletedAt    DateTime?    @map("deleted_at")
 
   company               Company @relation(fields: [companyId], references: [id])
+  defaultSupplierItem   SupplierItem? @relation("DefaultMaterialSupplierItem", fields: [defaultSupplierItemId], references: [id], onDelete: SetNull)
   supplierItems         SupplierItem[]
   bomItems              BOMItem[]
   unitConversions       UnitConversion[]
@@ -478,11 +480,13 @@ model SubsidiaryMaster {
   unit      String
   stockGrade          StockGrade @default(C) @map("stock_grade")
   stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
+  defaultSupplierItemId String?  @unique @map("default_supplier_item_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   company       Company @relation(fields: [companyId], references: [id])
+  defaultSupplierItem   SupplierItem? @relation("DefaultSubsidiarySupplierItem", fields: [defaultSupplierItemId], references: [id], onDelete: SetNull)
   supplierItems SupplierItem[]
   bomItems      BOMItem[]
   mealPlanAccessories MealPlanAccessory[]
@@ -541,6 +545,8 @@ model SupplierItem {
   subsidiaryMaster   SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
   priceHistories     SupplierItemPriceHistory[]
   purchaseOrderItems PurchaseOrderItem[]
+  defaultForMaterial    MaterialMaster?    @relation("DefaultMaterialSupplierItem")
+  defaultForSubsidiary  SubsidiaryMaster?  @relation("DefaultSubsidiarySupplierItem")
 
   @@unique([supplierId, itemType, materialMasterId, productName], map: "uq_supplier_material_product")
   @@unique([supplierId, itemType, subsidiaryMasterId, productName], map: "uq_supplier_subsidiary_product")

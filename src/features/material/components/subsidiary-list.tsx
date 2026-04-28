@@ -28,24 +28,32 @@ import {
 import {
   Search,
   Plus,
-  Pencil,
   Trash2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 
-type SubsidiaryRow = {
+export type SubsidiaryRow = {
   id: string;
   name: string;
   code: string;
   unit: string;
   stockGrade: string;
+  defaultSupplierItemId: string | null;
+  defaultSupplierItem: {
+    id: string;
+    productName: string;
+    currentPrice: number;
+    supplyUnit: string;
+    supplyUnitQty: number;
+    supplier: { id: string; name: string; code: string };
+  } | null;
   createdAt: Date;
 };
 
 type Props = {
   onNew: () => void;
-  onEdit: (item: SubsidiaryRow) => void;
+  onSelect: (item: SubsidiaryRow) => void;
 };
 
 const GRADE_LABELS: Record<string, string> = {
@@ -60,7 +68,10 @@ const GRADE_STYLES: Record<string, string> = {
   C: "bg-green-50 text-green-700",
 };
 
-export function SubsidiaryList({ onNew, onEdit }: Props) {
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
+
+export function SubsidiaryList({ onNew, onSelect }: Props) {
   const [items, setItems] = useState<SubsidiaryRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -143,31 +154,36 @@ export function SubsidiaryList({ onNew, onEdit }: Props) {
               <TableHead>코드</TableHead>
               <TableHead>부자재명</TableHead>
               <TableHead>단위</TableHead>
-              <TableHead>재고 등급</TableHead>
-              <TableHead>등록일</TableHead>
-              <TableHead className="w-[80px] text-right">관리</TableHead>
+              <TableHead className="text-center">재고 등급</TableHead>
+              <TableHead>기본 공급업체</TableHead>
+              <TableHead className="text-right">단가</TableHead>
+              <TableHead className="w-[50px] text-right">관리</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   등록된 부자재가 없습니다
                 </TableCell>
               </TableRow>
             ) : (
               items.map((item) => (
-                <TableRow key={item.id}>
+                <TableRow
+                  key={item.id}
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => onSelect(item)}
+                >
                   <TableCell className="font-mono text-sm">{item.code}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell>{item.unit}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                         GRADE_STYLES[item.stockGrade] ?? "bg-gray-100 text-gray-700"
@@ -176,18 +192,38 @@ export function SubsidiaryList({ onNew, onEdit }: Props) {
                       {GRADE_LABELS[item.stockGrade] ?? item.stockGrade}
                     </span>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-500">
-                    {new Date(item.createdAt).toLocaleDateString("ko-KR")}
+                  <TableCell>
+                    {item.defaultSupplierItem ? (
+                      <span className="text-sm">
+                        {item.defaultSupplierItem.supplier.name}
+                        <span className="ml-1 text-xs text-gray-400">
+                          ({item.defaultSupplierItem.productName})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">미지정</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(item)}>
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
+                    {item.defaultSupplierItem ? (
+                      <span className="font-mono text-sm">
+                        {formatCurrency(item.defaultSupplierItem.currentPrice)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(item);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))

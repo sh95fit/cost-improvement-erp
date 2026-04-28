@@ -32,7 +32,6 @@ import {
   getMaterialsAction,
   deleteMaterialAction,
 } from "../actions/material.action";
-import type { MaterialMaster } from "@prisma/client";
 import {
   Search,
   Plus,
@@ -41,9 +40,32 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+type MaterialRow = {
+  id: string;
+  code: string;
+  name: string;
+  materialType: string;
+  unit: string;
+  unitCategory: string;
+  stockGrade: string;
+  minStock: number | null;
+  maxStock: number | null;
+  shelfLifeDays: number | null;
+  defaultSupplierItemId: string | null;
+  defaultSupplierItem: {
+    id: string;
+    productName: string;
+    currentPrice: number;
+    supplyUnit: string;
+    supplyUnitQty: number;
+    supplier: { id: string; name: string; code: string };
+  } | null;
+  createdAt: Date;
+};
+
 type Props = {
   onNew: () => void;
-  onSelect: (material: MaterialMaster) => void;
+  onSelect: (material: MaterialRow) => void;
 };
 
 const MATERIAL_TYPE_LABELS: Record<string, string> = {
@@ -60,8 +82,13 @@ const GRADE_LABELS: Record<string, string> = {
   C: "다",
 };
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
+
+export type { MaterialRow };
+
 export function MaterialList({ onNew, onSelect }: Props) {
-  const [items, setItems] = useState<MaterialMaster[]>([]);
+  const [items, setItems] = useState<MaterialRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -72,7 +99,7 @@ export function MaterialList({ onNew, onSelect }: Props) {
   const [materialType, setMaterialType] = useState("");
   const [stockGrade, setStockGrade] = useState("");
   const [loading, setLoading] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<MaterialMaster | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MaterialRow | null>(null);
 
   const fetchMaterials = useCallback(
     async (page = 1) => {
@@ -88,8 +115,12 @@ export function MaterialList({ onNew, onSelect }: Props) {
           sortOrder: "desc",
         });
         if (result.success) {
-          setItems(result.data.items);
-          setPagination(result.data.pagination);
+          const data = result.data as {
+            items: MaterialRow[];
+            pagination: typeof pagination;
+          };
+          setItems(data.items);
+          setPagination(data.pagination);
         }
       } finally {
         setLoading(false);
@@ -169,8 +200,8 @@ export function MaterialList({ onNew, onSelect }: Props) {
               <TableHead className="w-[80px]">유형</TableHead>
               <TableHead className="w-[60px]">단위</TableHead>
               <TableHead className="w-[60px] text-center">등급</TableHead>
-              <TableHead className="w-[80px] text-right">최소</TableHead>
-              <TableHead className="w-[80px] text-right">최대</TableHead>
+              <TableHead>기본 공급업체</TableHead>
+              <TableHead className="text-right">단가</TableHead>
               <TableHead className="w-[50px] text-right">관리</TableHead>
             </TableRow>
           </TableHeader>
@@ -215,8 +246,27 @@ export function MaterialList({ onNew, onSelect }: Props) {
                       {GRADE_LABELS[item.stockGrade] ?? item.stockGrade}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">{item.minStock ?? "-"}</TableCell>
-                  <TableCell className="text-right">{item.maxStock ?? "-"}</TableCell>
+                  <TableCell>
+                    {item.defaultSupplierItem ? (
+                      <span className="text-sm">
+                        {item.defaultSupplierItem.supplier.name}
+                        <span className="ml-1 text-xs text-gray-400">
+                          ({item.defaultSupplierItem.productName})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">미지정</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {item.defaultSupplierItem ? (
+                      <span className="font-mono text-sm">
+                        {formatCurrency(item.defaultSupplierItem.currentPrice)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -288,3 +338,4 @@ export function MaterialList({ onNew, onSelect }: Props) {
     </div>
   );
 }
+

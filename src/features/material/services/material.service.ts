@@ -45,6 +45,13 @@ export async function getMaterials(
   const [items, total] = await Promise.all([
     prisma.materialMaster.findMany({
       where,
+      include: {
+        defaultSupplierItem: {
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+        },
+      },
       orderBy: { [sortBy]: sortOrder },
       skip,
       take: limit,
@@ -67,6 +74,18 @@ export async function getMaterials(
 export async function getMaterialById(companyId: string, id: string) {
   return prisma.materialMaster.findFirst({
     where: { id, companyId },
+    include: {
+      defaultSupplierItem: {
+        select: {
+          id: true,
+          productName: true,
+          currentPrice: true,
+          supplyUnit: true,
+          supplyUnitQty: true,
+          supplier: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
 }
 
@@ -79,19 +98,19 @@ export async function getMaterialByCode(companyId: string, code: string) {
 
 // ── 자재 생성 (코드 자동 채번) ──
 export async function createMaterial(
-    companyId: string,
-    input: CreateMaterialInput
-  ) {
-    const code = await generateMaterialCode(companyId);
-  
-    return prisma.materialMaster.create({
-      data: {
-        ...input,
-        companyId,
-        code,
-      },
-    });
-  }
+  companyId: string,
+  input: CreateMaterialInput
+) {
+  const code = await generateMaterialCode(companyId);
+
+  return prisma.materialMaster.create({
+    data: {
+      ...input,
+      companyId,
+      code,
+    },
+  });
+}
 
 // ── 자재 수정 ──
 export async function updateMaterial(
@@ -115,5 +134,17 @@ export async function deleteMaterial(companyId: string, id: string) {
 
   return prisma.materialMaster.delete({
     where: { id },
+  });
+}
+
+// ── 기본 공급 품목 설정 ──
+export async function setDefaultSupplierItem(
+  companyId: string,
+  materialId: string,
+  supplierItemId: string | null
+) {
+  return prisma.materialMaster.update({
+    where: { id: materialId },
+    data: { defaultSupplierItemId: supplierItemId },
   });
 }
