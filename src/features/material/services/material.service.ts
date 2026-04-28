@@ -8,7 +8,7 @@ import type {
 // ── 자재 코드 자동 생성 (MAT-001, MAT-002, ...) ──
 async function generateMaterialCode(companyId: string): Promise<string> {
   const lastMaterial = await prisma.materialMaster.findFirst({
-    where: { companyId },
+    where: { companyId, deletedAt: null },
     orderBy: { code: "desc" },
     select: { code: true },
   });
@@ -32,6 +32,7 @@ export async function getMaterials(
 
   const where = {
     companyId,
+    deletedAt: null,
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },
@@ -73,16 +74,11 @@ export async function getMaterials(
 // ── 자재 단건 조회 ──
 export async function getMaterialById(companyId: string, id: string) {
   return prisma.materialMaster.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
     include: {
       defaultSupplierItem: {
-        select: {
-          id: true,
-          productName: true,
-          currentPrice: true,
-          supplyUnit: true,
-          supplyUnitQty: true,
-          supplier: { select: { id: true, name: true } },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
         },
       },
     },
@@ -92,7 +88,7 @@ export async function getMaterialById(companyId: string, id: string) {
 // ── 자재 코드 중복 확인 ──
 export async function getMaterialByCode(companyId: string, code: string) {
   return prisma.materialMaster.findFirst({
-    where: { companyId, code },
+    where: { companyId, code, deletedAt: null },
   });
 }
 
@@ -127,13 +123,14 @@ export async function updateMaterial(
 // ── 자재 삭제 (soft-delete) ──
 export async function deleteMaterial(companyId: string, id: string) {
   const material = await prisma.materialMaster.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
   });
 
   if (!material) return null;
 
-  return prisma.materialMaster.delete({
+  return prisma.materialMaster.update({
     where: { id },
+    data: { deletedAt: new Date() },
   });
 }
 
@@ -143,6 +140,12 @@ export async function setDefaultSupplierItem(
   materialId: string,
   supplierItemId: string | null
 ) {
+  // 자재 존재 확인
+  const material = await prisma.materialMaster.findFirst({
+    where: { id: materialId, companyId, deletedAt: null },
+  });
+  if (!material) throw new Error("NOT_FOUND");
+
   return prisma.materialMaster.update({
     where: { id: materialId },
     data: { defaultSupplierItemId: supplierItemId },

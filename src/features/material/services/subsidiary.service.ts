@@ -8,7 +8,7 @@ import type {
 // ── 부자재 코드 자동 생성 (SUB-001, SUB-002, ...) ──
 async function generateSubsidiaryCode(companyId: string): Promise<string> {
   const lastSubsidiary = await prisma.subsidiaryMaster.findFirst({
-    where: { companyId },
+    where: { companyId, deletedAt: null },
     orderBy: { code: "desc" },
     select: { code: true },
   });
@@ -32,6 +32,7 @@ export async function getSubsidiaries(
 
   const where = {
     companyId,
+    deletedAt: null,
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },
@@ -71,16 +72,11 @@ export async function getSubsidiaries(
 // ── 부자재 단건 조회 ──
 export async function getSubsidiaryById(companyId: string, id: string) {
   return prisma.subsidiaryMaster.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
     include: {
       defaultSupplierItem: {
-        select: {
-          id: true,
-          productName: true,
-          currentPrice: true,
-          supplyUnit: true,
-          supplyUnitQty: true,
-          supplier: { select: { id: true, name: true } },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
         },
       },
     },
@@ -90,7 +86,7 @@ export async function getSubsidiaryById(companyId: string, id: string) {
 // ── 부자재 코드 중복 확인 ──
 export async function getSubsidiaryByCode(companyId: string, code: string) {
   return prisma.subsidiaryMaster.findFirst({
-    where: { companyId, code },
+    where: { companyId, code, deletedAt: null },
   });
 }
 
@@ -125,13 +121,14 @@ export async function updateSubsidiary(
 // ── 부자재 삭제 (soft-delete) ──
 export async function deleteSubsidiary(companyId: string, id: string) {
   const subsidiary = await prisma.subsidiaryMaster.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
   });
 
   if (!subsidiary) return null;
 
-  return prisma.subsidiaryMaster.delete({
+  return prisma.subsidiaryMaster.update({
     where: { id },
+    data: { deletedAt: new Date() },
   });
 }
 
@@ -141,9 +138,13 @@ export async function setDefaultSupplierItem(
   subsidiaryId: string,
   supplierItemId: string | null
 ) {
+  const subsidiary = await prisma.subsidiaryMaster.findFirst({
+    where: { id: subsidiaryId, companyId, deletedAt: null },
+  });
+  if (!subsidiary) throw new Error("NOT_FOUND");
+
   return prisma.subsidiaryMaster.update({
     where: { id: subsidiaryId },
     data: { defaultSupplierItemId: supplierItemId },
   });
 }
-

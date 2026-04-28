@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Sheet,
   SheetContent,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import { MaterialList } from "@/features/material/components/material-list";
 import { MaterialForm } from "@/features/material/components/material-form";
@@ -113,7 +115,10 @@ export default function MaterialsPage() {
           if (!open) setSelectedMaterial(null);
         }}
       >
-        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl">
+        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl" aria-describedby={undefined}>
+          <SheetHeader className="sr-only">
+            <SheetTitle>{selectedMaterial?.name ?? "자재 상세"}</SheetTitle>
+          </SheetHeader>
           {selectedMaterial && (
             <MaterialDetailPanel
               material={selectedMaterial}

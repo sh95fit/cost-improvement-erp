@@ -139,6 +139,7 @@ export async function getSupplierItemsByMaterialId(materialMasterId: string) {
     where: {
       materialMasterId,
       itemType: "MATERIAL",
+      supplier: { deletedAt: null },
     },
     include: {
       supplier: { select: { id: true, name: true, code: true } },
@@ -153,6 +154,7 @@ export async function getSupplierItemsBySubsidiaryId(subsidiaryMasterId: string)
     where: {
       subsidiaryMasterId,
       itemType: "SUBSIDIARY",
+      supplier: { deletedAt: null },
     },
     include: {
       supplier: { select: { id: true, name: true, code: true } },

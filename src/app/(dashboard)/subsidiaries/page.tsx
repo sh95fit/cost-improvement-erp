@@ -4,6 +4,8 @@ import { useState } from "react";
 import {
   Sheet,
   SheetContent,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import { SubsidiaryList } from "@/features/material/components/subsidiary-list";
 import { SubsidiaryForm } from "@/features/material/components/subsidiary-form";
@@ -60,7 +62,10 @@ export default function SubsidiariesPage() {
           if (!open) setSelectedSubsidiary(null);
         }}
       >
-        <SheetContent side="right" className="w-[500px] p-0 sm:max-w-[500px]">
+        <SheetContent side="right" className="w-[500px] p-0 sm:max-w-[500px]" aria-describedby={undefined}>
+          <SheetHeader className="sr-only">
+            <SheetTitle>{selectedSubsidiary?.name ?? "부자재 상세"}</SheetTitle>
+          </SheetHeader>
           {selectedSubsidiary && (
             <SubsidiaryDetailPanel
               subsidiary={selectedSubsidiary}
