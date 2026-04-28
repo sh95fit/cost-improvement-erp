@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { MaterialForm } from "./material-form";
 import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
 import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
+import { getSupplierItemsByMaterialAction } from "@/features/supplier/actions/supplier.action";
 import type { MaterialMaster } from "@prisma/client";
-import { Pencil, X } from "lucide-react";
+import { Pencil, X, Loader2 } from "lucide-react";
 
 import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
 
@@ -17,6 +26,16 @@ type ConversionView =
   | { mode: "list" }
   | { mode: "new" }
   | { mode: "edit"; item: UnitConversionData };
+
+type SupplierItemRow = {
+  id: string;
+  productName: string;
+  spec: string | null;
+  supplyUnit: string;
+  supplyUnitQty: number;
+  currentPrice: number;
+  supplier: { id: string; name: string; code: string };
+};
 
 type Props = {
   material: MaterialMaster;
@@ -29,6 +48,10 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
   const [conversionView, setConversionView] = useState<ConversionView>({
     mode: "list",
   });
+
+  // 공급 품목 상태
+  const [supplierItems, setSupplierItems] = useState<SupplierItemRow[]>([]);
+  const [supplierLoading, setSupplierLoading] = useState(false);
 
   const MATERIAL_TYPE_LABELS: Record<string, string> = {
     RAW: "원자재",
@@ -50,6 +73,25 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
     B: "나 (중간관리)",
     C: "다 (월말관리)",
   };
+
+  // 공급 품목 로드
+  useEffect(() => {
+    const loadSupplierItems = async () => {
+      setSupplierLoading(true);
+      try {
+        const result = await getSupplierItemsByMaterialAction(material.id);
+        if (result.success) {
+          setSupplierItems(result.data as SupplierItemRow[]);
+        }
+      } finally {
+        setSupplierLoading(false);
+      }
+    };
+    loadSupplierItems();
+  }, [material.id]);
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
 
   // ── 기본정보 탭 ──
   const renderInfoTab = () => {
@@ -170,6 +212,59 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
     );
   };
 
+  // ── 공급 품목 탭 ──
+  const renderSuppliersTab = () => {
+    if (supplierLoading) {
+      return (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        </div>
+      );
+    }
+
+    if (supplierItems.length === 0) {
+      return (
+        <p className="py-8 text-center text-sm text-gray-500">
+          이 자재에 연결된 공급 품목이 없습니다.
+          공급업체 관리에서 품목을 등록해 주세요.
+        </p>
+      );
+    }
+
+    return (
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>공급업체</TableHead>
+              <TableHead>제품명</TableHead>
+              <TableHead>규격</TableHead>
+              <TableHead>공급단위</TableHead>
+              <TableHead className="text-right">단가</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {supplierItems.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="font-medium">
+                  {item.supplier.name}
+                </TableCell>
+                <TableCell>{item.productName}</TableCell>
+                <TableCell>{item.spec ?? "-"}</TableCell>
+                <TableCell>
+                  {item.supplyUnit} ({item.supplyUnitQty})
+                </TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatCurrency(item.currentPrice)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* 헤더 */}
@@ -194,7 +289,7 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
               단위 환산
             </TabsTrigger>
             <TabsTrigger value="suppliers" className="flex-1">
-              공급 품목
+              공급 품목 ({supplierItems.length})
             </TabsTrigger>
           </TabsList>
           <TabsContent value="info" className="mt-4">
@@ -204,9 +299,7 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
             {renderConversionTab()}
           </TabsContent>
           <TabsContent value="suppliers" className="mt-4">
-            <p className="py-8 text-center text-sm text-gray-500">
-              이 자재에 연결된 공급 품목은 공급업체 관리에서 확인할 수 있습니다.
-            </p>
+            {renderSuppliersTab()}
           </TabsContent>
         </Tabs>
       </div>
