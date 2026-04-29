@@ -57,6 +57,28 @@ export async function getBOMById(companyId: string, id: string) {
   });
 }
 
+// ── BOM 다음 버전 번호 조회 ──
+export async function getNextBOMVersion(
+  companyId: string,
+  ownerType: "RECIPE_VARIANT" | "SEMI_PRODUCT",
+  ownerId: string
+): Promise<number> {
+  const latest = await prisma.bOM.findFirst({
+    where: {
+      companyId,
+      deletedAt: null,
+      ownerType,
+      ...(ownerType === "RECIPE_VARIANT"
+        ? { recipeVariantId: ownerId }
+        : { semiProductId: ownerId }),
+    },
+    orderBy: { version: "desc" },
+    select: { version: true },
+  });
+
+  return (latest?.version ?? 0) + 1;
+}
+
 // ── BOM 생성 ──
 export async function createBOM(companyId: string, input: CreateBOMInput) {
   return prisma.bOM.create({

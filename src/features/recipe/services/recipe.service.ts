@@ -124,19 +124,36 @@ export async function updateRecipe(
   });
 }
 
-// ── 레시피 삭제 (soft-delete) ──
+// ── 레시피 삭제 (soft-delete + 연관 BOM cascade) ──
 export async function deleteRecipe(companyId: string, id: string) {
   const recipe = await prisma.recipe.findFirst({
     where: { id, companyId, deletedAt: null },
+    include: { variants: { select: { id: true } } },
   });
 
   if (!recipe) return null;
 
-  return prisma.recipe.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  return withTransaction(async (tx) => {
+    // 모든 변형에 연결된 BOM soft-delete
+    const variantIds = recipe.variants.map((v) => v.id);
+    if (variantIds.length > 0) {
+      await tx.bOM.updateMany({
+        where: {
+          recipeVariantId: { in: variantIds },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    // 레시피 soft-delete
+    return tx.recipe.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   });
 }
+
 
 // ════════════════════════════════════════
 // RecipeVariant

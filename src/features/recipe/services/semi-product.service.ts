@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { withTransaction } from "@/lib/auth/transaction";
+
 import type {
   CreateSemiProductInput,
   UpdateSemiProductInput,
@@ -125,7 +127,7 @@ export async function updateSemiProduct(
   });
 }
 
-// ── 반제품 삭제 (soft-delete) ──
+// ── 반제품 삭제 (soft-delete + 연관 BOM cascade) ──
 export async function deleteSemiProduct(companyId: string, id: string) {
   const semiProduct = await prisma.semiProduct.findFirst({
     where: { id, companyId, deletedAt: null },
@@ -133,8 +135,17 @@ export async function deleteSemiProduct(companyId: string, id: string) {
 
   if (!semiProduct) return null;
 
-  return prisma.semiProduct.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  return withTransaction(async (tx) => {
+    // 연결된 BOM soft-delete
+    await tx.bOM.updateMany({
+      where: { semiProductId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    // 반제품 soft-delete
+    return tx.semiProduct.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   });
 }

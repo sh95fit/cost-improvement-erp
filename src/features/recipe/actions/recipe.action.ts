@@ -665,3 +665,47 @@ export async function replaceBOMItemsAction(
     return actionFail("INTERNAL_ERROR", "BOM 항목 일괄 저장에 실패했습니다");
   }
 }
+
+// ── BOM 자동 버전 채번 생성 ──
+export async function createBOMWithAutoVersionAction(
+  rawInput: Record<string, unknown>
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "CREATE");
+
+    const input = createBOMSchema.parse(rawInput);
+
+    // 자동 버전 계산
+    const ownerType = input.ownerType as "RECIPE_VARIANT" | "SEMI_PRODUCT";
+    const ownerId = ownerType === "RECIPE_VARIANT"
+      ? input.recipeVariantId!
+      : input.semiProductId!;
+    const nextVersion = await bomService.getNextBOMVersion(
+      session.companyId,
+      ownerType,
+      ownerId
+    );
+
+    const bom = await bomService.createBOM(session.companyId, {
+      ...input,
+      version: nextVersion,
+    });
+
+    await createAuditLog({
+      session,
+      action: "CREATE",
+      entityType: "BOM",
+      entityId: bom.id,
+      after: bom as unknown as Record<string, unknown>,
+    });
+
+    return actionOk(bom);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "BOM 생성에 실패했습니다");
+  }
+}
