@@ -1,11 +1,13 @@
 import { z } from "zod";
-import { OwnerType, BOMStatus, ItemType } from "@prisma/client";
+import { IngredientType, BOMStatus } from "@prisma/client";
 
-const ownerTypeValues = Object.values(OwnerType) as [string, ...string[]];
+const ingredientTypeValues = Object.values(IngredientType) as [string, ...string[]];
 const bomStatusValues = Object.values(BOMStatus) as [string, ...string[]];
-const itemTypeValues = Object.values(ItemType) as [string, ...string[]];
 
-// ── Recipe 생성 ──
+// ════════════════════════════════════════
+// Recipe
+// ════════════════════════════════════════
+
 export const createRecipeSchema = z.object({
   name: z
     .string()
@@ -14,24 +16,108 @@ export const createRecipeSchema = z.object({
   description: z.string().max(500, "설명은 500자 이내여야 합니다").optional(),
 });
 
-// ── Recipe 수정 ──
 export const updateRecipeSchema = createRecipeSchema.partial();
 
-// ── RecipeVariant 생성 ──
-export const createRecipeVariantSchema = z.object({
-  variantName: z
-    .string()
-    .min(1, "변형명은 필수입니다")
-    .max(100, "변형명은 100자 이내여야 합니다"),
-  servings: z.number().int().min(1, "인분 수는 1 이상이어야 합니다").default(1),
-  baseWeightG: z.number().min(0.1).nullable().optional(),   // ← 추가
-  description: z.string().max(500, "설명은 500자 이내여야 합니다").optional(),
+// ════════════════════════════════════════
+// RecipeIngredient (신규)
+// ════════════════════════════════════════
+
+export const createRecipeIngredientSchema = z
+  .object({
+    ingredientType: z
+      .enum(ingredientTypeValues)
+      .transform((v) => v as IngredientType),
+    materialMasterId: z.string().optional(),
+    semiProductId: z.string().optional(),
+    sortOrder: z.number().int().min(0).default(0),
+  })
+  .refine(
+    (data) => {
+      if (data.ingredientType === "MATERIAL") return !!data.materialMasterId;
+      if (data.ingredientType === "SEMI_PRODUCT") return !!data.semiProductId;
+      return false;
+    },
+    { message: "재료 타입에 맞는 ID가 필요합니다" }
+  );
+
+export const updateRecipeIngredientSchema = z.object({
+  sortOrder: z.number().int().min(0).optional(),
 });
 
-// ── RecipeVariant 수정 ──
-export const updateRecipeVariantSchema = createRecipeVariantSchema.partial();
+// ════════════════════════════════════════
+// RecipeBOM (신규)
+// ════════════════════════════════════════
 
-// ── SemiProduct 생성 ──
+export const createRecipeBOMSchema = z.object({
+  recipeId: z.string().min(1, "레시피 ID는 필수입니다"),
+  version: z.number().int().min(1).default(1),
+  status: z
+    .enum(bomStatusValues)
+    .transform((v) => v as BOMStatus)
+    .default("DRAFT"),
+  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다"),
+});
+
+export const updateRecipeBOMStatusSchema = z.object({
+  status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
+});
+
+export const updateRecipeBOMBaseWeightSchema = z.object({
+  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다"),
+});
+
+// ════════════════════════════════════════
+// RecipeBOMSlot (신규)
+// ════════════════════════════════════════
+
+export const createRecipeBOMSlotSchema = z.object({
+  containerGroupId: z.string().min(1, "용기 그룹은 필수입니다"),
+  slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
+  totalWeightG: z.number().min(0.1, "총 중량은 0.1g 이상이어야 합니다"),
+  note: z.string().max(200).optional(),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
+export const updateRecipeBOMSlotSchema = z.object({
+  totalWeightG: z.number().min(0.1).optional(),
+  note: z.string().max(200).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+// ════════════════════════════════════════
+// RecipeBOMSlotItem (신규)
+// ════════════════════════════════════════
+
+export const createRecipeBOMSlotItemSchema = z
+  .object({
+    ingredientType: z
+      .enum(ingredientTypeValues)
+      .transform((v) => v as IngredientType),
+    materialMasterId: z.string().optional(),
+    semiProductId: z.string().optional(),
+    weightG: z.number().min(0.01, "중량은 0.01g 이상이어야 합니다"),
+    unit: z.string().max(20).default("g"),
+    sortOrder: z.number().int().min(0).default(0),
+  })
+  .refine(
+    (data) => {
+      if (data.ingredientType === "MATERIAL") return !!data.materialMasterId;
+      if (data.ingredientType === "SEMI_PRODUCT") return !!data.semiProductId;
+      return false;
+    },
+    { message: "재료 타입에 맞는 ID가 필요합니다" }
+  );
+
+export const updateRecipeBOMSlotItemSchema = z.object({
+  weightG: z.number().min(0.01).optional(),
+  unit: z.string().max(20).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+// ════════════════════════════════════════
+// SemiProduct
+// ════════════════════════════════════════
+
 export const createSemiProductSchema = z.object({
   name: z
     .string()
@@ -43,31 +129,33 @@ export const createSemiProductSchema = z.object({
     .max(20, "단위는 20자 이내여야 합니다"),
 });
 
-// ── SemiProduct 수정 ──
 export const updateSemiProductSchema = createSemiProductSchema.partial();
 
-// ── BOM 생성 ──
+// ════════════════════════════════════════
+// BOM (반제품 전용)
+// ════════════════════════════════════════
+
 export const createBOMSchema = z.object({
-  ownerType: z.enum(ownerTypeValues).transform((v) => v as OwnerType),
-  recipeVariantId: z.string().optional(),
-  semiProductId: z.string().optional(),
+  semiProductId: z.string().min(1, "반제품 ID는 필수입니다"),
   version: z.number().int().min(1).default(1),
   status: z
     .enum(bomStatusValues)
     .transform((v) => v as BOMStatus)
     .default("DRAFT"),
+  baseQuantity: z.number().min(0.001).default(1),
+  baseUnit: z.string().max(20).default("kg"),
 });
 
-// ── BOM 상태 변경 ──
 export const updateBOMStatusSchema = z.object({
   status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
 });
 
-// ── BOMItem 생성 ──
+// ════════════════════════════════════════
+// BOMItem (반제품 BOM 전용 - 식자재만)
+// ════════════════════════════════════════
+
 export const createBOMItemSchema = z.object({
-  itemType: z.enum(itemTypeValues).transform((v) => v as ItemType),
-  materialMasterId: z.string().optional(),
-  subsidiaryMasterId: z.string().optional(),
+  materialMasterId: z.string().min(1, "식자재 ID는 필수입니다"),
   quantity: z.number().min(0.001, "수량은 0보다 커야 합니다"),
   unit: z
     .string()
@@ -76,18 +164,16 @@ export const createBOMItemSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
 });
 
-// ── BOMItem 수정 ──
 export const updateBOMItemSchema = z.object({
-  quantity: z.number().min(0.001, "수량은 0보다 커야 합니다").optional(),
-  unit: z
-    .string()
-    .min(1, "단위는 필수입니다")
-    .max(20, "단위는 20자 이내여야 합니다")
-    .optional(),
+  quantity: z.number().min(0.001).optional(),
+  unit: z.string().min(1).max(20).optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
-// ── 목록 조회용 필터 스키마 ──
+// ════════════════════════════════════════
+// 목록 조회용 필터 스키마
+// ════════════════════════════════════════
+
 export const recipeListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -104,46 +190,21 @@ export const semiProductListQuerySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
-// ── ServingSet 생성 ──
-export const createServingSetSchema = z.object({
-  recipeVariantId: z.string().min(1, "변형 ID는 필수입니다"),
-  version: z.number().int().min(1).default(1),
-  status: z
-    .enum(bomStatusValues)
-    .transform((v) => v as BOMStatus)
-    .default("DRAFT"),
-});
+// ════════════════════════════════════════
+// 타입 추출
+// ════════════════════════════════════════
 
-// ── ServingSet 상태 변경 ──
-export const updateServingSetStatusSchema = z.object({
-  status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
-});
-
-// ── ServingSetItem 생성 ──
-export const createServingSetItemSchema = z.object({
-  containerGroupId: z.string().min(1, "용기 그룹은 필수입니다"),
-  slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
-  servingWeightG: z.number().min(0.1, "서빙 중량은 0.1g 이상이어야 합니다"),
-  note: z.string().max(200).optional(),
-  sortOrder: z.number().int().min(0).default(0),
-});
-
-// ── ServingSetItem 수정 ──
-export const updateServingSetItemSchema = z.object({
-  servingWeightG: z.number().min(0.1, "서빙 중량은 0.1g 이상이어야 합니다").optional(),
-  note: z.string().max(200).optional(),
-});
-
-// ── RecipeVariant baseWeightG 수정 ──
-export const updateBaseWeightSchema = z.object({
-  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다").nullable(),
-});
-
-// ── 타입 추출 ──
 export type CreateRecipeInput = z.output<typeof createRecipeSchema>;
 export type UpdateRecipeInput = z.output<typeof updateRecipeSchema>;
-export type CreateRecipeVariantInput = z.output<typeof createRecipeVariantSchema>;
-export type UpdateRecipeVariantInput = z.output<typeof updateRecipeVariantSchema>;
+export type CreateRecipeIngredientInput = z.output<typeof createRecipeIngredientSchema>;
+export type UpdateRecipeIngredientInput = z.output<typeof updateRecipeIngredientSchema>;
+export type CreateRecipeBOMInput = z.output<typeof createRecipeBOMSchema>;
+export type UpdateRecipeBOMStatusInput = z.output<typeof updateRecipeBOMStatusSchema>;
+export type UpdateRecipeBOMBaseWeightInput = z.output<typeof updateRecipeBOMBaseWeightSchema>;
+export type CreateRecipeBOMSlotInput = z.output<typeof createRecipeBOMSlotSchema>;
+export type UpdateRecipeBOMSlotInput = z.output<typeof updateRecipeBOMSlotSchema>;
+export type CreateRecipeBOMSlotItemInput = z.output<typeof createRecipeBOMSlotItemSchema>;
+export type UpdateRecipeBOMSlotItemInput = z.output<typeof updateRecipeBOMSlotItemSchema>;
 export type CreateSemiProductInput = z.output<typeof createSemiProductSchema>;
 export type UpdateSemiProductInput = z.output<typeof updateSemiProductSchema>;
 export type CreateBOMInput = z.output<typeof createBOMSchema>;
@@ -152,9 +213,3 @@ export type CreateBOMItemInput = z.output<typeof createBOMItemSchema>;
 export type UpdateBOMItemInput = z.output<typeof updateBOMItemSchema>;
 export type RecipeListQuery = z.output<typeof recipeListQuerySchema>;
 export type SemiProductListQuery = z.output<typeof semiProductListQuerySchema>;
-export type CreateServingSetInput = z.output<typeof createServingSetSchema>;
-export type UpdateServingSetStatusInput = z.output<typeof updateServingSetStatusSchema>;
-export type CreateServingSetItemInput = z.output<typeof createServingSetItemSchema>;
-export type UpdateServingSetItemInput = z.output<typeof updateServingSetItemSchema>;
-export type UpdateBaseWeightInput = z.output<typeof updateBaseWeightSchema>;
-

@@ -29,7 +29,8 @@ export type RecipeRow = {
   code: string;
   name: string;
   description: string | null;
-  variants: { id: string; variantName: string; servings: number }[];
+  ingredients: { id: string; ingredientType: string; sortOrder: number }[];
+  recipeBoms: { id: string; version: number; status: string }[];
   createdAt: Date;
 };
 
@@ -62,7 +63,7 @@ export function RecipeList({ onNew, onSelect }: Props) {
           sortOrder: "desc",
         });
         if (result.success) {
-          const data = result.data as {
+          const data = result.data as unknown as {
             items: RecipeRow[];
             pagination: typeof pagination;
           };
@@ -119,7 +120,8 @@ export function RecipeList({ onNew, onSelect }: Props) {
               <TableHead className="w-[100px]">코드</TableHead>
               <TableHead>레시피명</TableHead>
               <TableHead>설명</TableHead>
-              <TableHead className="w-[80px] text-center">변형 수</TableHead>
+              <TableHead className="w-[80px] text-center">재료 수</TableHead>
+              <TableHead className="w-[80px] text-center">BOM</TableHead>
               <TableHead className="w-[100px]">등록일</TableHead>
               <TableHead className="w-[50px] text-right">관리</TableHead>
             </TableRow>
@@ -127,13 +129,13 @@ export function RecipeList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   등록된 레시피가 없습니다
                 </TableCell>
               </TableRow>
@@ -151,8 +153,17 @@ export function RecipeList({ onNew, onSelect }: Props) {
                   </TableCell>
                   <TableCell className="text-center">
                     <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      {item.variants.length}
+                      {item.ingredients.length}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {item.recipeBoms.length > 0 ? (
+                      <span className="inline-flex rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                        {item.recipeBoms.length}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">
                     {new Date(item.createdAt).toLocaleDateString("ko-KR")}
@@ -213,7 +224,7 @@ export function RecipeList({ onNew, onSelect }: Props) {
             <AlertDialogTitle>레시피를 삭제하시겠습니까?</AlertDialogTitle>
             <AlertDialogDescription>
               &apos;{deleteTarget?.name}&apos; ({deleteTarget?.code})을(를) 삭제합니다.
-              연결된 변형과 BOM도 함께 비활성화됩니다.
+              연결된 재료와 BOM도 함께 비활성화됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

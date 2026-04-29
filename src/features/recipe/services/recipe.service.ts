@@ -3,8 +3,8 @@ import { withTransaction } from "@/lib/auth/transaction";
 import type {
   CreateRecipeInput,
   UpdateRecipeInput,
-  CreateRecipeVariantInput,
-  UpdateRecipeVariantInput,
+  CreateRecipeIngredientInput,
+  UpdateRecipeIngredientInput,
   RecipeListQuery,
 } from "../schemas/recipe.schema";
 
@@ -45,9 +45,13 @@ export async function getRecipes(companyId: string, query: RecipeListQuery) {
     prisma.recipe.findMany({
       where,
       include: {
-        variants: {
-          where: { deletedAt: null },
-          select: { id: true, variantName: true, servings: true },
+        ingredients: {
+          select: { id: true, ingredientType: true, sortOrder: true },
+          orderBy: { sortOrder: "asc" },
+        },
+        recipeBoms: {
+          where: { deletedAt: null, status: "ACTIVE" },
+          select: { id: true, version: true, status: true },
         },
       },
       orderBy: { [sortBy]: sortOrder },
@@ -70,28 +74,40 @@ export async function getRecipes(companyId: string, query: RecipeListQuery) {
 
 // ── 레시피 단건 조회 ──
 export async function getRecipeById(companyId: string, id: string) {
-  return prisma.recipe.findFirst({
+  const recipe = await prisma.recipe.findFirst({
     where: { id, companyId, deletedAt: null },
     include: {
-      variants: {
+      ingredients: {
+        include: {
+          materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+          semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+        },
+        orderBy: { sortOrder: "asc" },
+      },
+      recipeBoms: {
         where: { deletedAt: null },
         include: {
-          boms: {
-            where: { deletedAt: null },
+          slots: {
             include: {
+              containerGroup: { select: { id: true, name: true, code: true } },
               items: {
                 include: {
                   materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-                  subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
+                  semiProduct: { select: { id: true, name: true, code: true, unit: true } },
                 },
                 orderBy: { sortOrder: "asc" },
               },
             },
+            orderBy: { sortOrder: "asc" },
           },
         },
+        orderBy: { version: "desc" },
       },
     },
   });
+
+  if (!recipe) return null;
+  return recipe;
 }
 
 // ── 레시피 코드 중복 확인 ──
@@ -126,36 +142,25 @@ export async function updateRecipe(
   });
 }
 
-// ── 레시피 삭제 (soft-delete + 연관 Variant, BOM cascade) ──
+// ── 레시피 삭제 (soft-delete + 연관 RecipeBOM cascade) ──
 export async function deleteRecipe(companyId: string, id: string) {
   const recipe = await prisma.recipe.findFirst({
     where: { id, companyId, deletedAt: null },
-    include: { variants: { where: { deletedAt: null }, select: { id: true } } },
   });
 
   if (!recipe) return null;
 
   return withTransaction(async (tx) => {
-    const variantIds = recipe.variants.map((v) => v.id);
-    if (variantIds.length > 0) {
-      // 변형에 연결된 BOM soft-delete
-      await tx.bOM.updateMany({
-        where: {
-          recipeVariantId: { in: variantIds },
-          deletedAt: null,
-        },
-        data: { deletedAt: new Date() },
-      });
+    // 연결된 RecipeBOM들을 soft-delete 처리
+    await tx.recipeBOM.updateMany({
+      where: { recipeId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
 
-      // 변형 soft-delete
-      await tx.recipeVariant.updateMany({
-        where: {
-          id: { in: variantIds },
-          deletedAt: null,
-        },
-        data: { deletedAt: new Date() },
-      });
-    }
+    // 연결된 RecipeIngredient 삭제 (hard delete - 메타데이터)
+    await tx.recipeIngredient.deleteMany({
+      where: { recipeId: id },
+    });
 
     // 레시피 soft-delete
     return tx.recipe.update({
@@ -166,80 +171,52 @@ export async function deleteRecipe(companyId: string, id: string) {
 }
 
 // ════════════════════════════════════════
-// RecipeVariant
+// RecipeIngredient (신규)
 // ════════════════════════════════════════
 
-// ── 변형 목록 조회 (레시피별) ──
-export async function getVariantsByRecipeId(recipeId: string) {
-  return prisma.recipeVariant.findMany({
-    where: { recipeId, deletedAt: null },
+// ── 재료 목록 조회 (레시피별) ──
+export async function getIngredientsByRecipeId(recipeId: string) {
+  return prisma.recipeIngredient.findMany({
+    where: { recipeId },
     include: {
-      boms: {
-        where: { status: "ACTIVE", deletedAt: null },
-        select: { id: true, version: true, status: true },
-      },
+      materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+      semiProduct: { select: { id: true, name: true, code: true, unit: true } },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { sortOrder: "asc" },
   });
 }
 
-// ── 변형 단건 조회 ──
-export async function getVariantById(id: string) {
-  return prisma.recipeVariant.findFirst({
-    where: { id, deletedAt: null },
-    include: {
-      recipe: { select: { id: true, name: true, code: true, companyId: true } },
-      boms: {
-        where: { deletedAt: null },
-        include: {
-          items: {
-            include: {
-              materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-              subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
-            },
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-        orderBy: { version: "desc" },
-      },
-    },
-  });
-}
-
-// ── 변형 생성 ──
-export async function createVariant(
+// ── 재료 추가 ──
+export async function addIngredient(
   recipeId: string,
-  input: CreateRecipeVariantInput
+  input: CreateRecipeIngredientInput
 ) {
-  return prisma.recipeVariant.create({
+  return prisma.recipeIngredient.create({
     data: {
       ...input,
       recipeId,
     },
+    include: {
+      materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+      semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+    },
   });
 }
 
-// ── 변형 수정 ──
-export async function updateVariant(id: string, input: UpdateRecipeVariantInput) {
-  return prisma.recipeVariant.update({
+// ── 재료 수정 ──
+export async function updateIngredient(
+  id: string,
+  input: UpdateRecipeIngredientInput
+) {
+  return prisma.recipeIngredient.update({
     where: { id },
     data: input,
   });
 }
 
-// ── 변형 삭제 (soft-delete + 연관 BOM cascade) ──
-export async function deleteVariant(id: string) {
-  return withTransaction(async (tx) => {
-    // 연결된 BOM들을 soft-delete 처리
-    await tx.bOM.updateMany({
-      where: { recipeVariantId: id, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-
-    // RecipeVariant soft-delete
-    return tx.recipeVariant.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+// ── 재료 삭제 ──
+export async function deleteIngredient(id: string) {
+  return prisma.recipeIngredient.delete({
+    where: { id },
   });
 }

@@ -48,7 +48,7 @@ export async function getSemiProducts(
       where,
       include: {
         boms: {
-          where: { status: "ACTIVE", deletedAt: null }, 
+          where: { status: "ACTIVE", deletedAt: null },
           select: { id: true, version: true, status: true },
         },
       },
@@ -76,12 +76,11 @@ export async function getSemiProductById(companyId: string, id: string) {
     where: { id, companyId, deletedAt: null },
     include: {
       boms: {
-        where: { deletedAt: null },  
+        where: { deletedAt: null },
         include: {
           items: {
             include: {
               materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-              subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
             },
             orderBy: { sortOrder: "asc" },
           },

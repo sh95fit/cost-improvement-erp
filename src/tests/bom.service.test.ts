@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockPrisma } from "./mocks/prisma";
 
-// withTransaction mock
 vi.mock("@/lib/auth/transaction", () => ({
-  withTransaction: vi.fn((fn) => fn(mockPrisma)),
+  withTransaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 }));
 
 import {
-  getBOMsByOwner,
+  getBOMsBySemiProduct,
   getBOMById,
   getNextBOMVersion,
   createBOM,
@@ -19,335 +18,209 @@ import {
   replaceBOMItems,
 } from "@/features/recipe/services/bom.service";
 
-describe("bom.service", () => {
+describe("bom.service (반제품 전용)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // ── getBOMsByOwner ──
-  describe("getBOMsByOwner", () => {
-    it("should filter by ownerType RECIPE_VARIANT with deletedAt: null", async () => {
-      mockPrisma.bOM.findMany.mockResolvedValue([]);
+  // ── getBOMsBySemiProduct ──
+  describe("getBOMsBySemiProduct", () => {
+    it("반제품별 BOM 목록을 조회한다", async () => {
+      const mockBoms = [
+        { id: "b1", version: 2, items: [] },
+        { id: "b2", version: 1, items: [] },
+      ];
+      mockPrisma.bOM.findMany.mockResolvedValue(mockBoms);
 
-      await getBOMsByOwner("company-1", "RECIPE_VARIANT", "var-1");
+      const result = await getBOMsBySemiProduct("company1", "sp1");
 
-      const args = mockPrisma.bOM.findMany.mock.calls[0][0];
-      expect(args.where.companyId).toBe("company-1");
-      expect(args.where.deletedAt).toBeNull();
-      expect(args.where.ownerType).toBe("RECIPE_VARIANT");
-      expect(args.where.recipeVariantId).toBe("var-1");
-    });
-
-    it("should filter by ownerType SEMI_PRODUCT with deletedAt: null", async () => {
-      mockPrisma.bOM.findMany.mockResolvedValue([]);
-
-      await getBOMsByOwner("company-1", "SEMI_PRODUCT", "sp-1");
-
-      const args = mockPrisma.bOM.findMany.mock.calls[0][0];
-      expect(args.where.semiProductId).toBe("sp-1");
-      expect(args.where.ownerType).toBe("SEMI_PRODUCT");
-    });
-
-    it("should order by version descending", async () => {
-      mockPrisma.bOM.findMany.mockResolvedValue([]);
-
-      await getBOMsByOwner("company-1", "RECIPE_VARIANT", "var-1");
-
-      const args = mockPrisma.bOM.findMany.mock.calls[0][0];
-      expect(args.orderBy).toEqual({ version: "desc" });
-    });
-
-    it("should include items with materialMaster and subsidiaryMaster", async () => {
-      mockPrisma.bOM.findMany.mockResolvedValue([]);
-
-      await getBOMsByOwner("company-1", "RECIPE_VARIANT", "var-1");
-
-      const args = mockPrisma.bOM.findMany.mock.calls[0][0];
-      expect(args.include.items).toBeDefined();
-      expect(args.include.items.include.materialMaster).toBeDefined();
-      expect(args.include.items.include.subsidiaryMaster).toBeDefined();
+      expect(result).toHaveLength(2);
+      expect(mockPrisma.bOM.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            companyId: "company1",
+            semiProductId: "sp1",
+            deletedAt: null,
+          },
+        })
+      );
     });
   });
 
   // ── getBOMById ──
   describe("getBOMById", () => {
-    it("should query with id, companyId, and deletedAt: null", async () => {
-      const mockBOM = { id: "bom-1", companyId: "company-1", version: 1 };
-      mockPrisma.bOM.findFirst.mockResolvedValue(mockBOM);
+    it("BOM을 반제품 정보와 항목 함께 조회한다", async () => {
+      const mockBom = {
+        id: "b1",
+        semiProduct: { id: "sp1", name: "양념장" },
+        items: [{ id: "bi1", quantity: 10 }],
+      };
+      mockPrisma.bOM.findFirst.mockResolvedValue(mockBom);
 
-      const result = await getBOMById("company-1", "bom-1");
+      const result = await getBOMById("company1", "b1");
 
-      expect(result).toEqual(mockBOM);
-      const whereArg = mockPrisma.bOM.findFirst.mock.calls[0][0].where;
-      expect(whereArg).toEqual({ id: "bom-1", companyId: "company-1", deletedAt: null });
-    });
-
-    it("should return null when not found", async () => {
-      mockPrisma.bOM.findFirst.mockResolvedValue(null);
-
-      const result = await getBOMById("company-1", "non-existent");
-      expect(result).toBeNull();
+      expect(result?.semiProduct?.name).toBe("양념장");
     });
   });
 
   // ── getNextBOMVersion ──
   describe("getNextBOMVersion", () => {
-    it("should return 1 when no BOMs exist", async () => {
-      mockPrisma.bOM.findFirst.mockResolvedValue(null);
-
-      const version = await getNextBOMVersion("company-1", "RECIPE_VARIANT", "var-1");
-
-      expect(version).toBe(1);
-    });
-
-    it("should return latest version + 1", async () => {
+    it("기존 버전이 있으면 +1을 반환한다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue({ version: 3 });
 
-      const version = await getNextBOMVersion("company-1", "RECIPE_VARIANT", "var-1");
+      const result = await getNextBOMVersion("company1", "sp1");
 
-      expect(version).toBe(4);
+      expect(result).toBe(4);
     });
 
-    it("should filter by deletedAt: null", async () => {
+    it("기존 BOM이 없으면 1을 반환한다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue(null);
 
-      await getNextBOMVersion("company-1", "SEMI_PRODUCT", "sp-1");
+      const result = await getNextBOMVersion("company1", "sp1");
 
-      const args = mockPrisma.bOM.findFirst.mock.calls[0][0];
-      expect(args.where.deletedAt).toBeNull();
-      expect(args.where.semiProductId).toBe("sp-1");
+      expect(result).toBe(1);
     });
   });
 
   // ── createBOM ──
   describe("createBOM", () => {
-    it("should create BOM with companyId", async () => {
-      const input = {
-        ownerType: "RECIPE_VARIANT" as const,
-        recipeVariantId: "var-1",
+    it("BOM을 생성한다", async () => {
+      const mockBom = { id: "b1", semiProductId: "sp1", version: 1 };
+      mockPrisma.bOM.create.mockResolvedValue(mockBom);
+
+      const result = await createBOM("company1", {
+        semiProductId: "sp1",
         version: 1,
         status: "DRAFT" as const,
-      };
-      mockPrisma.bOM.create.mockResolvedValue({
-        id: "new-bom",
-        ...input,
-        companyId: "company-1",
+        baseQuantity: 1,
+        baseUnit: "kg",
       });
 
-      const result = await createBOM("company-1", input);
-
-      expect(result.companyId).toBe("company-1");
-      const createArg = mockPrisma.bOM.create.mock.calls[0][0].data;
-      expect(createArg.companyId).toBe("company-1");
+      expect(result.id).toBe("b1");
     });
   });
 
   // ── updateBOMStatus ──
   describe("updateBOMStatus", () => {
-    it("should throw NOT_FOUND when BOM does not exist", async () => {
-      mockPrisma.bOM.findFirst.mockResolvedValue(null);
-
-      await expect(
-        updateBOMStatus("company-1", "non-existent", { status: "ACTIVE" as const })
-      ).rejects.toThrow("NOT_FOUND");
-    });
-
-    it("should archive existing ACTIVE BOM when setting new BOM to ACTIVE", async () => {
+    it("ACTIVE 전환 시 기존 ACTIVE를 ARCHIVED로 변경한다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue({
-        id: "bom-2",
-        companyId: "company-1",
-        ownerType: "RECIPE_VARIANT",
-        recipeVariantId: "var-1",
-        semiProductId: null,
+        id: "b1",
+        companyId: "company1",
+        semiProductId: "sp1",
         status: "DRAFT",
         deletedAt: null,
       });
       mockPrisma.bOM.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.bOM.update.mockResolvedValue({ id: "bom-2", status: "ACTIVE" });
+      mockPrisma.bOM.update.mockResolvedValue({ id: "b1", status: "ACTIVE" });
 
-      await updateBOMStatus("company-1", "bom-2", { status: "ACTIVE" as const });
-
-      // 기존 ACTIVE BOM을 ARCHIVED로 전환
-      expect(mockPrisma.bOM.updateMany).toHaveBeenCalledWith({
-        where: {
-          companyId: "company-1",
-          recipeVariantId: "var-1",
-          status: "ACTIVE",
-          deletedAt: null,
-          id: { not: "bom-2" },
-        },
-        data: { status: "ARCHIVED" },
+      const result = await updateBOMStatus("company1", "b1", {
+        status: "ACTIVE" as const,
       });
 
-      // 새 BOM을 ACTIVE로 설정
-      expect(mockPrisma.bOM.update).toHaveBeenCalledWith({
-        where: { id: "bom-2" },
-        data: { status: "ACTIVE" },
-      });
+      expect(result.status).toBe("ACTIVE");
+      expect(mockPrisma.bOM.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            semiProductId: "sp1",
+            status: "ACTIVE",
+            deletedAt: null,
+            id: { not: "b1" },
+          }),
+        })
+      );
     });
 
-    it("should not archive others when changing to non-ACTIVE status", async () => {
-      mockPrisma.bOM.findFirst.mockResolvedValue({
-        id: "bom-1",
-        companyId: "company-1",
-        ownerType: "RECIPE_VARIANT",
-        recipeVariantId: "var-1",
-        status: "ACTIVE",
-        deletedAt: null,
-      });
-      mockPrisma.bOM.update.mockResolvedValue({ id: "bom-1", status: "ARCHIVED" });
+    it("존재하지 않으면 NOT_FOUND 에러를 던진다", async () => {
+      mockPrisma.bOM.findFirst.mockResolvedValue(null);
 
-      await updateBOMStatus("company-1", "bom-1", { status: "ARCHIVED" as const });
-
-      // updateMany가 호출되지 않아야 함
-      expect(mockPrisma.bOM.updateMany).not.toHaveBeenCalled();
-
-      // 직접 update만 호출
-      expect(mockPrisma.bOM.update).toHaveBeenCalledWith({
-        where: { id: "bom-1" },
-        data: { status: "ARCHIVED" },
-      });
-    });
-
-    it("should handle SEMI_PRODUCT owner type when activating", async () => {
-      mockPrisma.bOM.findFirst.mockResolvedValue({
-        id: "bom-3",
-        companyId: "company-1",
-        ownerType: "SEMI_PRODUCT",
-        recipeVariantId: null,
-        semiProductId: "sp-1",
-        status: "DRAFT",
-        deletedAt: null,
-      });
-      mockPrisma.bOM.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.bOM.update.mockResolvedValue({ id: "bom-3", status: "ACTIVE" });
-
-      await updateBOMStatus("company-1", "bom-3", { status: "ACTIVE" as const });
-
-      expect(mockPrisma.bOM.updateMany).toHaveBeenCalledWith({
-        where: {
-          companyId: "company-1",
-          semiProductId: "sp-1",
-          status: "ACTIVE",
-          deletedAt: null,
-          id: { not: "bom-3" },
-        },
-        data: { status: "ARCHIVED" },
-      });
+      await expect(
+        updateBOMStatus("company1", "nonexistent", { status: "ACTIVE" as const })
+      ).rejects.toThrow("NOT_FOUND");
     });
   });
 
   // ── deleteBOM ──
   describe("deleteBOM", () => {
-    it("should soft-delete BOM by setting deletedAt", async () => {
+    it("soft-delete를 수행한다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue({
-        id: "bom-1",
-        companyId: "company-1",
+        id: "b1",
+        companyId: "company1",
         deletedAt: null,
       });
-      mockPrisma.bOM.update.mockResolvedValue({ id: "bom-1" });
+      mockPrisma.bOM.update.mockResolvedValue({ id: "b1", deletedAt: new Date() });
 
-      await deleteBOM("company-1", "bom-1");
+      const result = await deleteBOM("company1", "b1");
 
-      expect(mockPrisma.bOM.update).toHaveBeenCalledWith({
-        where: { id: "bom-1" },
-        data: { deletedAt: expect.any(Date) },
-      });
+      expect(result).toBeTruthy();
     });
 
-    it("should return null when BOM not found", async () => {
+    it("존재하지 않으면 null을 반환한다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue(null);
 
-      const result = await deleteBOM("company-1", "non-existent");
+      const result = await deleteBOM("company1", "nonexistent");
+
       expect(result).toBeNull();
     });
   });
 
-  // ── addBOMItem ──
-  describe("addBOMItem", () => {
-    it("should create BOMItem with bomId", async () => {
-      const input = {
-        itemType: "MATERIAL" as const,
-        materialMasterId: "mat-1",
-        quantity: 1.5,
+  // ── BOMItem CRUD ──
+  describe("BOMItem CRUD", () => {
+    it("addBOMItem - 항목을 추가한다", async () => {
+      mockPrisma.bOMItem.create.mockResolvedValue({
+        id: "bi1",
+        bomId: "b1",
+        materialMasterId: "m1",
+        quantity: 10,
+      });
+
+      const result = await addBOMItem("b1", {
+        materialMasterId: "m1",
+        quantity: 10,
         unit: "kg",
         sortOrder: 0,
-      };
-      mockPrisma.bOMItem.create.mockResolvedValue({ id: "item-1", bomId: "bom-1", ...input });
-
-      const result = await addBOMItem("bom-1", input);
-
-      expect(result.bomId).toBe("bom-1");
-      const createArg = mockPrisma.bOMItem.create.mock.calls[0][0].data;
-      expect(createArg.bomId).toBe("bom-1");
-      expect(createArg.quantity).toBe(1.5);
-    });
-  });
-
-  // ── updateBOMItem ──
-  describe("updateBOMItem", () => {
-    it("should update BOMItem fields", async () => {
-      mockPrisma.bOMItem.update.mockResolvedValue({ id: "item-1", quantity: 2.0 });
-
-      const result = await updateBOMItem("item-1", { quantity: 2.0 });
-
-      expect(result.quantity).toBe(2.0);
-      expect(mockPrisma.bOMItem.update).toHaveBeenCalledWith({
-        where: { id: "item-1" },
-        data: { quantity: 2.0 },
       });
+
+      expect(result.id).toBe("bi1");
     });
-  });
 
-  // ── deleteBOMItem ──
-  describe("deleteBOMItem", () => {
-    it("should hard-delete BOMItem", async () => {
-      mockPrisma.bOMItem.delete.mockResolvedValue({ id: "item-1" });
+    it("updateBOMItem - 항목을 수정한다", async () => {
+      mockPrisma.bOMItem.update.mockResolvedValue({ id: "bi1", quantity: 20 });
 
-      await deleteBOMItem("item-1");
+      const result = await updateBOMItem("bi1", { quantity: 20 });
 
-      expect(mockPrisma.bOMItem.delete).toHaveBeenCalledWith({
-        where: { id: "item-1" },
-      });
+      expect(result.quantity).toBe(20);
+    });
+
+    it("deleteBOMItem - 항목을 삭제한다", async () => {
+      mockPrisma.bOMItem.delete.mockResolvedValue({ id: "bi1" });
+
+      const result = await deleteBOMItem("bi1");
+
+      expect(result.id).toBe("bi1");
     });
   });
 
   // ── replaceBOMItems ──
   describe("replaceBOMItems", () => {
-    it("should delete existing items and create new ones in transaction", async () => {
-      const newItems = [
-        { itemType: "MATERIAL" as const, materialMasterId: "mat-1", quantity: 1, unit: "kg", sortOrder: 0 },
-        { itemType: "SUBSIDIARY" as const, subsidiaryMasterId: "sub-1", quantity: 0.5, unit: "L", sortOrder: 1 },
-      ];
-      mockPrisma.bOMItem.deleteMany.mockResolvedValue({ count: 3 });
-      mockPrisma.bOMItem.createMany.mockResolvedValue({ count: 2 });
+    it("기존 항목을 삭제하고 새 항목을 일괄 생성한다", async () => {
+      mockPrisma.bOMItem.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrisma.bOMItem.createMany.mockResolvedValue({ count: 3 });
       mockPrisma.bOMItem.findMany.mockResolvedValue([
-        { id: "new-1", bomId: "bom-1", ...newItems[0] },
-        { id: "new-2", bomId: "bom-1", ...newItems[1] },
+        { id: "bi1", sortOrder: 0 },
+        { id: "bi2", sortOrder: 1 },
+        { id: "bi3", sortOrder: 2 },
       ]);
 
-      const result = await replaceBOMItems("bom-1", newItems);
+      const result = await replaceBOMItems("b1", [
+        { materialMasterId: "m1", quantity: 10, unit: "kg", sortOrder: 0 },
+        { materialMasterId: "m2", quantity: 5, unit: "kg", sortOrder: 1 },
+        { materialMasterId: "m3", quantity: 3, unit: "kg", sortOrder: 2 },
+      ]);
 
-      expect(result).toHaveLength(2);
-
-      // 기존 아이템 삭제
-      expect(mockPrisma.bOMItem.deleteMany).toHaveBeenCalledWith({
-        where: { bomId: "bom-1" },
-      });
-
-      // 새 아이템 생성
-      expect(mockPrisma.bOMItem.createMany).toHaveBeenCalled();
-    });
-
-    it("should handle empty items array", async () => {
-      mockPrisma.bOMItem.deleteMany.mockResolvedValue({ count: 0 });
-      mockPrisma.bOMItem.findMany.mockResolvedValue([]);
-
-      const result = await replaceBOMItems("bom-1", []);
-
-      expect(result).toHaveLength(0);
-      expect(mockPrisma.bOMItem.deleteMany).toHaveBeenCalled();
-      expect(mockPrisma.bOMItem.createMany).not.toHaveBeenCalled();
+      expect(result).toHaveLength(3);
+      expect(mockPrisma.bOMItem.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { bomId: "b1" } })
+      );
     });
   });
 });

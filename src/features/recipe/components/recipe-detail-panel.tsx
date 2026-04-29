@@ -23,20 +23,19 @@ import {
 import { RecipeForm } from "./recipe-form";
 import {
   getRecipeByIdAction,
-  getVariantsByRecipeIdAction,
-  createVariantAction,
-  deleteVariantAction,
-  createBOMWithAutoVersionAction,
-  updateBOMStatusAction,
-  deleteBOMAction,
-  addBOMItemAction,
-  deleteBOMItemAction,
+  getIngredientsByRecipeIdAction,
+  addIngredientAction,
+  deleteIngredientAction,
+  createRecipeBOMWithAutoVersionAction,
+  updateRecipeBOMStatusAction,
+  deleteRecipeBOMAction,
+  addRecipeBOMSlotAction,
+  deleteRecipeBOMSlotAction,
+  addRecipeBOMSlotItemAction,
+  deleteRecipeBOMSlotItemAction,
 } from "../actions/recipe.action";
 import {
   getMaterialsAction,
-} from "@/features/material/actions/material.action";
-import {
-  getSubsidiariesAction,
 } from "@/features/material/actions/material.action";
 import {
   Pencil,
@@ -50,32 +49,41 @@ import {
   Archive,
 } from "lucide-react";
 import type { RecipeRow } from "./recipe-list";
-import { ServingSetTab } from "./serving-set-tab";
 
-type BOMItemRow = {
+type IngredientRow = {
   id: string;
-  itemType: string;
-  quantity: number;
+  ingredientType: string;
+  sortOrder: number;
+  materialMaster: { id: string; name: string; code: string; unit: string } | null;
+  semiProduct: { id: string; name: string; code: string; unit: string } | null;
+};
+
+type RecipeBOMSlotItemRow = {
+  id: string;
+  ingredientType: string;
+  weightG: number;
   unit: string;
   sortOrder: number;
   materialMaster: { id: string; name: string; code: string; unit: string } | null;
-  subsidiaryMaster: { id: string; name: string; code: string; unit: string } | null;
+  semiProduct: { id: string; name: string; code: string; unit: string } | null;
 };
 
-type BOMRow = {
+type RecipeBOMSlotRow = {
+  id: string;
+  slotIndex: number;
+  totalWeightG: number;
+  note: string | null;
+  sortOrder: number;
+  containerGroup: { id: string; name: string; code: string };
+  items: RecipeBOMSlotItemRow[];
+};
+
+type RecipeBOMRow = {
   id: string;
   version: number;
   status: string;
-  items: BOMItemRow[];
-};
-
-type VariantRow = {
-  id: string;
-  variantName: string;
-  servings: number;
-  baseWeightG: number | null;  // ← 추가
-  description: string | null;
-  boms: BOMRow[];
+  baseWeightG: number;
+  slots: RecipeBOMSlotRow[];
 };
 
 type Props = {
@@ -98,34 +106,27 @@ const BOM_STATUS_STYLES: Record<string, string> = {
 
 export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
-  const [variants, setVariants] = useState<VariantRow[]>([]);
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [recipeBoms, setRecipeBoms] = useState<RecipeBOMRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expandedVariant, setExpandedVariant] = useState<string | null>(null);
+  const [expandedBom, setExpandedBom] = useState<string | null>(null);
 
-  // 변형 추가 폼
-  const [showVariantForm, setShowVariantForm] = useState(false);
-  const [newVariantName, setNewVariantName] = useState("");
-  const [newServings, setNewServings] = useState("1");
-  const [variantSaving, setVariantSaving] = useState(false);
+  // 재료 추가 폼
+  const [showIngredientForm, setShowIngredientForm] = useState(false);
+  const [newIngredientType, setNewIngredientType] = useState<"MATERIAL" | "SEMI_PRODUCT">("MATERIAL");
+  const [newIngredientId, setNewIngredientId] = useState("");
+  const [ingredientSaving, setIngredientSaving] = useState(false);
 
-  // BOM 아이템 추가 폼
-  const [addingItemBomId, setAddingItemBomId] = useState<string | null>(null);
-  const [newItemType, setNewItemType] = useState<"MATERIAL" | "SUBSIDIARY">("MATERIAL");
-  const [newItemId, setNewItemId] = useState("");
-  const [newItemQty, setNewItemQty] = useState("");
-  const [newItemUnit, setNewItemUnit] = useState("");
-  const [itemSaving, setItemSaving] = useState(false);
-
-  // 자재/부자재 목록 (BOM 아이템 선택용)
+  // 식자재 목록 (재료 선택용)
   const [materialOptions, setMaterialOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
-  const [subsidiaryOptions, setSubsidiaryOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
       const result = await getRecipeByIdAction(recipe.id);
       if (result.success && result.data) {
-        setVariants(result.data.variants as unknown as VariantRow[]);
+        setIngredients(result.data.ingredients as unknown as IngredientRow[]);
+        setRecipeBoms(result.data.recipeBoms as unknown as RecipeBOMRow[]);
       }
     } finally {
       setLoading(false);
@@ -133,18 +134,10 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
   }, [recipe.id]);
 
   const loadOptions = useCallback(async () => {
-    const [matResult, subResult] = await Promise.all([
-      getMaterialsAction({ page: 1, limit: 100, sortBy: "name", sortOrder: "asc" }),
-      getSubsidiariesAction({ page: 1, limit: 100, sortBy: "name", sortOrder: "asc" }),
-    ]);
+    const matResult = await getMaterialsAction({ page: 1, limit: 100, sortBy: "name", sortOrder: "asc" });
     if (matResult.success) {
       setMaterialOptions(
         matResult.data.items.map((m) => ({ id: m.id, name: m.name, code: m.code, unit: m.unit }))
-      );
-    }
-    if (subResult.success) {
-      setSubsidiaryOptions(
-        subResult.data.items.map((s) => ({ id: s.id, name: s.name, code: s.code, unit: s.unit }))
       );
     }
   }, []);
@@ -154,99 +147,65 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
     loadOptions();
   }, [loadDetail, loadOptions]);
 
-  // ── 변형 추가 ──
-  const handleAddVariant = async () => {
-    if (!newVariantName.trim()) return;
-    setVariantSaving(true);
+  // ── 재료 추가 ──
+  const handleAddIngredient = async () => {
+    if (!newIngredientId) return;
+    setIngredientSaving(true);
     try {
-      const result = await createVariantAction(recipe.id, {
-        variantName: newVariantName,
-        servings: Number(newServings) || 1,
-      });
+      const input: Record<string, unknown> = {
+        ingredientType: newIngredientType,
+        ...(newIngredientType === "MATERIAL"
+          ? { materialMasterId: newIngredientId }
+          : { semiProductId: newIngredientId }),
+        sortOrder: ingredients.length,
+      };
+      const result = await addIngredientAction(recipe.id, input);
       if (result.success) {
-        setNewVariantName("");
-        setNewServings("1");
-        setShowVariantForm(false);
+        setNewIngredientId("");
+        setShowIngredientForm(false);
         loadDetail();
         onUpdated();
       }
     } finally {
-      setVariantSaving(false);
+      setIngredientSaving(false);
     }
   };
 
-  // ── 변형 삭제 ──
-  const handleDeleteVariant = async (variantId: string) => {
-    const result = await deleteVariantAction(variantId);
+  // ── 재료 삭제 ──
+  const handleDeleteIngredient = async (id: string) => {
+    const result = await deleteIngredientAction(id);
     if (result.success) {
       loadDetail();
       onUpdated();
     }
   };
 
-  // ── BOM 생성 (자동 버전) ──
-  const handleCreateBOM = async (variantId: string) => {
-    const result = await createBOMWithAutoVersionAction({
-      ownerType: "RECIPE_VARIANT",
-      recipeVariantId: variantId,
+  // ── RecipeBOM 생성 (자동 버전) ──
+  const handleCreateRecipeBOM = async () => {
+    const result = await createRecipeBOMWithAutoVersionAction({
+      recipeId: recipe.id,
+      baseWeightG: 500, // 기본값
     });
     if (result.success) {
       loadDetail();
     }
   };
 
-  // ── BOM 상태 변경 ──
+  // ── RecipeBOM 상태 변경 ──
   const handleBOMStatus = async (bomId: string, status: string) => {
-    const result = await updateBOMStatusAction(bomId, { status });
+    const result = await updateRecipeBOMStatusAction(bomId, { status });
     if (result.success) {
       loadDetail();
     }
   };
 
-  // ── BOM 삭제 ──
+  // ── RecipeBOM 삭제 ──
   const handleDeleteBOM = async (bomId: string) => {
-    const result = await deleteBOMAction(bomId);
+    const result = await deleteRecipeBOMAction(bomId);
     if (result.success) {
       loadDetail();
     }
   };
-
-  // ── BOM 아이템 추가 ──
-  const handleAddItem = async (bomId: string) => {
-    if (!newItemId || !newItemQty || !newItemUnit) return;
-    setItemSaving(true);
-    try {
-      const input: Record<string, unknown> = {
-        itemType: newItemType,
-        quantity: Number(newItemQty),
-        unit: newItemUnit,
-        ...(newItemType === "MATERIAL"
-          ? { materialMasterId: newItemId }
-          : { subsidiaryMasterId: newItemId }),
-      };
-      const result = await addBOMItemAction(bomId, input);
-      if (result.success) {
-        setAddingItemBomId(null);
-        setNewItemId("");
-        setNewItemQty("");
-        setNewItemUnit("");
-        loadDetail();
-      }
-    } finally {
-      setItemSaving(false);
-    }
-  };
-
-  // ── BOM 아이템 삭제 ──
-  const handleDeleteItem = async (itemId: string) => {
-    const result = await deleteBOMItemAction(itemId);
-    if (result.success) {
-      loadDetail();
-    }
-  };
-
-  // 현재 아이템 타입에 맞는 옵션
-  const currentOptions = newItemType === "MATERIAL" ? materialOptions : subsidiaryOptions;
 
   // ── 기본정보 탭 ──
   const renderInfoTab = () => {
@@ -286,8 +245,8 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
             <p>{recipe.description || "-"}</p>
           </div>
           <div>
-            <p className="text-gray-500">변형 수</p>
-            <p className="font-medium">{variants.length}개</p>
+            <p className="text-gray-500">재료 수</p>
+            <p className="font-medium">{ingredients.length}개</p>
           </div>
           <div>
             <p className="text-gray-500">등록일</p>
@@ -298,8 +257,8 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
     );
   };
 
-  // ── 변형 + BOM 탭 ──
-  const renderVariantsTab = () => {
+  // ── 재료 + BOM 탭 ──
+  const renderIngredientsTab = () => {
     if (loading) {
       return (
         <div className="flex items-center justify-center py-8">
@@ -309,309 +268,254 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
     }
 
     return (
-      <div className="space-y-4">
-        {/* 변형 추가 */}
-        {showVariantForm ? (
-          <div className="rounded-md border border-blue-200 bg-blue-50/50 p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">변형명 *</Label>
-                <Input
-                  placeholder="예: 기본, 매운맛"
-                  value={newVariantName}
-                  onChange={(e) => setNewVariantName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">인분 수</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={newServings}
-                  onChange={(e) => setNewServings(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleAddVariant} disabled={variantSaving}>
-                {variantSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                추가
+      <div className="space-y-6">
+        {/* 재료 섹션 */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">재료 목록</h3>
+            {showIngredientForm ? null : (
+              <Button size="sm" variant="outline" onClick={() => setShowIngredientForm(true)}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                재료 추가
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowVariantForm(false)}>
-                취소
-              </Button>
-            </div>
+            )}
           </div>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setShowVariantForm(true)}>
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            변형 추가
-          </Button>
-        )}
 
-        {/* 변형 목록 */}
-        {variants.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">
-            등록된 변형이 없습니다. 변형을 추가해 주세요.
-          </p>
-        ) : (
-          variants.map((variant) => {
-            const isExpanded = expandedVariant === variant.id;
-            return (
-              <div key={variant.id} className="rounded-md border">
-                {/* 변형 헤더 */}
-                <div
-                  className="flex cursor-pointer items-center justify-between px-4 py-3 hover:bg-gray-50"
-                  onClick={() => setExpandedVariant(isExpanded ? null : variant.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    {isExpanded ? (
-                      <ChevronUp className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
-                    )}
-                    <div>
-                      <p className="font-medium">{variant.variantName}</p>
-                      <p className="text-xs text-gray-500">
-                        {variant.servings}인분 · BOM {variant.boms.length}개
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteVariant(variant.id);
+          {showIngredientForm && (
+            <div className="rounded-md border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">재료 타입</Label>
+                  <Select
+                    value={newIngredientType}
+                    onValueChange={(v) => {
+                      setNewIngredientType(v as "MATERIAL" | "SEMI_PRODUCT");
+                      setNewIngredientId("");
                     }}
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                  </Button>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MATERIAL">식자재</SelectItem>
+                      <SelectItem value="SEMI_PRODUCT">반제품</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                {/* BOM 내용 */}
-                {isExpanded && (
-                  <div className="border-t px-4 py-3 space-y-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCreateBOM(variant.id)}
-                    >
-                      <Plus className="mr-1 h-3.5 w-3.5" />
-                      새 BOM 버전
-                    </Button>
-
-                    {variant.boms.length === 0 ? (
-                      <p className="text-center text-sm text-gray-400 py-4">
-                        BOM이 없습니다
-                      </p>
-                    ) : (
-                      variant.boms.map((bom) => (
-                        <div key={bom.id} className="rounded border bg-gray-50/50 p-3 space-y-2">
-                          {/* BOM 헤더 */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">v{bom.version}</span>
-                              <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  BOM_STATUS_STYLES[bom.status] ?? "bg-gray-100"
-                                }`}
-                              >
-                                {BOM_STATUS_LABELS[bom.status] ?? bom.status}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {bom.status === "DRAFT" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs text-green-600"
-                                  onClick={() => handleBOMStatus(bom.id, "ACTIVE")}
-                                  title="확정"
-                                >
-                                  <Check className="mr-1 h-3 w-3" />
-                                  확정
-                                </Button>
-                              )}
-                              {bom.status === "ACTIVE" && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs text-orange-600"
-                                  onClick={() => handleBOMStatus(bom.id, "ARCHIVED")}
-                                  title="보관"
-                                >
-                                  <Archive className="mr-1 h-3 w-3" />
-                                  보관
-                                </Button>
-                              )}
-                              {bom.status !== "ACTIVE" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => handleDeleteBOM(bom.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* BOM 아이템 테이블 */}
-                          {bom.items.length > 0 && (
-                            <div className="rounded border">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="text-xs">구분</TableHead>
-                                    <TableHead className="text-xs">자재/부자재</TableHead>
-                                    <TableHead className="text-xs text-right">수량</TableHead>
-                                    <TableHead className="text-xs">단위</TableHead>
-                                    <TableHead className="w-[40px]" />
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {bom.items.map((item) => (
-                                    <TableRow key={item.id}>
-                                      <TableCell className="text-xs">
-                                        <span className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
-                                          item.itemType === "MATERIAL"
-                                            ? "bg-blue-50 text-blue-700"
-                                            : "bg-purple-50 text-purple-700"
-                                        }`}>
-                                          {item.itemType === "MATERIAL" ? "자재" : "부자재"}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="text-xs font-medium">
-                                        {item.materialMaster?.name ?? item.subsidiaryMaster?.name ?? "-"}
-                                        <span className="ml-1 text-gray-400">
-                                          ({item.materialMaster?.code ?? item.subsidiaryMaster?.code})
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="text-right text-xs font-mono">
-                                        {item.quantity}
-                                      </TableCell>
-                                      <TableCell className="text-xs">{item.unit}</TableCell>
-                                      <TableCell>
-                                        {bom.status === "DRAFT" && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6"
-                                            onClick={() => handleDeleteItem(item.id)}
-                                          >
-                                            <Trash2 className="h-3 w-3 text-red-400" />
-                                          </Button>
-                                        )}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
-
-                          {/* BOM 아이템 추가 (DRAFT만) */}
-                          {bom.status === "DRAFT" && (
-                            <>
-                              {addingItemBomId === bom.id ? (
-                                <div className="rounded border border-dashed border-blue-300 bg-blue-50/30 p-3 space-y-2">
-                                  <div className="grid grid-cols-4 gap-2">
-                                    <Select
-                                      value={newItemType}
-                                      onValueChange={(v) => {
-                                        setNewItemType(v as "MATERIAL" | "SUBSIDIARY");
-                                        setNewItemId("");
-                                        setNewItemUnit("");
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="MATERIAL">자재</SelectItem>
-                                        <SelectItem value="SUBSIDIARY">부자재</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                    <Select
-                                      value={newItemId}
-                                      onValueChange={(v) => {
-                                        setNewItemId(v);
-                                        const opt = currentOptions.find((o) => o.id === v);
-                                        if (opt) setNewItemUnit(opt.unit);
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="선택" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {currentOptions.map((opt) => (
-                                          <SelectItem key={opt.id} value={opt.id}>
-                                            {opt.name} ({opt.code})
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <Input
-                                      type="number"
-                                      min={0.001}
-                                      step="any"
-                                      placeholder="수량"
-                                      className="h-8 text-xs"
-                                      value={newItemQty}
-                                      onChange={(e) => setNewItemQty(e.target.value)}
-                                    />
-                                    <Input
-                                      placeholder="단위"
-                                      className="h-8 text-xs"
-                                      value={newItemUnit}
-                                      onChange={(e) => setNewItemUnit(e.target.value)}
-                                    />
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      className="h-7 text-xs"
-                                      onClick={() => handleAddItem(bom.id)}
-                                      disabled={itemSaving}
-                                    >
-                                      {itemSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                                      추가
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 text-xs"
-                                      onClick={() => setAddingItemBomId(null)}
-                                    >
-                                      취소
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-xs text-blue-600"
-                                  onClick={() => setAddingItemBomId(bom.id)}
-                                >
-                                  <Plus className="mr-1 h-3 w-3" />
-                                  자재/부자재 추가
-                                </Button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
+                  </Label>
+                  <Select value={newIngredientId} onValueChange={setNewIngredientId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materialOptions.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name} ({opt.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            );
-          })
-        )}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleAddIngredient} disabled={ingredientSaving}>
+                  {ingredientSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                  추가
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowIngredientForm(false)}>
+                  취소
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {ingredients.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-500">
+              등록된 재료가 없습니다.
+            </p>
+          ) : (
+            <div className="rounded border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">구분</TableHead>
+                    <TableHead className="text-xs">재료명</TableHead>
+                    <TableHead className="text-xs">코드</TableHead>
+                    <TableHead className="w-[40px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ingredients.map((ing) => (
+                    <TableRow key={ing.id}>
+                      <TableCell className="text-xs">
+                        <span className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
+                          ing.ingredientType === "MATERIAL"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-purple-50 text-purple-700"
+                        }`}>
+                          {ing.ingredientType === "MATERIAL" ? "식자재" : "반제품"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {ing.materialMaster?.name ?? ing.semiProduct?.name ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-400">
+                        {ing.materialMaster?.code ?? ing.semiProduct?.code ?? "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleDeleteIngredient(ing.id)}
+                        >
+                          <Trash2 className="h-3 w-3 text-red-400" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        {/* RecipeBOM 섹션 */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">레시피 BOM (배식 중량)</h3>
+            <Button size="sm" variant="outline" onClick={handleCreateRecipeBOM}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              새 BOM 버전
+            </Button>
+          </div>
+
+          {recipeBoms.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-500">
+              BOM이 없습니다.
+            </p>
+          ) : (
+            recipeBoms.map((bom) => {
+              const isExpanded = expandedBom === bom.id;
+              return (
+                <div key={bom.id} className="rounded-md border">
+                  <div
+                    className="flex cursor-pointer items-center justify-between px-4 py-3 hover:bg-gray-50"
+                    onClick={() => setExpandedBom(isExpanded ? null : bom.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">v{bom.version}</span>
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              BOM_STATUS_STYLES[bom.status] ?? "bg-gray-100"
+                            }`}
+                          >
+                            {BOM_STATUS_LABELS[bom.status] ?? bom.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          기준 중량: {bom.baseWeightG}g · 슬롯 {bom.slots.length}개
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {bom.status === "DRAFT" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-green-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBOMStatus(bom.id, "ACTIVE");
+                          }}
+                        >
+                          <Check className="mr-1 h-3 w-3" />
+                          확정
+                        </Button>
+                      )}
+                      {bom.status === "ACTIVE" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-orange-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBOMStatus(bom.id, "ARCHIVED");
+                          }}
+                        >
+                          <Archive className="mr-1 h-3 w-3" />
+                          보관
+                        </Button>
+                      )}
+                      {bom.status !== "ACTIVE" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteBOM(bom.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t px-4 py-3 space-y-2">
+                      {bom.slots.length === 0 ? (
+                        <p className="text-center text-sm text-gray-400 py-4">
+                          슬롯이 없습니다
+                        </p>
+                      ) : (
+                        bom.slots.map((slot) => (
+                          <div key={slot.id} className="rounded border bg-gray-50/50 p-3 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">{slot.containerGroup.name}</span>
+                                <span className="text-gray-400">Slot {slot.slotIndex}</span>
+                                <span className="font-mono text-blue-700">{slot.totalWeightG}g</span>
+                              </div>
+                            </div>
+                            {slot.items.length > 0 && (
+                              <div className="ml-4 space-y-1">
+                                {slot.items.map((item) => (
+                                  <div key={item.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                    <span className={`inline-flex rounded px-1 py-0.5 ${
+                                      item.ingredientType === "MATERIAL"
+                                        ? "bg-blue-50 text-blue-600"
+                                        : "bg-purple-50 text-purple-600"
+                                    }`}>
+                                      {item.ingredientType === "MATERIAL" ? "자재" : "반제품"}
+                                    </span>
+                                    <span>{item.materialMaster?.name ?? item.semiProduct?.name ?? "-"}</span>
+                                    <span className="font-mono">{item.weightG}{item.unit}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     );
   };
@@ -630,34 +534,18 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
 
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <Tabs defaultValue="info">
-            <TabsList className="w-full">
-                <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
-                <TabsTrigger value="variants" className="flex-1">
-                변형 / BOM ({variants.length})
-                </TabsTrigger>
-                <TabsTrigger value="serving" className="flex-1">
-                서빙 중량
-                </TabsTrigger>
-            </TabsList>
-            <TabsContent value="info" className="mt-4">
-                {renderInfoTab()}
-            </TabsContent>
-            <TabsContent value="variants" className="mt-4">
-                {renderVariantsTab()}
-            </TabsContent>
-            <TabsContent value="serving" className="mt-4">
-                <ServingSetTab
-                variants={variants.map((v) => ({
-                    id: v.id,
-                    variantName: v.variantName,
-                    baseWeightG: v.baseWeightG,
-                }))}
-                onVariantUpdated={() => {
-                    loadDetail();
-                    onUpdated();
-                }}
-                />
-            </TabsContent>
+          <TabsList className="w-full">
+            <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
+            <TabsTrigger value="ingredients" className="flex-1">
+              재료 / BOM ({ingredients.length})
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="info" className="mt-4">
+            {renderInfoTab()}
+          </TabsContent>
+          <TabsContent value="ingredients" className="mt-4">
+            {renderIngredientsTab()}
+          </TabsContent>
         </Tabs>
       </div>
     </div>

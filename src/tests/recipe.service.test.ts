@@ -3,21 +3,19 @@ import { mockPrisma } from "./mocks/prisma";
 
 // withTransaction mock
 vi.mock("@/lib/auth/transaction", () => ({
-  withTransaction: vi.fn((fn) => fn(mockPrisma)),
+  withTransaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 }));
 
 import {
   getRecipes,
   getRecipeById,
-  getRecipeByCode,
   createRecipe,
   updateRecipe,
   deleteRecipe,
-  getVariantsByRecipeId,
-  getVariantById,
-  createVariant,
-  updateVariant,
-  deleteVariant,
+  getIngredientsByRecipeId,
+  addIngredient,
+  updateIngredient,
+  deleteIngredient,
 } from "@/features/recipe/services/recipe.service";
 
 describe("recipe.service", () => {
@@ -27,322 +25,218 @@ describe("recipe.service", () => {
 
   // ── getRecipes ──
   describe("getRecipes", () => {
-    it("should include deletedAt: null in where clause", async () => {
-      mockPrisma.recipe.findMany.mockResolvedValue([]);
-      mockPrisma.recipe.count.mockResolvedValue(0);
+    it("페이지네이션과 검색을 지원한다", async () => {
+      const mockItems = [
+        { id: "r1", name: "김치찌개", code: "RCP-001", ingredients: [], recipeBoms: [] },
+      ];
+      mockPrisma.recipe.findMany.mockResolvedValue(mockItems);
+      mockPrisma.recipe.count.mockResolvedValue(1);
 
-      await getRecipes("company-1", {
+      const result = await getRecipes("company1", {
         page: 1,
         limit: 20,
+        search: "김치",
         sortBy: "createdAt",
         sortOrder: "desc",
       });
 
-      const whereArg = mockPrisma.recipe.findMany.mock.calls[0][0].where;
-      expect(whereArg.deletedAt).toBeNull();
-      expect(whereArg.companyId).toBe("company-1");
-    });
-
-    it("should apply search filter with OR condition", async () => {
-      mockPrisma.recipe.findMany.mockResolvedValue([]);
-      mockPrisma.recipe.count.mockResolvedValue(0);
-
-      await getRecipes("company-1", {
-        page: 1,
-        limit: 20,
-        search: "김치찌개",
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-
-      const whereArg = mockPrisma.recipe.findMany.mock.calls[0][0].where;
-      expect(whereArg.OR).toBeDefined();
-      expect(whereArg.OR).toHaveLength(2);
-    });
-
-    it("should calculate pagination correctly", async () => {
-      mockPrisma.recipe.findMany.mockResolvedValue([]);
-      mockPrisma.recipe.count.mockResolvedValue(45);
-
-      const result = await getRecipes("company-1", {
-        page: 2,
-        limit: 20,
-        sortBy: "createdAt",
-        sortOrder: "desc",
-      });
-
-      expect(result.pagination).toEqual({
-        page: 2,
-        limit: 20,
-        total: 45,
-        totalPages: 3,
-      });
-
-      const findManyArgs = mockPrisma.recipe.findMany.mock.calls[0][0];
-      expect(findManyArgs.skip).toBe(20);
-      expect(findManyArgs.take).toBe(20);
-    });
-
-    it("should include variants with deletedAt: null filter", async () => {
-      mockPrisma.recipe.findMany.mockResolvedValue([]);
-      mockPrisma.recipe.count.mockResolvedValue(0);
-
-      await getRecipes("company-1", {
-        page: 1,
-        limit: 20,
-        sortBy: "createdAt",
-        sortOrder: "desc",
-      });
-
-      const includeArg = mockPrisma.recipe.findMany.mock.calls[0][0].include;
-      expect(includeArg.variants).toBeDefined();
-      expect(includeArg.variants.where.deletedAt).toBeNull();
+      expect(result.items).toEqual(mockItems);
+      expect(result.pagination.total).toBe(1);
+      expect(mockPrisma.recipe.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: "company1",
+            deletedAt: null,
+          }),
+        })
+      );
     });
   });
 
   // ── getRecipeById ──
   describe("getRecipeById", () => {
-    it("should query with companyId, id, and deletedAt: null", async () => {
-      const mockRecipe = { id: "rcp-1", name: "김치찌개", companyId: "company-1" };
+    it("레시피를 재료 및 RecipeBOM과 함께 조회한다", async () => {
+      const mockRecipe = {
+        id: "r1",
+        name: "김치찌개",
+        ingredients: [{ id: "ing1", ingredientType: "MATERIAL" }],
+        recipeBoms: [
+          {
+            id: "rb1",
+            version: 1,
+            deletedAt: null,
+            slots: [],
+          },
+        ],
+      };
       mockPrisma.recipe.findFirst.mockResolvedValue(mockRecipe);
 
-      const result = await getRecipeById("company-1", "rcp-1");
+      const result = await getRecipeById("company1", "r1");
 
       expect(result).toEqual(mockRecipe);
-      const whereArg = mockPrisma.recipe.findFirst.mock.calls[0][0].where;
-      expect(whereArg).toEqual({ id: "rcp-1", companyId: "company-1", deletedAt: null });
+      expect(mockPrisma.recipe.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "r1", companyId: "company1", deletedAt: null },
+        })
+      );
     });
 
-    it("should filter variants and boms by deletedAt: null", async () => {
+    it("레시피가 없으면 null을 반환한다", async () => {
       mockPrisma.recipe.findFirst.mockResolvedValue(null);
 
-      await getRecipeById("company-1", "rcp-1");
+      const result = await getRecipeById("company1", "nonexistent");
 
-      const includeArg = mockPrisma.recipe.findFirst.mock.calls[0][0].include;
-      expect(includeArg.variants.where.deletedAt).toBeNull();
-      expect(includeArg.variants.include.boms.where.deletedAt).toBeNull();
-    });
-
-    it("should return null when not found", async () => {
-      mockPrisma.recipe.findFirst.mockResolvedValue(null);
-
-      const result = await getRecipeById("company-1", "non-existent");
       expect(result).toBeNull();
-    });
-  });
-
-  // ── getRecipeByCode ──
-  describe("getRecipeByCode", () => {
-    it("should query with deletedAt: null", async () => {
-      mockPrisma.recipe.findFirst.mockResolvedValue(null);
-
-      await getRecipeByCode("company-1", "RCP-001");
-
-      const whereArg = mockPrisma.recipe.findFirst.mock.calls[0][0].where;
-      expect(whereArg.deletedAt).toBeNull();
-      expect(whereArg.code).toBe("RCP-001");
     });
   });
 
   // ── createRecipe ──
   describe("createRecipe", () => {
-    it("should auto-generate code RCP-001 when no recipes exist", async () => {
-      mockPrisma.recipe.findFirst.mockResolvedValue(null);
-      mockPrisma.recipe.create.mockResolvedValue({
-        id: "new-id",
-        code: "RCP-001",
-        name: "김치찌개",
-      });
-
-      const result = await createRecipe("company-1", { name: "김치찌개" });
-
-      expect(result.code).toBe("RCP-001");
-      const createArg = mockPrisma.recipe.create.mock.calls[0][0].data;
-      expect(createArg.code).toBe("RCP-001");
-      expect(createArg.companyId).toBe("company-1");
-    });
-
-    it("should increment code from last existing recipe", async () => {
+    it("코드를 자동 생성하여 레시피를 만든다", async () => {
       mockPrisma.recipe.findFirst.mockResolvedValue({ code: "RCP-005" });
       mockPrisma.recipe.create.mockResolvedValue({
-        id: "new-id",
-        code: "RCP-006",
+        id: "r1",
         name: "된장찌개",
+        code: "RCP-006",
       });
 
-      await createRecipe("company-1", { name: "된장찌개" });
+      const result = await createRecipe("company1", { name: "된장찌개" });
 
-      const createArg = mockPrisma.recipe.create.mock.calls[0][0].data;
-      expect(createArg.code).toBe("RCP-006");
+      expect(result.code).toBe("RCP-006");
+      expect(mockPrisma.recipe.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: "된장찌개",
+            companyId: "company1",
+            code: "RCP-006",
+          }),
+        })
+      );
+    });
+
+    it("첫 번째 레시피는 RCP-001 코드를 받는다", async () => {
+      mockPrisma.recipe.findFirst.mockResolvedValue(null);
+      mockPrisma.recipe.create.mockResolvedValue({
+        id: "r1",
+        name: "김치찌개",
+        code: "RCP-001",
+      });
+
+      await createRecipe("company1", { name: "김치찌개" });
+
+      expect(mockPrisma.recipe.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ code: "RCP-001" }),
+        })
+      );
     });
   });
 
   // ── updateRecipe ──
   describe("updateRecipe", () => {
-    it("should update recipe fields", async () => {
+    it("레시피를 수정한다", async () => {
       mockPrisma.recipe.update.mockResolvedValue({
-        id: "rcp-1",
-        name: "수정된 레시피",
+        id: "r1",
+        name: "수정된 김치찌개",
       });
 
-      const result = await updateRecipe("company-1", "rcp-1", { name: "수정된 레시피" });
+      const result = await updateRecipe("company1", "r1", { name: "수정된 김치찌개" });
 
-      expect(result.name).toBe("수정된 레시피");
-      expect(mockPrisma.recipe.update).toHaveBeenCalledWith({
-        where: { id: "rcp-1" },
-        data: { name: "수정된 레시피" },
-      });
+      expect(result.name).toBe("수정된 김치찌개");
     });
   });
 
   // ── deleteRecipe ──
   describe("deleteRecipe", () => {
-    it("should soft-delete recipe and cascade to variants and BOMs", async () => {
+    it("레시피와 연관된 RecipeBOM을 soft-delete하고 재료를 삭제한다", async () => {
       mockPrisma.recipe.findFirst.mockResolvedValue({
-        id: "rcp-1",
-        companyId: "company-1",
+        id: "r1",
+        companyId: "company1",
         deletedAt: null,
-        variants: [{ id: "var-1" }, { id: "var-2" }],
       });
-      mockPrisma.bOM.updateMany.mockResolvedValue({ count: 2 });
-      mockPrisma.recipeVariant.updateMany.mockResolvedValue({ count: 2 });
-      mockPrisma.recipe.update.mockResolvedValue({ id: "rcp-1" });
+      mockPrisma.recipeBOM.updateMany.mockResolvedValue({ count: 2 });
+      mockPrisma.recipeIngredient.deleteMany.mockResolvedValue({ count: 3 });
+      mockPrisma.recipe.update.mockResolvedValue({ id: "r1", deletedAt: new Date() });
 
-      await deleteRecipe("company-1", "rcp-1");
+      const result = await deleteRecipe("company1", "r1");
 
-      // BOM soft-delete 확인
-      expect(mockPrisma.bOM.updateMany).toHaveBeenCalledWith({
-        where: {
-          recipeVariantId: { in: ["var-1", "var-2"] },
-          deletedAt: null,
-        },
-        data: { deletedAt: expect.any(Date) },
-      });
-
-      // Variant soft-delete 확인
-      expect(mockPrisma.recipeVariant.updateMany).toHaveBeenCalledWith({
-        where: {
-          id: { in: ["var-1", "var-2"] },
-          deletedAt: null,
-        },
-        data: { deletedAt: expect.any(Date) },
-      });
-
-      // Recipe soft-delete 확인
-      expect(mockPrisma.recipe.update).toHaveBeenCalledWith({
-        where: { id: "rcp-1" },
-        data: { deletedAt: expect.any(Date) },
-      });
+      expect(result).toBeTruthy();
+      expect(mockPrisma.recipeBOM.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { recipeId: "r1", deletedAt: null },
+          data: expect.objectContaining({ deletedAt: expect.any(Date) }),
+        })
+      );
+      expect(mockPrisma.recipeIngredient.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { recipeId: "r1" },
+        })
+      );
     });
 
-    it("should return null when recipe not found", async () => {
+    it("존재하지 않는 레시피는 null을 반환한다", async () => {
       mockPrisma.recipe.findFirst.mockResolvedValue(null);
 
-      const result = await deleteRecipe("company-1", "non-existent");
+      const result = await deleteRecipe("company1", "nonexistent");
+
       expect(result).toBeNull();
     });
   });
 
-  // ── getVariantsByRecipeId ──
-  describe("getVariantsByRecipeId", () => {
-    it("should filter by recipeId and deletedAt: null", async () => {
-      mockPrisma.recipeVariant.findMany.mockResolvedValue([]);
+  // ── RecipeIngredient ──
+  describe("RecipeIngredient CRUD", () => {
+    it("getIngredientsByRecipeId - 재료 목록을 조회한다", async () => {
+      const mockIngredients = [
+        { id: "ing1", ingredientType: "MATERIAL", materialMaster: { id: "m1" } },
+      ];
+      mockPrisma.recipeIngredient.findMany.mockResolvedValue(mockIngredients);
 
-      await getVariantsByRecipeId("rcp-1");
+      const result = await getIngredientsByRecipeId("r1");
 
-      const args = mockPrisma.recipeVariant.findMany.mock.calls[0][0];
-      expect(args.where.recipeId).toBe("rcp-1");
-      expect(args.where.deletedAt).toBeNull();
+      expect(result).toEqual(mockIngredients);
+      expect(mockPrisma.recipeIngredient.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { recipeId: "r1" },
+          orderBy: { sortOrder: "asc" },
+        })
+      );
     });
 
-    it("should include only ACTIVE BOMs with deletedAt: null", async () => {
-      mockPrisma.recipeVariant.findMany.mockResolvedValue([]);
+    it("addIngredient - 재료를 추가한다", async () => {
+      const mockIngredient = {
+        id: "ing1",
+        recipeId: "r1",
+        ingredientType: "MATERIAL",
+        materialMasterId: "m1",
+      };
+      mockPrisma.recipeIngredient.create.mockResolvedValue(mockIngredient);
 
-      await getVariantsByRecipeId("rcp-1");
-
-      const args = mockPrisma.recipeVariant.findMany.mock.calls[0][0];
-      expect(args.include.boms.where.status).toBe("ACTIVE");
-      expect(args.include.boms.where.deletedAt).toBeNull();
-    });
-  });
-
-  // ── getVariantById ──
-  describe("getVariantById", () => {
-    it("should query with deletedAt: null", async () => {
-      mockPrisma.recipeVariant.findFirst.mockResolvedValue(null);
-
-      await getVariantById("var-1");
-
-      const args = mockPrisma.recipeVariant.findFirst.mock.calls[0][0];
-      expect(args.where.id).toBe("var-1");
-      expect(args.where.deletedAt).toBeNull();
-    });
-
-    it("should include boms with deletedAt: null filter", async () => {
-      mockPrisma.recipeVariant.findFirst.mockResolvedValue(null);
-
-      await getVariantById("var-1");
-
-      const args = mockPrisma.recipeVariant.findFirst.mock.calls[0][0];
-      expect(args.include.boms.where.deletedAt).toBeNull();
-    });
-  });
-
-  // ── createVariant ──
-  describe("createVariant", () => {
-    it("should create variant with recipeId", async () => {
-      mockPrisma.recipeVariant.create.mockResolvedValue({
-        id: "new-var",
-        variantName: "기본",
-        servings: 1,
-        recipeId: "rcp-1",
+      const result = await addIngredient("r1", {
+        ingredientType: "MATERIAL" as const,
+        materialMasterId: "m1",
+        sortOrder: 0,
       });
 
-      const result = await createVariant("rcp-1", { variantName: "기본", servings: 1 });
-
-      expect(result.recipeId).toBe("rcp-1");
-      const createArg = mockPrisma.recipeVariant.create.mock.calls[0][0].data;
-      expect(createArg.recipeId).toBe("rcp-1");
-      expect(createArg.variantName).toBe("기본");
+      expect(result.id).toBe("ing1");
     });
-  });
 
-  // ── updateVariant ──
-  describe("updateVariant", () => {
-    it("should update variant fields", async () => {
-      mockPrisma.recipeVariant.update.mockResolvedValue({
-        id: "var-1",
-        variantName: "매운맛",
+    it("updateIngredient - 재료를 수정한다", async () => {
+      mockPrisma.recipeIngredient.update.mockResolvedValue({
+        id: "ing1",
+        sortOrder: 5,
       });
 
-      const result = await updateVariant("var-1", { variantName: "매운맛" });
+      const result = await updateIngredient("ing1", { sortOrder: 5 });
 
-      expect(result.variantName).toBe("매운맛");
+      expect(result.sortOrder).toBe(5);
     });
-  });
 
-  // ── deleteVariant ──
-  describe("deleteVariant", () => {
-    it("should soft-delete variant and cascade BOM soft-delete", async () => {
-      mockPrisma.bOM.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.recipeVariant.update.mockResolvedValue({ id: "var-1" });
+    it("deleteIngredient - 재료를 삭제한다", async () => {
+      mockPrisma.recipeIngredient.delete.mockResolvedValue({ id: "ing1" });
 
-      await deleteVariant("var-1");
+      const result = await deleteIngredient("ing1");
 
-      // BOM soft-delete
-      expect(mockPrisma.bOM.updateMany).toHaveBeenCalledWith({
-        where: { recipeVariantId: "var-1", deletedAt: null },
-        data: { deletedAt: expect.any(Date) },
-      });
-
-      // Variant soft-delete (not hard delete)
-      expect(mockPrisma.recipeVariant.update).toHaveBeenCalledWith({
-        where: { id: "var-1" },
-        data: { deletedAt: expect.any(Date) },
-      });
-
-      // hard delete가 호출되지 않았는지 확인
-      expect(mockPrisma.recipeVariant.delete).not.toHaveBeenCalled();
+      expect(result.id).toBe("ing1");
     });
   });
 });

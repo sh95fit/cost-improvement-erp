@@ -7,28 +7,21 @@ import type {
   UpdateBOMItemInput,
 } from "../schemas/recipe.schema";
 
-// ── BOM 목록 조회 (owner별) ──
-export async function getBOMsByOwner(
+// ── BOM 목록 조회 (반제품별) ──
+export async function getBOMsBySemiProduct(
   companyId: string,
-  ownerType: "RECIPE_VARIANT" | "SEMI_PRODUCT",
-  ownerId: string
+  semiProductId: string
 ) {
-  const where = {
-    companyId,
-    deletedAt: null,
-    ownerType,
-    ...(ownerType === "RECIPE_VARIANT"
-      ? { recipeVariantId: ownerId }
-      : { semiProductId: ownerId }),
-  };
-
   return prisma.bOM.findMany({
-    where,
+    where: {
+      companyId,
+      semiProductId,
+      deletedAt: null,
+    },
     include: {
       items: {
         include: {
           materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-          subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -42,14 +35,10 @@ export async function getBOMById(companyId: string, id: string) {
   return prisma.bOM.findFirst({
     where: { id, companyId, deletedAt: null },
     include: {
-      recipeVariant: {
-        select: { id: true, variantName: true, recipe: { select: { id: true, name: true } } },
-      },
-      semiProduct: { select: { id: true, name: true, code: true } },
+      semiProduct: { select: { id: true, name: true, code: true, unit: true } },
       items: {
         include: {
           materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-          subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -60,17 +49,13 @@ export async function getBOMById(companyId: string, id: string) {
 // ── BOM 다음 버전 번호 조회 ──
 export async function getNextBOMVersion(
   companyId: string,
-  ownerType: "RECIPE_VARIANT" | "SEMI_PRODUCT",
-  ownerId: string
+  semiProductId: string
 ): Promise<number> {
   const latest = await prisma.bOM.findFirst({
     where: {
       companyId,
+      semiProductId,
       deletedAt: null,
-      ownerType,
-      ...(ownerType === "RECIPE_VARIANT"
-        ? { recipeVariantId: ownerId }
-        : { semiProductId: ownerId }),
     },
     orderBy: { version: "desc" },
     select: { version: true },
@@ -83,8 +68,12 @@ export async function getNextBOMVersion(
 export async function createBOM(companyId: string, input: CreateBOMInput) {
   return prisma.bOM.create({
     data: {
-      ...input,
       companyId,
+      semiProductId: input.semiProductId,
+      version: input.version,
+      status: input.status,
+      baseQuantity: input.baseQuantity,
+      baseUnit: input.baseUnit,
     },
   });
 }
@@ -100,17 +89,13 @@ export async function updateBOMStatus(
   });
   if (!bom) throw new Error("NOT_FOUND");
 
-  // ACTIVE로 변경 시: 같은 오너의 기존 ACTIVE BOM을 ARCHIVED로 전환
   if (input.status === "ACTIVE") {
     return withTransaction(async (tx) => {
-      const ownerWhere = bom.ownerType === "RECIPE_VARIANT"
-        ? { recipeVariantId: bom.recipeVariantId }
-        : { semiProductId: bom.semiProductId };
-
+      // 같은 반제품의 기존 ACTIVE BOM을 ARCHIVED로 전환
       await tx.bOM.updateMany({
         where: {
           companyId,
-          ...ownerWhere,
+          semiProductId: bom.semiProductId,
           status: "ACTIVE",
           deletedAt: null,
           id: { not: id },
@@ -156,6 +141,9 @@ export async function addBOMItem(bomId: string, input: CreateBOMItemInput) {
       ...input,
       bomId,
     },
+    include: {
+      materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+    },
   });
 }
 
@@ -194,7 +182,6 @@ export async function replaceBOMItems(
       where: { bomId },
       include: {
         materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-        subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
       },
       orderBy: { sortOrder: "asc" },
     });
