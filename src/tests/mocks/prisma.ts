@@ -83,6 +83,25 @@ const mockPrisma = {
     delete: vi.fn(),
     deleteMany: vi.fn(),
   },
+  servingSet: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    delete: vi.fn(),
+  },
+  servingSetItem: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  containerGroup: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+  },
 };
 
 vi.mock("@/lib/prisma", () => ({

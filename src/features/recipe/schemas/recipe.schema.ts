@@ -24,6 +24,7 @@ export const createRecipeVariantSchema = z.object({
     .min(1, "변형명은 필수입니다")
     .max(100, "변형명은 100자 이내여야 합니다"),
   servings: z.number().int().min(1, "인분 수는 1 이상이어야 합니다").default(1),
+  baseWeightG: z.number().min(0.1).nullable().optional(),   // ← 추가
   description: z.string().max(500, "설명은 500자 이내여야 합니다").optional(),
 });
 
@@ -103,6 +104,41 @@ export const semiProductListQuerySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
+// ── ServingSet 생성 ──
+export const createServingSetSchema = z.object({
+  recipeVariantId: z.string().min(1, "변형 ID는 필수입니다"),
+  version: z.number().int().min(1).default(1),
+  status: z
+    .enum(bomStatusValues)
+    .transform((v) => v as BOMStatus)
+    .default("DRAFT"),
+});
+
+// ── ServingSet 상태 변경 ──
+export const updateServingSetStatusSchema = z.object({
+  status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
+});
+
+// ── ServingSetItem 생성 ──
+export const createServingSetItemSchema = z.object({
+  containerGroupId: z.string().min(1, "용기 그룹은 필수입니다"),
+  slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
+  servingWeightG: z.number().min(0.1, "서빙 중량은 0.1g 이상이어야 합니다"),
+  note: z.string().max(200).optional(),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
+// ── ServingSetItem 수정 ──
+export const updateServingSetItemSchema = z.object({
+  servingWeightG: z.number().min(0.1, "서빙 중량은 0.1g 이상이어야 합니다").optional(),
+  note: z.string().max(200).optional(),
+});
+
+// ── RecipeVariant baseWeightG 수정 ──
+export const updateBaseWeightSchema = z.object({
+  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다").nullable(),
+});
+
 // ── 타입 추출 ──
 export type CreateRecipeInput = z.output<typeof createRecipeSchema>;
 export type UpdateRecipeInput = z.output<typeof updateRecipeSchema>;
@@ -116,3 +152,9 @@ export type CreateBOMItemInput = z.output<typeof createBOMItemSchema>;
 export type UpdateBOMItemInput = z.output<typeof updateBOMItemSchema>;
 export type RecipeListQuery = z.output<typeof recipeListQuerySchema>;
 export type SemiProductListQuery = z.output<typeof semiProductListQuerySchema>;
+export type CreateServingSetInput = z.output<typeof createServingSetSchema>;
+export type UpdateServingSetStatusInput = z.output<typeof updateServingSetStatusSchema>;
+export type CreateServingSetItemInput = z.output<typeof createServingSetItemSchema>;
+export type UpdateServingSetItemInput = z.output<typeof updateServingSetItemSchema>;
+export type UpdateBaseWeightInput = z.output<typeof updateBaseWeightSchema>;
+

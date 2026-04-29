@@ -50,6 +50,7 @@ import {
   Archive,
 } from "lucide-react";
 import type { RecipeRow } from "./recipe-list";
+import { ServingSetTab } from "./serving-set-tab";
 
 type BOMItemRow = {
   id: string;
@@ -72,6 +73,7 @@ type VariantRow = {
   id: string;
   variantName: string;
   servings: number;
+  baseWeightG: number | null;  // ← 추가
   description: string | null;
   boms: BOMRow[];
 };
@@ -628,18 +630,34 @@ export function RecipeDetailPanel({ recipe, onClose, onUpdated }: Props) {
 
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <Tabs defaultValue="info">
-          <TabsList className="w-full">
-            <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
-            <TabsTrigger value="variants" className="flex-1">
-              변형 / BOM ({variants.length})
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="info" className="mt-4">
-            {renderInfoTab()}
-          </TabsContent>
-          <TabsContent value="variants" className="mt-4">
-            {renderVariantsTab()}
-          </TabsContent>
+            <TabsList className="w-full">
+                <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
+                <TabsTrigger value="variants" className="flex-1">
+                변형 / BOM ({variants.length})
+                </TabsTrigger>
+                <TabsTrigger value="serving" className="flex-1">
+                서빙 중량
+                </TabsTrigger>
+            </TabsList>
+            <TabsContent value="info" className="mt-4">
+                {renderInfoTab()}
+            </TabsContent>
+            <TabsContent value="variants" className="mt-4">
+                {renderVariantsTab()}
+            </TabsContent>
+            <TabsContent value="serving" className="mt-4">
+                <ServingSetTab
+                variants={variants.map((v) => ({
+                    id: v.id,
+                    variantName: v.variantName,
+                    baseWeightG: v.baseWeightG,
+                }))}
+                onVariantUpdated={() => {
+                    loadDetail();
+                    onUpdated();
+                }}
+                />
+            </TabsContent>
         </Tabs>
       </div>
     </div>

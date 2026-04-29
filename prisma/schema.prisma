@@ -290,6 +290,7 @@ model Company {
   consumptionItems   ConsumptionItem[]
   costCalculations   CostCalculation[]
   overheadCosts      OverheadCost[]
+  servingSets      ServingSet[]
 
   @@map("companies")
 }
@@ -581,10 +582,11 @@ model ContainerGroup {
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  company    Company @relation(fields: [companyId], references: [id])
-  slots      ContainerSlot[]
-  accessories ContainerAccessory[]
-  mealTemplates MealTemplate[]
+  company         Company @relation(fields: [companyId], references: [id])
+  slots           ContainerSlot[]
+  accessories     ContainerAccessory[]
+  mealTemplates   MealTemplate[]
+  servingSetItems ServingSetItem[]                        
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -642,20 +644,21 @@ model RecipeVariant {
   recipeId    String    @map("recipe_id")
   variantName String    @map("variant_name")
   servings    Int       @default(1)
+  baseWeightG Float?    @map("base_weight_g")            // ← 추가
   description String?
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")                   
+  deletedAt   DateTime? @map("deleted_at")
 
   recipe           Recipe            @relation(fields: [recipeId], references: [id])
   boms             BOM[]
   mealPlanSlots    MealPlanSlot[]
   cookingPlanSlots CookingPlanSlot[]
+  servingSets      ServingSet[]                           // ← 추가
 
   @@index([recipeId])
   @@map("recipe_variants")
 }
-
 
 model SemiProduct {
   id        String   @id @default(cuid())
@@ -717,6 +720,44 @@ model BOMItem {
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@map("bom_items")
+}
+
+model ServingSet {
+  id              String    @id @default(cuid())
+  companyId       String    @map("company_id")
+  recipeVariantId String    @map("recipe_variant_id")
+  version         Int       @default(1)
+  status          BOMStatus @default(DRAFT)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  recipeVariant RecipeVariant @relation(fields: [recipeVariantId], references: [id])
+  items         ServingSetItem[]
+
+  @@index([companyId])
+  @@index([recipeVariantId])
+  @@map("serving_sets")
+}
+
+model ServingSetItem {
+  id               String   @id @default(cuid())
+  servingSetId     String   @map("serving_set_id")
+  containerGroupId String   @map("container_group_id")
+  slotIndex        Int      @map("slot_index")
+  servingWeightG   Float    @map("serving_weight_g")
+  note             String?
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  servingSet     ServingSet     @relation(fields: [servingSetId], references: [id])
+  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
+
+  @@unique([servingSetId, containerGroupId, slotIndex])
+  @@index([servingSetId])
+  @@index([containerGroupId])
+  @@map("serving_set_items")
 }
 
 model UnitConversion {
