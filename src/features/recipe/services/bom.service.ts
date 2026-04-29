@@ -89,7 +89,7 @@ export async function createBOM(companyId: string, input: CreateBOMInput) {
   });
 }
 
-// ── BOM 상태 변경 ──
+// ── BOM 상태 변경 (ACTIVE 중복 방지 포함) ──
 export async function updateBOMStatus(
   companyId: string,
   id: string,
@@ -99,6 +99,31 @@ export async function updateBOMStatus(
     where: { id, companyId, deletedAt: null },
   });
   if (!bom) throw new Error("NOT_FOUND");
+
+  // ACTIVE로 변경 시: 같은 오너의 기존 ACTIVE BOM을 ARCHIVED로 전환
+  if (input.status === "ACTIVE") {
+    return withTransaction(async (tx) => {
+      const ownerWhere = bom.ownerType === "RECIPE_VARIANT"
+        ? { recipeVariantId: bom.recipeVariantId }
+        : { semiProductId: bom.semiProductId };
+
+      await tx.bOM.updateMany({
+        where: {
+          companyId,
+          ...ownerWhere,
+          status: "ACTIVE",
+          deletedAt: null,
+          id: { not: id },
+        },
+        data: { status: "ARCHIVED" },
+      });
+
+      return tx.bOM.update({
+        where: { id },
+        data: { status: input.status },
+      });
+    });
+  }
 
   return prisma.bOM.update({
     where: { id },

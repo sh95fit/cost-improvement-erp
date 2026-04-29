@@ -18,9 +18,10 @@ type Props = {
   semiProduct?: { id: string; code: string; name: string; unit: string } | null;
   onBack: () => void;
   onSaved: () => void;
+  compact?: boolean;
 };
 
-export function SemiProductForm({ semiProduct, onBack, onSaved }: Props) {
+export function SemiProductForm({ semiProduct, onBack, onSaved, compact }: Props) {
   const isEdit = !!semiProduct;
 
   const [name, setName] = useState(semiProduct?.name ?? "");
@@ -52,6 +53,63 @@ export function SemiProductForm({ semiProduct, onBack, onSaved }: Props) {
     }
   };
 
+  const formContent = (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {error && (
+        <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      {isEdit && (
+        <div className="space-y-2">
+          <Label>반제품 코드</Label>
+          <Input value={semiProduct!.code} disabled />
+          <p className="text-xs text-gray-500">코드는 자동 생성되며 수정할 수 없습니다</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="name">반제품명 *</Label>
+          <Input
+            id="name"
+            placeholder="예: 양념장"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="unit">단위 *</Label>
+          <Input
+            id="unit"
+            placeholder="예: kg, L"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" onClick={onBack}>
+          취소
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-4 w-4" />
+          )}
+          {isEdit ? "수정" : "등록"}
+        </Button>
+      </div>
+    </form>
+  );
+
+  if (compact) return formContent;
+
   return (
     <Card>
       <CardHeader>
@@ -70,58 +128,7 @@ export function SemiProductForm({ semiProduct, onBack, onSaved }: Props) {
         </div>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          {isEdit && (
-            <div className="space-y-2">
-              <Label>반제품 코드</Label>
-              <Input value={semiProduct!.code} disabled />
-              <p className="text-xs text-gray-500">코드는 자동 생성되며 수정할 수 없습니다</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">반제품명 *</Label>
-              <Input
-                id="name"
-                placeholder="예: 양념장"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="unit">단위 *</Label>
-              <Input
-                id="unit"
-                placeholder="예: kg, L"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={onBack}>
-              취소
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              {isEdit ? "수정" : "등록"}
-            </Button>
-          </div>
-        </form>
+        {formContent}
       </CardContent>
     </Card>
   );

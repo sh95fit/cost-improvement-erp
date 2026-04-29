@@ -46,6 +46,7 @@ export async function getRecipes(companyId: string, query: RecipeListQuery) {
       where,
       include: {
         variants: {
+          where: { deletedAt: null },
           select: { id: true, variantName: true, servings: true },
         },
       },
@@ -73,9 +74,10 @@ export async function getRecipeById(companyId: string, id: string) {
     where: { id, companyId, deletedAt: null },
     include: {
       variants: {
+        where: { deletedAt: null },
         include: {
           boms: {
-            where: { deletedAt: null },  // ← 추가
+            where: { deletedAt: null },
             include: {
               items: {
                 include: {
@@ -124,22 +126,31 @@ export async function updateRecipe(
   });
 }
 
-// ── 레시피 삭제 (soft-delete + 연관 BOM cascade) ──
+// ── 레시피 삭제 (soft-delete + 연관 Variant, BOM cascade) ──
 export async function deleteRecipe(companyId: string, id: string) {
   const recipe = await prisma.recipe.findFirst({
     where: { id, companyId, deletedAt: null },
-    include: { variants: { select: { id: true } } },
+    include: { variants: { where: { deletedAt: null }, select: { id: true } } },
   });
 
   if (!recipe) return null;
 
   return withTransaction(async (tx) => {
-    // 모든 변형에 연결된 BOM soft-delete
     const variantIds = recipe.variants.map((v) => v.id);
     if (variantIds.length > 0) {
+      // 변형에 연결된 BOM soft-delete
       await tx.bOM.updateMany({
         where: {
           recipeVariantId: { in: variantIds },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      // 변형 soft-delete
+      await tx.recipeVariant.updateMany({
+        where: {
+          id: { in: variantIds },
           deletedAt: null,
         },
         data: { deletedAt: new Date() },
@@ -154,7 +165,6 @@ export async function deleteRecipe(companyId: string, id: string) {
   });
 }
 
-
 // ════════════════════════════════════════
 // RecipeVariant
 // ════════════════════════════════════════
@@ -162,10 +172,10 @@ export async function deleteRecipe(companyId: string, id: string) {
 // ── 변형 목록 조회 (레시피별) ──
 export async function getVariantsByRecipeId(recipeId: string) {
   return prisma.recipeVariant.findMany({
-    where: { recipeId },
+    where: { recipeId, deletedAt: null },
     include: {
       boms: {
-        where: { status: "ACTIVE", deletedAt: null },  
+        where: { status: "ACTIVE", deletedAt: null },
         select: { id: true, version: true, status: true },
       },
     },
@@ -176,11 +186,11 @@ export async function getVariantsByRecipeId(recipeId: string) {
 // ── 변형 단건 조회 ──
 export async function getVariantById(id: string) {
   return prisma.recipeVariant.findFirst({
-    where: { id },
+    where: { id, deletedAt: null },
     include: {
       recipe: { select: { id: true, name: true, code: true, companyId: true } },
       boms: {
-        where: { deletedAt: null },  
+        where: { deletedAt: null },
         include: {
           items: {
             include: {
@@ -216,8 +226,8 @@ export async function updateVariant(id: string, input: UpdateRecipeVariantInput)
     data: input,
   });
 }
-  
-// ── 변형 삭제 (연관 BOM soft-delete 포함) ──
+
+// ── 변형 삭제 (soft-delete + 연관 BOM cascade) ──
 export async function deleteVariant(id: string) {
   return withTransaction(async (tx) => {
     // 연결된 BOM들을 soft-delete 처리
@@ -226,9 +236,10 @@ export async function deleteVariant(id: string) {
       data: { deletedAt: new Date() },
     });
 
-    // RecipeVariant 삭제
-    return tx.recipeVariant.delete({ where: { id } });
+    // RecipeVariant soft-delete
+    return tx.recipeVariant.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   });
 }
-
-

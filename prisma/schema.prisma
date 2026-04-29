@@ -638,23 +638,24 @@ model Recipe {
 }
 
 model RecipeVariant {
-  id          String   @id @default(cuid())
-  recipeId    String   @map("recipe_id")
-  variantName String   @map("variant_name")
-  servings    Int      @default(1)
+  id          String    @id @default(cuid())
+  recipeId    String    @map("recipe_id")
+  variantName String    @map("variant_name")
+  servings    Int       @default(1)
   description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")                   
 
-  recipe        Recipe @relation(fields: [recipeId], references: [id])
-  boms          BOM[]
-  mealPlanSlots MealPlanSlot[]
+  recipe           Recipe            @relation(fields: [recipeId], references: [id])
+  boms             BOM[]
+  mealPlanSlots    MealPlanSlot[]
   cookingPlanSlots CookingPlanSlot[]
-
 
   @@index([recipeId])
   @@map("recipe_variants")
 }
+
 
 model SemiProduct {
   id        String   @id @default(cuid())

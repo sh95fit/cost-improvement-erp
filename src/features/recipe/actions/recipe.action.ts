@@ -414,6 +414,26 @@ export async function deleteSemiProductAction(
   }
 }
 
+// ── 반제품 단건 조회 ──
+export async function getSemiProductByIdAction(
+  id: string
+): Promise<ActionResult<Awaited<ReturnType<typeof semiProductService.getSemiProductById>>>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "READ");
+
+    const semiProduct = await semiProductService.getSemiProductById(session.companyId, id);
+    return actionOk(semiProduct);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED") return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "반제품 조회에 실패했습니다");
+  }
+}
+
 // ════════════════════════════════════════
 // BOM Actions
 // ════════════════════════════════════════

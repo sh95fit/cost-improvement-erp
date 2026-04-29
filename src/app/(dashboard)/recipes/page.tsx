@@ -13,6 +13,7 @@ import { RecipeForm } from "@/features/recipe/components/recipe-form";
 import { RecipeDetailPanel } from "@/features/recipe/components/recipe-detail-panel";
 import { SemiProductList } from "@/features/recipe/components/semi-product-list";
 import { SemiProductForm } from "@/features/recipe/components/semi-product-form";
+import { SemiProductDetailPanel } from "@/features/recipe/components/semi-product-detail-panel";
 import type { RecipeRow } from "@/features/recipe/components/recipe-list";
 import type { SemiProductRow } from "@/features/recipe/components/semi-product-list";
 
@@ -29,6 +30,11 @@ export default function RecipesPage() {
 
   const handleRecipeUpdated = () => {
     setSelectedRecipe(null);
+    setRefreshKey((k) => k + 1);
+  };
+
+  const handleSemiProductUpdated = () => {
+    setSelectedSemiProduct(null);
     setRefreshKey((k) => k + 1);
   };
 
@@ -119,7 +125,26 @@ export default function RecipesPage() {
         </SheetContent>
       </Sheet>
 
-      {/* TODO: 반제품 상세 패널 (BOM 편집) – 향후 추가 */}
+      {/* 반제품 상세 패널 */}
+      <Sheet
+        open={!!selectedSemiProduct}
+        onOpenChange={(open) => {
+          if (!open) setSelectedSemiProduct(null);
+        }}
+      >
+        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl" aria-describedby={undefined}>
+          <SheetHeader className="sr-only">
+            <SheetTitle>{selectedSemiProduct?.name ?? "반제품 상세"}</SheetTitle>
+          </SheetHeader>
+          {selectedSemiProduct && (
+            <SemiProductDetailPanel
+              semiProduct={selectedSemiProduct}
+              onClose={() => setSelectedSemiProduct(null)}
+              onUpdated={handleSemiProductUpdated}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
