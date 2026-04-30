@@ -19,7 +19,7 @@ export const createRecipeSchema = z.object({
 export const updateRecipeSchema = createRecipeSchema.partial();
 
 // ════════════════════════════════════════
-// RecipeIngredient (신규)
+// RecipeIngredient
 // ════════════════════════════════════════
 
 export const createRecipeIngredientSchema = z
@@ -45,11 +45,9 @@ export const updateRecipeIngredientSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// RecipeBOM (신규)
+// RecipeBOM
 // ════════════════════════════════════════
 
-// ★ 변경: baseWeightG min(0.1) → min(0).default(0)
-// 레시피 BOM에서는 기준 중량이 불필요 (반제품 BOM만 해당)
 export const createRecipeBOMSchema = z.object({
   recipeId: z.string().min(1, "레시피 ID는 필수입니다"),
   version: z.number().int().min(1).default(1),
@@ -57,6 +55,7 @@ export const createRecipeBOMSchema = z.object({
     .enum(bomStatusValues)
     .transform((v) => v as BOMStatus)
     .default("DRAFT"),
+  // ★ 변경: min(0.1) → min(0).default(0) — BOM 생성 시 기준중량 0 허용
   baseWeightG: z.number().min(0).default(0),
 });
 
@@ -64,12 +63,13 @@ export const updateRecipeBOMStatusSchema = z.object({
   status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
 });
 
+// ★ 변경: min(0.1) → min(0)
 export const updateRecipeBOMBaseWeightSchema = z.object({
   baseWeightG: z.number().min(0, "기준 중량은 0 이상이어야 합니다"),
 });
 
 // ════════════════════════════════════════
-// RecipeBOMSlot (신규)
+// RecipeBOMSlot
 // ════════════════════════════════════════
 
 export const createRecipeBOMSlotSchema = z.object({
@@ -87,10 +87,9 @@ export const updateRecipeBOMSlotSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// RecipeBOMSlotItem (신규)
+// RecipeBOMSlotItem
 // ════════════════════════════════════════
 
-// ★ 변경: weightG min(0.01) → min(0) (자동 할당 시 0으로 생성되므로)
 export const createRecipeBOMSlotItemSchema = z
   .object({
     ingredientType: z
@@ -98,6 +97,7 @@ export const createRecipeBOMSlotItemSchema = z
       .transform((v) => v as IngredientType),
     materialMasterId: z.string().optional(),
     semiProductId: z.string().optional(),
+    // ★ 변경: min(0.01) → min(0).default(0) — 자동할당 시 weightG=0 허용
     weightG: z.number().min(0).default(0),
     unit: z.string().max(20).default("g"),
     sortOrder: z.number().int().min(0).default(0),
@@ -111,7 +111,7 @@ export const createRecipeBOMSlotItemSchema = z
     { message: "재료 타입에 맞는 ID가 필요합니다" }
   );
 
-// ★ 변경: weightG min(0.01) → min(0)
+// ★ 변경: min(0.01) → min(0)
 export const updateRecipeBOMSlotItemSchema = z.object({
   weightG: z.number().min(0).optional(),
   unit: z.string().max(20).optional(),
@@ -155,7 +155,7 @@ export const updateBOMStatusSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// BOMItem (반제품 BOM 전용 - 식자재만)
+// BOMItem (반제품 BOM 전용)
 // ════════════════════════════════════════
 
 export const createBOMItemSchema = z.object({
@@ -175,7 +175,7 @@ export const updateBOMItemSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// 목록 조회용 필터 스키마
+// 목록 조회용 필터
 // ════════════════════════════════════════
 
 export const recipeListQuerySchema = z.object({

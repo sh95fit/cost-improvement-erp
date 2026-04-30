@@ -10,7 +10,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -93,7 +92,7 @@ const BOM_STATUS_LABELS: Record<string, string> = {
 
 const BOM_STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700",
-  ACTIVE: "bg-green-50 text-green-700 border border-green-200",
+  ACTIVE: "bg-green-50 text-green-700",
   ARCHIVED: "bg-orange-50 text-orange-700",
 };
 
@@ -106,12 +105,7 @@ function formatDate(dateStr: string | null | undefined): string {
   });
 }
 
-export function SemiProductDetailDialog({
-  semiProduct,
-  open,
-  onOpenChange,
-  onUpdated,
-}: Props) {
+export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [boms, setBoms] = useState<BOMRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -124,21 +118,15 @@ export function SemiProductDetailDialog({
   const [newItemUnit, setNewItemUnit] = useState("");
   const [itemSaving, setItemSaving] = useState(false);
 
-  // ★ BOM 아이템 수량 인라인 편집
+  // ★ 추가: 인라인 수량 편집
   const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   // 자재 목록
-  const [materialOptions, setMaterialOptions] = useState<
-    { id: string; name: string; code: string; unit: string }[]
-  >([]);
+  const [materialOptions, setMaterialOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
 
   // 삭제 확인
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    type: string;
-    id: string;
-    name: string;
-  } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -153,20 +141,10 @@ export function SemiProductDetailDialog({
   }, [semiProduct.id]);
 
   const loadOptions = useCallback(async () => {
-    const matResult = await getMaterialsAction({
-      page: 1,
-      limit: 200,
-      sortBy: "name",
-      sortOrder: "asc",
-    });
+    const matResult = await getMaterialsAction({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
     if (matResult.success) {
       setMaterialOptions(
-        matResult.data.items.map((m) => ({
-          id: m.id,
-          name: m.name,
-          code: m.code,
-          unit: m.unit,
-        }))
+        matResult.data.items.map((m) => ({ id: m.id, name: m.name, code: m.code, unit: m.unit }))
       );
     }
   }, []);
@@ -235,12 +213,12 @@ export function SemiProductDetailDialog({
     }
   };
 
-  // ★ BOM 아이템 수량 저장
+  // ★ 추가: 인라인 수량 저장
   const handleSaveItemQuantity = async (itemId: string) => {
     const qtyStr = editingQuantities[itemId];
-    if (qtyStr === undefined) return;
+    if (!qtyStr) return;
     const qty = parseFloat(qtyStr);
-    if (isNaN(qty) || qty < 0.001) return;
+    if (isNaN(qty) || qty <= 0) return;
     setSavingItemId(itemId);
     try {
       const result = await updateBOMItemAction(itemId, { quantity: qty });
@@ -294,26 +272,26 @@ export function SemiProductDetailDialog({
             수정
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-gray-500 text-xs mb-1">반제품 코드</p>
+            <p className="text-gray-500">반제품 코드</p>
             <p className="font-mono font-medium">{semiProduct.code}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs mb-1">반제품명</p>
+            <p className="text-gray-500">반제품명</p>
             <p className="font-medium">{semiProduct.name}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs mb-1">단위</p>
+            <p className="text-gray-500">단위</p>
             <p>{semiProduct.unit}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs mb-1">등록일</p>
+            <p className="text-gray-500">등록일</p>
             <p>{new Date(semiProduct.createdAt).toLocaleDateString("ko-KR")}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs mb-1">BOM 수</p>
-            <p className="font-medium">{boms.length}개</p>
+            <p className="text-gray-500">BOM 수</p>
+            <p>{boms.length}개</p>
           </div>
         </div>
       </div>
@@ -324,7 +302,7 @@ export function SemiProductDetailDialog({
   const renderBOMTab = () => {
     if (loading) {
       return (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
       );
@@ -339,13 +317,10 @@ export function SemiProductDetailDialog({
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700">BOM 버전 관리</h3>
-          <Button size="sm" variant="outline" onClick={handleCreateBOM}>
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            새 BOM 버전
-          </Button>
-        </div>
+        <Button size="sm" variant="outline" onClick={handleCreateBOM}>
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          새 BOM 버전
+        </Button>
 
         {boms.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500">
@@ -353,12 +328,12 @@ export function SemiProductDetailDialog({
           </p>
         ) : (
           boms.map((bom) => (
-            <div key={bom.id} className="rounded-lg border bg-white p-4 space-y-3">
+            <div key={bom.id} className="rounded border bg-gray-50/50 p-3 space-y-2">
               {/* BOM 헤더 */}
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">v{bom.version}</span>
+                    <span className="text-sm font-medium">v{bom.version}</span>
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                         BOM_STATUS_STYLES[bom.status] ?? "bg-gray-100"
@@ -367,12 +342,10 @@ export function SemiProductDetailDialog({
                       {BOM_STATUS_LABELS[bom.status] ?? bom.status}
                     </span>
                     <span className="text-xs text-gray-400">
-                      ({bom.baseQuantity}
-                      {bom.baseUnit} 기준)
+                      ({bom.baseQuantity}{bom.baseUnit} 기준)
                     </span>
                   </div>
-                  {/* ★ 날짜 표시 */}
-                  <div className="flex items-center gap-4 text-xs text-gray-400 mt-1">
+                  <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
                     <span>생성: {formatDate(bom.createdAt)}</span>
                     <span>수정: {formatDate(bom.updatedAt)}</span>
                   </div>
@@ -382,19 +355,18 @@ export function SemiProductDetailDialog({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                      className="h-7 text-xs text-green-600"
                       onClick={() => handleBOMStatus(bom.id, "ACTIVE")}
                     >
                       <Check className="mr-1 h-3 w-3" />
                       확정
                     </Button>
                   )}
-                  {/* ★ ACTIVE 보관 버튼 제거 */}
                   {bom.status === "ARCHIVED" && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                      className="h-7 text-xs text-green-600"
                       onClick={() => handleBOMStatus(bom.id, "ACTIVE")}
                     >
                       <RotateCcw className="mr-1 h-3 w-3" />
@@ -407,11 +379,7 @@ export function SemiProductDetailDialog({
                       size="icon"
                       className="h-7 w-7"
                       onClick={() =>
-                        setDeleteConfirm({
-                          type: "bom",
-                          id: bom.id,
-                          name: `v${bom.version}`,
-                        })
+                        setDeleteConfirm({ type: "bom", id: bom.id, name: `v${bom.version}` })
                       }
                     >
                       <Trash2 className="h-3.5 w-3.5 text-red-500" />
@@ -420,18 +388,17 @@ export function SemiProductDetailDialog({
                 </div>
               </div>
 
-              {/* BOM 아이템 테이블 */}
+              {/* ★ 변경: BOM 아이템 — 인라인 수량 편집 지원 */}
               {bom.items.length > 0 && (
-                <div className="rounded-lg border">
+                <div className="rounded border">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50/50">
+                      <TableRow>
                         <TableHead className="text-xs">자재</TableHead>
-                        <TableHead className="text-xs w-[100px]">코드</TableHead>
-                        <TableHead className="text-xs w-[120px] text-right">수량</TableHead>
-                        <TableHead className="text-xs w-[60px]">단위</TableHead>
+                        <TableHead className="text-xs text-right">수량</TableHead>
+                        <TableHead className="text-xs">단위</TableHead>
                         {bom.status === "DRAFT" && (
-                          <TableHead className="w-[80px] text-xs text-center">작업</TableHead>
+                          <TableHead className="w-[80px] text-xs">작업</TableHead>
                         )}
                       </TableRow>
                     </TableHeader>
@@ -442,9 +409,9 @@ export function SemiProductDetailDialog({
                           <TableRow key={item.id}>
                             <TableCell className="text-xs font-medium">
                               {item.materialMaster?.name ?? "-"}
-                            </TableCell>
-                            <TableCell className="text-xs text-gray-400 font-mono">
-                              {item.materialMaster?.code ?? "-"}
+                              <span className="ml-1 text-gray-400">
+                                ({item.materialMaster?.code})
+                              </span>
                             </TableCell>
                             <TableCell className="text-right">
                               {bom.status === "DRAFT" ? (
@@ -452,23 +419,13 @@ export function SemiProductDetailDialog({
                                   type="number"
                                   min={0.001}
                                   step="any"
-                                  className="h-7 w-24 text-xs text-right ml-auto"
-                                  value={
-                                    isEditingQty
-                                      ? editingQuantities[item.id]
-                                      : String(item.quantity)
-                                  }
+                                  className="h-7 w-20 text-xs text-right ml-auto"
+                                  value={isEditingQty ? editingQuantities[item.id] : String(item.quantity)}
                                   onChange={(e) =>
-                                    setEditingQuantities((prev) => ({
-                                      ...prev,
-                                      [item.id]: e.target.value,
-                                    }))
+                                    setEditingQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))
                                   }
                                   onBlur={() => {
-                                    if (
-                                      isEditingQty &&
-                                      editingQuantities[item.id] !== String(item.quantity)
-                                    ) {
+                                    if (isEditingQty && editingQuantities[item.id] !== String(item.quantity)) {
                                       handleSaveItemQuantity(item.id);
                                     }
                                   }}
@@ -483,7 +440,7 @@ export function SemiProductDetailDialog({
                             <TableCell className="text-xs">{item.unit}</TableCell>
                             {bom.status === "DRAFT" && (
                               <TableCell>
-                                <div className="flex items-center justify-center gap-1">
+                                <div className="flex items-center gap-1">
                                   {isEditingQty && (
                                     <Button
                                       variant="ghost"
@@ -528,57 +485,49 @@ export function SemiProductDetailDialog({
               {bom.status === "DRAFT" && (
                 <>
                   {addingItemBomId === bom.id ? (
-                    <div className="rounded-lg border border-dashed border-blue-300 bg-blue-50/30 p-4 space-y-3">
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">자재</Label>
-                          <Select
-                            value={newItemId}
-                            onValueChange={(v) => {
-                              setNewItemId(v);
-                              const opt = materialOptions.find((o) => o.id === v);
-                              if (opt) setNewItemUnit(opt.unit);
-                            }}
-                          >
-                            <SelectTrigger className="h-9 text-xs">
-                              <SelectValue placeholder="자재 선택" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {materialOptions.map((opt) => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                  {opt.name} ({opt.code})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">수량</Label>
-                          <Input
-                            type="number"
-                            min={0.001}
-                            step="any"
-                            placeholder="수량"
-                            className="h-9 text-xs"
-                            value={newItemQty}
-                            onChange={(e) => setNewItemQty(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">단위</Label>
-                          <Input
-                            placeholder="단위"
-                            className="h-9 text-xs"
-                            value={newItemUnit}
-                            onChange={(e) => setNewItemUnit(e.target.value)}
-                          />
-                        </div>
+                    <div className="rounded border border-dashed border-blue-300 bg-blue-50/30 p-3 space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <Select
+                          value={newItemId}
+                          onValueChange={(v) => {
+                            setNewItemId(v);
+                            const opt = materialOptions.find((o) => o.id === v);
+                            if (opt) setNewItemUnit(opt.unit);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="자재 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {materialOptions.map((opt) => (
+                              <SelectItem key={opt.id} value={opt.id}>
+                                {opt.name} ({opt.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          min={0.001}
+                          step="any"
+                          placeholder="수량"
+                          className="h-8 text-xs"
+                          value={newItemQty}
+                          onChange={(e) => setNewItemQty(e.target.value)}
+                        />
+                        <Input
+                          placeholder="단위"
+                          className="h-8 text-xs"
+                          value={newItemUnit}
+                          onChange={(e) => setNewItemUnit(e.target.value)}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
+                          className="h-7 text-xs"
                           onClick={() => handleAddItem(bom.id)}
-                          disabled={itemSaving || !newItemId || !newItemQty || !newItemUnit}
+                          disabled={itemSaving}
                         >
                           {itemSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
                           추가
@@ -586,12 +535,8 @@ export function SemiProductDetailDialog({
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => {
-                            setAddingItemBomId(null);
-                            setNewItemId("");
-                            setNewItemQty("");
-                            setNewItemUnit("");
-                          }}
+                          className="h-7 text-xs"
+                          onClick={() => setAddingItemBomId(null)}
                         >
                           취소
                         </Button>
@@ -600,11 +545,11 @@ export function SemiProductDetailDialog({
                   ) : (
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                      variant="ghost"
+                      className="h-7 text-xs text-blue-600"
                       onClick={() => setAddingItemBomId(bom.id)}
                     >
-                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      <Plus className="mr-1 h-3 w-3" />
                       자재 추가
                     </Button>
                   )}
@@ -619,21 +564,18 @@ export function SemiProductDetailDialog({
 
   return (
     <>
-      {/* ★ sm:max-w-5xl 명시 */}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <span className="text-lg">{semiProduct.name}</span>
+              <span>{semiProduct.name}</span>
               <span className="text-sm font-mono text-gray-400">{semiProduct.code}</span>
             </DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue="info">
             <TabsList className="w-full">
-              <TabsTrigger value="info" className="flex-1">
-                기본정보
-              </TabsTrigger>
+              <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
               <TabsTrigger value="bom" className="flex-1">
                 BOM ({boms.length})
               </TabsTrigger>
@@ -658,10 +600,7 @@ export function SemiProductDetailDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
               삭제
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -670,4 +609,3 @@ export function SemiProductDetailDialog({
     </>
   );
 }
-

@@ -47,6 +47,7 @@ function DialogOverlay({
   )
 }
 
+// ★ 변경: sm:max-w-sm → sm:max-w-lg (각 Dialog에서 max-w-6xl 등 자유 적용 가능)
 function DialogContent({
   className,
   children,
@@ -61,8 +62,6 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          // 변경: sm:max-w-sm 제거 → sm:max-w-lg 기본값으로 변경
-          // 각 Dialog에서 max-w-5xl, max-w-6xl 등을 전달하면 해당 값이 적용됨
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-lg data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
@@ -76,7 +75,8 @@ function DialogContent({
               className="absolute top-2 right-2"
               size="icon-sm"
             >
-              <XIcon />
+              <XIcon
+              />
               <span className="sr-only">Close</span>
             </Button>
           </DialogPrimitive.Close>
