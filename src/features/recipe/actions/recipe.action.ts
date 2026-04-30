@@ -352,6 +352,7 @@ export async function createRecipeBOMWithAutoVersionAction(
   }
 }
 
+// ★ 수정: LAST_ACTIVE_BOM 에러 처리 추가
 export async function updateRecipeBOMStatusAction(
   id: string,
   rawInput: Record<string, unknown>
@@ -374,6 +375,7 @@ export async function updateRecipeBOMStatusAction(
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
       if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "레시피 BOM을 찾을 수 없습니다");
+      if (error.message === "LAST_ACTIVE_BOM") return actionFail("LAST_ACTIVE_BOM", "마지막 사용중 BOM은 보관할 수 없습니다. 다른 BOM을 먼저 확정해주세요.");
     }
     return actionFail("INTERNAL_ERROR", "레시피 BOM 상태 변경에 실패했습니다");
   }
@@ -406,6 +408,7 @@ export async function updateRecipeBOMBaseWeightAction(
   }
 }
 
+// ★ 수정: CANNOT_DELETE_ACTIVE 에러 처리 추가
 export async function deleteRecipeBOMAction(
   id: string
 ): Promise<ActionResult<{ id: string }>> {
@@ -425,6 +428,7 @@ export async function deleteRecipeBOMAction(
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+      if (error.message === "CANNOT_DELETE_ACTIVE") return actionFail("CANNOT_DELETE_ACTIVE", "사용중인 BOM은 삭제할 수 없습니다.");
     }
     return actionFail("INTERNAL_ERROR", "레시피 BOM 삭제에 실패했습니다");
   }
@@ -807,6 +811,7 @@ export async function createBOMWithAutoVersionAction(
   }
 }
 
+// ★ 수정: LAST_ACTIVE_BOM 에러 처리 추가
 export async function updateBOMStatusAction(
   id: string,
   rawInput: Record<string, unknown>
@@ -828,11 +833,14 @@ export async function updateBOMStatusAction(
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+      if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "BOM을 찾을 수 없습니다");
+      if (error.message === "LAST_ACTIVE_BOM") return actionFail("LAST_ACTIVE_BOM", "마지막 사용중 BOM은 보관할 수 없습니다.");
     }
     return actionFail("INTERNAL_ERROR", "BOM 상태 변경에 실패했습니다");
   }
 }
 
+// ★ 수정: CANNOT_DELETE_ACTIVE 에러 처리 추가
 export async function deleteBOMAction(
   id: string
 ): Promise<ActionResult<{ id: string }>> {
@@ -854,6 +862,7 @@ export async function deleteBOMAction(
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+      if (error.message === "CANNOT_DELETE_ACTIVE") return actionFail("CANNOT_DELETE_ACTIVE", "사용중인 BOM은 삭제할 수 없습니다.");
     }
     return actionFail("INTERNAL_ERROR", "BOM 삭제에 실패했습니다");
   }

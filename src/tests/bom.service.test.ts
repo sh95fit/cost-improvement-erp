@@ -130,6 +130,60 @@ describe("bom.service (반제품 전용)", () => {
       );
     });
 
+    // ★ 신규 테스트: ARCHIVED → ACTIVE 복원
+    it("ARCHIVED에서 ACTIVE로 전환할 수 있다", async () => {
+      mockPrisma.bOM.findFirst.mockResolvedValue({
+        id: "b1",
+        companyId: "company1",
+        semiProductId: "sp1",
+        status: "ARCHIVED",
+        deletedAt: null,
+      });
+      mockPrisma.bOM.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.bOM.update.mockResolvedValue({ id: "b1", status: "ACTIVE" });
+
+      const result = await updateBOMStatus("company1", "b1", {
+        status: "ACTIVE" as const,
+      });
+
+      expect(result.status).toBe("ACTIVE");
+    });
+
+    // ★ 신규 테스트: 마지막 ACTIVE 보관 차단
+    it("마지막 ACTIVE BOM을 ARCHIVED로 전환하면 LAST_ACTIVE_BOM 에러를 던진다", async () => {
+      mockPrisma.bOM.findFirst.mockResolvedValue({
+        id: "b1",
+        companyId: "company1",
+        semiProductId: "sp1",
+        status: "ACTIVE",
+        deletedAt: null,
+      });
+      mockPrisma.bOM.count.mockResolvedValue(1);
+
+      await expect(
+        updateBOMStatus("company1", "b1", { status: "ARCHIVED" as const })
+      ).rejects.toThrow("LAST_ACTIVE_BOM");
+    });
+
+    // ★ 신규 테스트: ACTIVE가 2개 이상이면 보관 가능
+    it("ACTIVE BOM이 2개 이상이면 ARCHIVED로 전환할 수 있다", async () => {
+      mockPrisma.bOM.findFirst.mockResolvedValue({
+        id: "b1",
+        companyId: "company1",
+        semiProductId: "sp1",
+        status: "ACTIVE",
+        deletedAt: null,
+      });
+      mockPrisma.bOM.count.mockResolvedValue(2);
+      mockPrisma.bOM.update.mockResolvedValue({ id: "b1", status: "ARCHIVED" });
+
+      const result = await updateBOMStatus("company1", "b1", {
+        status: "ARCHIVED" as const,
+      });
+
+      expect(result.status).toBe("ARCHIVED");
+    });
+
     it("존재하지 않으면 NOT_FOUND 에러를 던진다", async () => {
       mockPrisma.bOM.findFirst.mockResolvedValue(null);
 
@@ -145,6 +199,7 @@ describe("bom.service (반제품 전용)", () => {
       mockPrisma.bOM.findFirst.mockResolvedValue({
         id: "b1",
         companyId: "company1",
+        status: "DRAFT",
         deletedAt: null,
       });
       mockPrisma.bOM.update.mockResolvedValue({ id: "b1", deletedAt: new Date() });
@@ -152,6 +207,20 @@ describe("bom.service (반제품 전용)", () => {
       const result = await deleteBOM("company1", "b1");
 
       expect(result).toBeTruthy();
+    });
+
+    // ★ 신규 테스트: ACTIVE 삭제 차단
+    it("ACTIVE 상태의 BOM은 삭제할 수 없다", async () => {
+      mockPrisma.bOM.findFirst.mockResolvedValue({
+        id: "b1",
+        companyId: "company1",
+        status: "ACTIVE",
+        deletedAt: null,
+      });
+
+      await expect(deleteBOM("company1", "b1")).rejects.toThrow(
+        "CANNOT_DELETE_ACTIVE"
+      );
     });
 
     it("존재하지 않으면 null을 반환한다", async () => {

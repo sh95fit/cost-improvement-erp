@@ -2,18 +2,12 @@
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { RecipeList } from "@/features/recipe/components/recipe-list";
 import { RecipeForm } from "@/features/recipe/components/recipe-form";
-import { RecipeDetailPanel } from "@/features/recipe/components/recipe-detail-panel";
+import { RecipeDetailDialog } from "@/features/recipe/components/recipe-detail-dialog";
 import { SemiProductList } from "@/features/recipe/components/semi-product-list";
 import { SemiProductForm } from "@/features/recipe/components/semi-product-form";
-import { SemiProductDetailPanel } from "@/features/recipe/components/semi-product-detail-panel";
+import { SemiProductDetailDialog } from "@/features/recipe/components/semi-product-detail-dialog";
 import type { RecipeRow } from "@/features/recipe/components/recipe-list";
 import type { SemiProductRow } from "@/features/recipe/components/semi-product-list";
 
@@ -104,47 +98,29 @@ export default function RecipesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* 레시피 상세 패널 */}
-      <Sheet
-        open={!!selectedRecipe}
-        onOpenChange={(open) => {
-          if (!open) setSelectedRecipe(null);
-        }}
-      >
-        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl" aria-describedby={undefined}>
-          <SheetHeader className="sr-only">
-            <SheetTitle>{selectedRecipe?.name ?? "레시피 상세"}</SheetTitle>
-          </SheetHeader>
-          {selectedRecipe && (
-            <RecipeDetailPanel
-              recipe={selectedRecipe}
-              onClose={() => setSelectedRecipe(null)}
-              onUpdated={handleRecipeUpdated}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* ★ 레시피 상세 모달 (Sheet → Dialog) */}
+      {selectedRecipe && (
+        <RecipeDetailDialog
+          recipe={selectedRecipe}
+          open={!!selectedRecipe}
+          onOpenChange={(open) => {
+            if (!open) setSelectedRecipe(null);
+          }}
+          onUpdated={handleRecipeUpdated}
+        />
+      )}
 
-      {/* 반제품 상세 패널 */}
-      <Sheet
-        open={!!selectedSemiProduct}
-        onOpenChange={(open) => {
-          if (!open) setSelectedSemiProduct(null);
-        }}
-      >
-        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl" aria-describedby={undefined}>
-          <SheetHeader className="sr-only">
-            <SheetTitle>{selectedSemiProduct?.name ?? "반제품 상세"}</SheetTitle>
-          </SheetHeader>
-          {selectedSemiProduct && (
-            <SemiProductDetailPanel
-              semiProduct={selectedSemiProduct}
-              onClose={() => setSelectedSemiProduct(null)}
-              onUpdated={handleSemiProductUpdated}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* ★ 반제품 상세 모달 (Sheet → Dialog) */}
+      {selectedSemiProduct && (
+        <SemiProductDetailDialog
+          semiProduct={selectedSemiProduct}
+          open={!!selectedSemiProduct}
+          onOpenChange={(open) => {
+            if (!open) setSelectedSemiProduct(null);
+          }}
+          onUpdated={handleSemiProductUpdated}
+        />
+      )}
     </div>
   );
 }

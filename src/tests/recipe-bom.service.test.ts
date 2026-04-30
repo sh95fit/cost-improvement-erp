@@ -158,7 +158,30 @@ describe("recipe-bom.service", () => {
       );
     });
 
-    it("ARCHIVED 전환은 트랜잭션 없이 처리한다", async () => {
+    // ★ 신규 테스트: ARCHIVED → ACTIVE 복원
+    it("ARCHIVED에서 ACTIVE로 전환할 수 있다", async () => {
+      mockPrisma.recipeBOM.findFirst.mockResolvedValue({
+        id: "rb1",
+        companyId: "company1",
+        recipeId: "r1",
+        status: "ARCHIVED",
+        deletedAt: null,
+      });
+      mockPrisma.recipeBOM.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.recipeBOM.update.mockResolvedValue({
+        id: "rb1",
+        status: "ACTIVE",
+      });
+
+      const result = await updateRecipeBOMStatus("company1", "rb1", {
+        status: "ACTIVE" as const,
+      });
+
+      expect(result.status).toBe("ACTIVE");
+    });
+
+    // ★ 신규 테스트: 마지막 ACTIVE 보관 차단
+    it("마지막 ACTIVE BOM을 ARCHIVED로 전환하면 LAST_ACTIVE_BOM 에러를 던진다", async () => {
       mockPrisma.recipeBOM.findFirst.mockResolvedValue({
         id: "rb1",
         companyId: "company1",
@@ -166,6 +189,23 @@ describe("recipe-bom.service", () => {
         status: "ACTIVE",
         deletedAt: null,
       });
+      mockPrisma.recipeBOM.count.mockResolvedValue(1); // 마지막 1개
+
+      await expect(
+        updateRecipeBOMStatus("company1", "rb1", { status: "ARCHIVED" as const })
+      ).rejects.toThrow("LAST_ACTIVE_BOM");
+    });
+
+    // ★ 신규 테스트: ACTIVE가 2개 이상이면 보관 가능
+    it("ACTIVE BOM이 2개 이상이면 ARCHIVED로 전환할 수 있다", async () => {
+      mockPrisma.recipeBOM.findFirst.mockResolvedValue({
+        id: "rb1",
+        companyId: "company1",
+        recipeId: "r1",
+        status: "ACTIVE",
+        deletedAt: null,
+      });
+      mockPrisma.recipeBOM.count.mockResolvedValue(2);
       mockPrisma.recipeBOM.update.mockResolvedValue({
         id: "rb1",
         status: "ARCHIVED",
@@ -176,7 +216,6 @@ describe("recipe-bom.service", () => {
       });
 
       expect(result.status).toBe("ARCHIVED");
-      expect(mockPrisma.recipeBOM.updateMany).not.toHaveBeenCalled();
     });
 
     it("존재하지 않으면 NOT_FOUND 에러를 던진다", async () => {
@@ -215,6 +254,7 @@ describe("recipe-bom.service", () => {
       mockPrisma.recipeBOM.findFirst.mockResolvedValue({
         id: "rb1",
         companyId: "company1",
+        status: "DRAFT",
         deletedAt: null,
       });
       mockPrisma.recipeBOM.update.mockResolvedValue({
@@ -230,6 +270,20 @@ describe("recipe-bom.service", () => {
           where: { id: "rb1" },
           data: expect.objectContaining({ deletedAt: expect.any(Date) }),
         })
+      );
+    });
+
+    // ★ 신규 테스트: ACTIVE 삭제 차단
+    it("ACTIVE 상태의 BOM은 삭제할 수 없다", async () => {
+      mockPrisma.recipeBOM.findFirst.mockResolvedValue({
+        id: "rb1",
+        companyId: "company1",
+        status: "ACTIVE",
+        deletedAt: null,
+      });
+
+      await expect(deleteRecipeBOM("company1", "rb1")).rejects.toThrow(
+        "CANNOT_DELETE_ACTIVE"
       );
     });
 
