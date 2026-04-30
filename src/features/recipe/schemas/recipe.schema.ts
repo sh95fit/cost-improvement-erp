@@ -48,6 +48,8 @@ export const updateRecipeIngredientSchema = z.object({
 // RecipeBOM (신규)
 // ════════════════════════════════════════
 
+// ★ 변경: baseWeightG min(0.1) → min(0).default(0)
+// 레시피 BOM에서는 기준 중량이 불필요 (반제품 BOM만 해당)
 export const createRecipeBOMSchema = z.object({
   recipeId: z.string().min(1, "레시피 ID는 필수입니다"),
   version: z.number().int().min(1).default(1),
@@ -55,7 +57,7 @@ export const createRecipeBOMSchema = z.object({
     .enum(bomStatusValues)
     .transform((v) => v as BOMStatus)
     .default("DRAFT"),
-  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다"),
+  baseWeightG: z.number().min(0).default(0),
 });
 
 export const updateRecipeBOMStatusSchema = z.object({
@@ -63,7 +65,7 @@ export const updateRecipeBOMStatusSchema = z.object({
 });
 
 export const updateRecipeBOMBaseWeightSchema = z.object({
-  baseWeightG: z.number().min(0.1, "기준 중량은 0.1g 이상이어야 합니다"),
+  baseWeightG: z.number().min(0, "기준 중량은 0 이상이어야 합니다"),
 });
 
 // ════════════════════════════════════════
@@ -88,6 +90,7 @@ export const updateRecipeBOMSlotSchema = z.object({
 // RecipeBOMSlotItem (신규)
 // ════════════════════════════════════════
 
+// ★ 변경: weightG min(0.01) → min(0) (자동 할당 시 0으로 생성되므로)
 export const createRecipeBOMSlotItemSchema = z
   .object({
     ingredientType: z
@@ -95,7 +98,7 @@ export const createRecipeBOMSlotItemSchema = z
       .transform((v) => v as IngredientType),
     materialMasterId: z.string().optional(),
     semiProductId: z.string().optional(),
-    weightG: z.number().min(0.01, "중량은 0.01g 이상이어야 합니다"),
+    weightG: z.number().min(0).default(0),
     unit: z.string().max(20).default("g"),
     sortOrder: z.number().int().min(0).default(0),
   })
@@ -108,8 +111,9 @@ export const createRecipeBOMSlotItemSchema = z
     { message: "재료 타입에 맞는 ID가 필요합니다" }
   );
 
+// ★ 변경: weightG min(0.01) → min(0)
 export const updateRecipeBOMSlotItemSchema = z.object({
-  weightG: z.number().min(0.01).optional(),
+  weightG: z.number().min(0).optional(),
   unit: z.string().max(20).optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
