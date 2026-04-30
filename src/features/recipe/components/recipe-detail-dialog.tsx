@@ -43,11 +43,10 @@ import {
   deleteIngredientAction,
   createRecipeBOMWithAutoVersionAction,
   updateRecipeBOMStatusAction,
-  updateRecipeBOMBaseWeightAction,
   deleteRecipeBOMAction,
   addRecipeBOMSlotAction,
   deleteRecipeBOMSlotAction,
-  addRecipeBOMSlotItemAction,
+  updateRecipeBOMSlotItemAction,
   deleteRecipeBOMSlotItemAction,
 } from "../actions/recipe.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
@@ -59,9 +58,9 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
-  Archive,
   RotateCcw,
   AlertTriangle,
+  Save,
 } from "lucide-react";
 import type { RecipeRow } from "./recipe-list";
 
@@ -100,6 +99,9 @@ type RecipeBOMRow = {
   version: number;
   status: string;
   baseWeightG: number;
+  activatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   slots: RecipeBOMSlotRow[];
 };
 
@@ -121,6 +123,15 @@ const BOM_STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-green-50 text-green-700",
   ARCHIVED: "bg-orange-50 text-orange-700",
 };
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
 
 export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
@@ -144,16 +155,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
   const [newSlotNote, setNewSlotNote] = useState("");
   const [slotSaving, setSlotSaving] = useState(false);
 
-  // 슬롯 아이템 추가 폼
-  const [addingItemSlotId, setAddingItemSlotId] = useState<string | null>(null);
-  const [newItemType, setNewItemType] = useState<"MATERIAL" | "SEMI_PRODUCT">("MATERIAL");
-  const [newItemId, setNewItemId] = useState("");
-  const [newItemWeight, setNewItemWeight] = useState("");
-  const [itemSaving, setItemSaving] = useState(false);
-
-  // BOM 기준 중량 편집
-  const [editingWeightBomId, setEditingWeightBomId] = useState<string | null>(null);
-  const [editWeight, setEditWeight] = useState("");
+  // 슬롯 아이템 중량 편집
+  const [editingWeights, setEditingWeights] = useState<Record<string, string>>({});
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   // 옵션 데이터
   const [materialOptions, setMaterialOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
@@ -182,7 +186,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
         matResult.data.items.map((m) => ({ id: m.id, name: m.name, code: m.code, unit: m.unit }))
       );
     }
-    // 용기 그룹은 레시피 BOM에서 가져온 데이터로 설정 (별도 API 없으면 기존 데이터 활용)
+  }, []);
+
+  // 용기 그룹 옵션 (BOM 데이터에서 추출)
+  useEffect(() => {
     const groups: { id: string; name: string; code: string }[] = [];
     const seen = new Set<string>();
     recipeBoms.forEach((bom) =>
@@ -199,12 +206,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
   useEffect(() => {
     if (open) {
       loadDetail();
+      loadOptions();
     }
-  }, [open, loadDetail]);
-
-  useEffect(() => {
-    loadOptions();
-  }, [loadOptions]);
+  }, [open, loadDetail, loadOptions]);
 
   // 에러 메시지 자동 숨김
   useEffect(() => {
@@ -247,11 +251,11 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     }
   };
 
-  // ── RecipeBOM 생성 ──
+  // ── RecipeBOM 생성 (기준 중량은 고정값) ──
   const handleCreateRecipeBOM = async () => {
     const result = await createRecipeBOMWithAutoVersionAction({
       recipeId: recipe.id,
-      baseWeightG: 500,
+      baseWeightG: 0,
     });
     if (result.success) {
       loadDetail();
@@ -280,18 +284,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     }
   };
 
-  // ── 기준 중량 저장 ──
-  const handleSaveBaseWeight = async (bomId: string) => {
-    const weight = parseFloat(editWeight);
-    if (isNaN(weight) || weight <= 0) return;
-    const result = await updateRecipeBOMBaseWeightAction(bomId, { baseWeightG: weight });
-    if (result.success) {
-      setEditingWeightBomId(null);
-      loadDetail();
-    }
-  };
-
-  // ── 슬롯 추가 ──
+  // ── 슬롯 추가 (구성재료 자동 할당) ──
   const handleAddSlot = async (bomId: string) => {
     if (!newSlotContainerGroupId) return;
     setSlotSaving(true);
@@ -322,32 +315,29 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     if (result.success) loadDetail();
   };
 
-  // ── 슬롯 아이템 추가 ──
-  const handleAddSlotItem = async (slotId: string) => {
-    if (!newItemId || !newItemWeight) return;
-    setItemSaving(true);
+  // ── 슬롯 아이템 중량 저장 ──
+  const handleSaveItemWeight = async (itemId: string) => {
+    const weightStr = editingWeights[itemId];
+    if (!weightStr) return;
+    const weight = parseFloat(weightStr);
+    if (isNaN(weight) || weight < 0) return;
+    setSavingItemId(itemId);
     try {
-      const result = await addRecipeBOMSlotItemAction(slotId, {
-        ingredientType: newItemType,
-        ...(newItemType === "MATERIAL"
-          ? { materialMasterId: newItemId }
-          : { semiProductId: newItemId }),
-        weightG: parseFloat(newItemWeight),
-        unit: "g",
-        sortOrder: 0,
-      });
+      const result = await updateRecipeBOMSlotItemAction(itemId, { weightG: weight });
       if (result.success) {
-        setAddingItemSlotId(null);
-        setNewItemId("");
-        setNewItemWeight("");
+        setEditingWeights((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
         loadDetail();
       }
     } finally {
-      setItemSaving(false);
+      setSavingItemId(null);
     }
   };
 
-  // ── 슬롯 아이템 삭제 ──
+  // ── 슬롯 아이템 삭제 (제외) ──
   const handleDeleteSlotItem = async (itemId: string) => {
     const result = await deleteRecipeBOMSlotItemAction(itemId);
     if (result.success) loadDetail();
@@ -364,7 +354,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     setDeleteConfirm(null);
   };
 
-  // ── 기본정보 탭 ──
+  // ══════════════════════════════════════
+  // 기본정보 탭 (조회 전용 + 구성재료 리스트)
+  // ══════════════════════════════════════
   const renderInfoTab = () => {
     if (isEditing) {
       return (
@@ -388,6 +380,8 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
             수정
           </Button>
         </div>
+
+        {/* 기본 정보 */}
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-gray-500">레시피 코드</p>
@@ -410,11 +404,56 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
             <p>{new Date(recipe.createdAt).toLocaleDateString("ko-KR")}</p>
           </div>
         </div>
+
+        {/* ★ 구성재료 리스트 (읽기전용) */}
+        {ingredients.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">구성 재료</h3>
+            <div className="rounded border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">구분</TableHead>
+                    <TableHead className="text-xs">재료명</TableHead>
+                    <TableHead className="text-xs">코드</TableHead>
+                    <TableHead className="text-xs">단위</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ingredients.map((ing) => (
+                    <TableRow key={ing.id}>
+                      <TableCell className="text-xs">
+                        <span className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
+                          ing.ingredientType === "MATERIAL"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-purple-50 text-purple-700"
+                        }`}>
+                          {ing.ingredientType === "MATERIAL" ? "식자재" : "반제품"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {ing.materialMaster?.name ?? ing.semiProduct?.name ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-400">
+                        {ing.materialMaster?.code ?? ing.semiProduct?.code ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-400">
+                        {ing.materialMaster?.unit ?? ing.semiProduct?.unit ?? "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
-  // ── 재료 + BOM 탭 ──
+  // ══════════════════════════════════════
+  // 재료 / BOM 탭 (편집 전용)
+  // ══════════════════════════════════════
   const renderIngredientsTab = () => {
     if (loading) {
       return (
@@ -434,10 +473,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           </div>
         )}
 
-        {/* ── 재료 섹션 ── */}
+        {/* ── 재료 편집 섹션 ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">재료 목록</h3>
+            <h3 className="text-sm font-semibold text-gray-700">재료 관리</h3>
             {!showIngredientForm && (
               <Button size="sm" variant="outline" onClick={() => setShowIngredientForm(true)}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
@@ -458,9 +497,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                       setNewIngredientId("");
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MATERIAL">식자재</SelectItem>
                       <SelectItem value="SEMI_PRODUCT">반제품</SelectItem>
@@ -472,9 +509,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
                   </Label>
                   <Select value={newIngredientId} onValueChange={setNewIngredientId}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="선택" />
-                    </SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="선택" /></SelectTrigger>
                     <SelectContent>
                       {materialOptions.map((opt) => (
                         <SelectItem key={opt.id} value={opt.id}>
@@ -591,13 +626,17 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                             {BOM_STATUS_LABELS[bom.status] ?? bom.status}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500">
-                          기준 중량: {bom.baseWeightG}g · 슬롯 {bom.slots.length}개
-                        </p>
+                        {/* ★ 버전별 날짜 표시 */}
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                          <span>생성: {formatDate(bom.createdAt)}</span>
+                          <span>적용: {formatDate(bom.activatedAt)}</span>
+                          <span>수정: {formatDate(bom.updatedAt)}</span>
+                          <span>슬롯 {bom.slots.length}개</span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {/* DRAFT → ACTIVE */}
+                      {/* DRAFT → ACTIVE (확정) */}
                       {bom.status === "DRAFT" && (
                         <Button
                           variant="ghost"
@@ -609,19 +648,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                           확정
                         </Button>
                       )}
-                      {/* ACTIVE → ARCHIVED */}
-                      {bom.status === "ACTIVE" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-orange-600"
-                          onClick={() => handleBOMStatus(bom.id, "ARCHIVED")}
-                        >
-                          <Archive className="mr-1 h-3 w-3" />
-                          보관
-                        </Button>
-                      )}
-                      {/* ★ ARCHIVED → ACTIVE (복원) */}
+                      {/* ★ ARCHIVED → ACTIVE (복원, 기존 ACTIVE 자동 보관) */}
                       {bom.status === "ARCHIVED" && (
                         <Button
                           variant="ghost"
@@ -633,6 +660,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                           복원
                         </Button>
                       )}
+                      {/* ★ ACTIVE 보관 버튼 제거 — 새 BOM 확정 시 자동 전환 */}
                       {/* 삭제 (ACTIVE는 불가) */}
                       {bom.status !== "ACTIVE" && (
                         <Button
@@ -652,47 +680,11 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                   {/* BOM 확장 영역 */}
                   {isExpanded && (
                     <div className="border-t px-4 py-4 space-y-4">
-                      {/* 기준 중량 편집 */}
-                      <div className="flex items-center gap-3">
-                        <Label className="text-xs text-gray-500">기준 중량(g):</Label>
-                        {editingWeightBomId === bom.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              className="h-7 w-24 text-xs"
-                              value={editWeight}
-                              onChange={(e) => setEditWeight(e.target.value)}
-                            />
-                            <Button size="sm" className="h-7 text-xs" onClick={() => handleSaveBaseWeight(bom.id)}>
-                              저장
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingWeightBomId(null)}>
-                              취소
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-mono font-medium">{bom.baseWeightG}g</span>
-                            {bom.status === "DRAFT" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 text-xs"
-                                onClick={() => {
-                                  setEditingWeightBomId(bom.id);
-                                  setEditWeight(String(bom.baseWeightG));
-                                }}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
                       {/* 슬롯 목록 */}
                       {bom.slots.length === 0 ? (
-                        <p className="text-center text-sm text-gray-400 py-2">슬롯이 없습니다</p>
+                        <p className="text-center text-sm text-gray-400 py-2">
+                          슬롯이 없습니다. 슬롯을 추가하면 구성재료가 자동으로 할당됩니다.
+                        </p>
                       ) : (
                         bom.slots.map((slot) => (
                           <div key={slot.id} className="rounded border bg-gray-50/50 p-3 space-y-2">
@@ -705,123 +697,127 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   <span className="text-xs text-gray-400">({slot.note})</span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-1">
-                                {bom.status === "DRAFT" && (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 text-xs text-blue-600"
-                                      onClick={() => {
-                                        setAddingItemSlotId(slot.id);
-                                        setNewItemType("MATERIAL");
-                                        setNewItemId("");
-                                        setNewItemWeight("");
-                                      }}
-                                    >
-                                      <Plus className="mr-1 h-3 w-3" />
-                                      재료
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6"
-                                      onClick={() =>
-                                        setDeleteConfirm({ type: "slot", id: slot.id, name: slot.containerGroup.name })
-                                      }
-                                    >
-                                      <Trash2 className="h-3 w-3 text-red-400" />
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
+                              {bom.status === "DRAFT" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() =>
+                                    setDeleteConfirm({ type: "slot", id: slot.id, name: slot.containerGroup.name })
+                                  }
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-400" />
+                                </Button>
+                              )}
                             </div>
 
-                            {/* 슬롯 아이템 추가 폼 */}
-                            {addingItemSlotId === slot.id && (
-                              <div className="rounded border border-dashed border-blue-300 bg-blue-50/30 p-3 space-y-2">
-                                <div className="grid grid-cols-4 gap-2">
-                                  <Select value={newItemType} onValueChange={(v) => { setNewItemType(v as "MATERIAL" | "SEMI_PRODUCT"); setNewItemId(""); }}>
-                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="MATERIAL">식자재</SelectItem>
-                                      <SelectItem value="SEMI_PRODUCT">반제품</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <Select value={newItemId} onValueChange={setNewItemId}>
-                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="선택" /></SelectTrigger>
-                                    <SelectContent>
-                                      {materialOptions.map((opt) => (
-                                        <SelectItem key={opt.id} value={opt.id}>{opt.name} ({opt.code})</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <Input
-                                    type="number"
-                                    min={0.01}
-                                    step="any"
-                                    placeholder="중량(g)"
-                                    className="h-8 text-xs"
-                                    value={newItemWeight}
-                                    onChange={(e) => setNewItemWeight(e.target.value)}
-                                  />
-                                  <div className="flex gap-1">
-                                    <Button size="sm" className="h-8 text-xs" onClick={() => handleAddSlotItem(slot.id)} disabled={itemSaving}>
-                                      {itemSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "추가"}
-                                    </Button>
-                                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setAddingItemSlotId(null)}>
-                                      취소
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 슬롯 아이템 목록 */}
+                            {/* ★ 슬롯 아이템: 전체 구성재료 리스트 + 중량 입력 */}
                             {slot.items.length > 0 && (
-                              <div className="ml-2 space-y-1">
-                                {slot.items.map((item) => (
-                                  <div key={item.id} className="flex items-center justify-between text-xs text-gray-600 py-0.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className={`inline-flex rounded px-1 py-0.5 ${
-                                        item.ingredientType === "MATERIAL"
-                                          ? "bg-blue-50 text-blue-600"
-                                          : "bg-purple-50 text-purple-600"
-                                      }`}>
-                                        {item.ingredientType === "MATERIAL" ? "자재" : "반제품"}
-                                      </span>
-                                      <span>{item.materialMaster?.name ?? item.semiProduct?.name ?? "-"}</span>
-                                      <span className="font-mono">{item.weightG}{item.unit}</span>
-                                    </div>
-                                    {bom.status === "DRAFT" && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-5 w-5"
-                                        onClick={() =>
-                                          setDeleteConfirm({
-                                            type: "slotItem",
-                                            id: item.id,
-                                            name: item.materialMaster?.name ?? item.semiProduct?.name ?? "",
-                                          })
-                                        }
-                                      >
-                                        <Trash2 className="h-2.5 w-2.5 text-red-400" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                ))}
+                              <div className="rounded border bg-white">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead className="text-xs">구분</TableHead>
+                                      <TableHead className="text-xs">재료명</TableHead>
+                                      <TableHead className="text-xs text-right">중량(g)</TableHead>
+                                      {bom.status === "DRAFT" && (
+                                        <TableHead className="w-[80px] text-xs">작업</TableHead>
+                                      )}
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {slot.items.map((item) => {
+                                      const isEditingWeight = editingWeights[item.id] !== undefined;
+                                      return (
+                                        <TableRow key={item.id}>
+                                          <TableCell className="text-xs">
+                                            <span className={`inline-flex rounded px-1 py-0.5 ${
+                                              item.ingredientType === "MATERIAL"
+                                                ? "bg-blue-50 text-blue-600"
+                                                : "bg-purple-50 text-purple-600"
+                                            }`}>
+                                              {item.ingredientType === "MATERIAL" ? "자재" : "반제품"}
+                                            </span>
+                                          </TableCell>
+                                          <TableCell className="text-xs font-medium">
+                                            {item.materialMaster?.name ?? item.semiProduct?.name ?? "-"}
+                                          </TableCell>
+                                          <TableCell className="text-right">
+                                            {bom.status === "DRAFT" ? (
+                                              <Input
+                                                type="number"
+                                                min={0}
+                                                step="any"
+                                                className="h-7 w-20 text-xs text-right ml-auto"
+                                                value={isEditingWeight ? editingWeights[item.id] : String(item.weightG)}
+                                                onChange={(e) =>
+                                                  setEditingWeights((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                                }
+                                                onBlur={() => {
+                                                  if (isEditingWeight && editingWeights[item.id] !== String(item.weightG)) {
+                                                    handleSaveItemWeight(item.id);
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") handleSaveItemWeight(item.id);
+                                                }}
+                                              />
+                                            ) : (
+                                              <span className="text-xs font-mono">{item.weightG}g</span>
+                                            )}
+                                          </TableCell>
+                                          {bom.status === "DRAFT" && (
+                                            <TableCell>
+                                              <div className="flex items-center gap-1">
+                                                {isEditingWeight && (
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6"
+                                                    onClick={() => handleSaveItemWeight(item.id)}
+                                                    disabled={savingItemId === item.id}
+                                                  >
+                                                    {savingItemId === item.id ? (
+                                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                                    ) : (
+                                                      <Save className="h-3 w-3 text-green-600" />
+                                                    )}
+                                                  </Button>
+                                                )}
+                                                <Button
+                                                  variant="ghost"
+                                                  size="icon"
+                                                  className="h-6 w-6"
+                                                  onClick={() =>
+                                                    setDeleteConfirm({
+                                                      type: "slotItem",
+                                                      id: item.id,
+                                                      name: item.materialMaster?.name ?? item.semiProduct?.name ?? "",
+                                                    })
+                                                  }
+                                                >
+                                                  <Trash2 className="h-3 w-3 text-red-400" />
+                                                </Button>
+                                              </div>
+                                            </TableCell>
+                                          )}
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
                               </div>
                             )}
                           </div>
                         ))
                       )}
 
-                      {/* 슬롯 추가 */}
+                      {/* 슬롯 추가 (DRAFT만) */}
                       {bom.status === "DRAFT" && (
                         <>
                           {addingSlotBomId === bom.id ? (
                             <div className="rounded border border-dashed border-green-300 bg-green-50/30 p-3 space-y-2">
+                              <p className="text-xs text-gray-500">슬롯 추가 시 해당 레시피의 전체 구성재료가 자동으로 할당됩니다.</p>
                               <div className="grid grid-cols-4 gap-2">
                                 {containerGroupOptions.length > 0 ? (
                                   <Select value={newSlotContainerGroupId} onValueChange={setNewSlotContainerGroupId}>
@@ -841,7 +837,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   />
                                 )}
                                 <Input type="number" placeholder="슬롯 인덱스" className="h-8 text-xs" value={newSlotIndex} onChange={(e) => setNewSlotIndex(e.target.value)} />
-                                <Input type="number" placeholder="중량(g)" className="h-8 text-xs" value={newSlotWeight} onChange={(e) => setNewSlotWeight(e.target.value)} />
+                                <Input type="number" placeholder="총 중량(g)" className="h-8 text-xs" value={newSlotWeight} onChange={(e) => setNewSlotWeight(e.target.value)} />
                                 <Input placeholder="메모(선택)" className="h-8 text-xs" value={newSlotNote} onChange={(e) => setNewSlotNote(e.target.value)} />
                               </div>
                               <div className="flex gap-2">
@@ -859,7 +855,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                               onClick={() => setAddingSlotBomId(bom.id)}
                             >
                               <Plus className="mr-1 h-3 w-3" />
-                              슬롯 추가
+                              슬롯 추가 (구성재료 자동 할당)
                             </Button>
                           )}
                         </>
@@ -877,8 +873,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
 
   return (
     <>
+      {/* ★ max-w-6xl로 확대 */}
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               <span>{recipe.name}</span>
@@ -888,9 +885,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
 
           <Tabs defaultValue="info">
             <TabsList className="w-full">
-              <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
+              <TabsTrigger value="info" className="flex-1">기본정보 (조회)</TabsTrigger>
               <TabsTrigger value="ingredients" className="flex-1">
-                재료 / BOM ({ingredients.length} / {recipeBoms.length})
+                재료 / BOM 편집 ({ingredients.length} / {recipeBoms.length})
               </TabsTrigger>
             </TabsList>
             <TabsContent value="info" className="mt-4">

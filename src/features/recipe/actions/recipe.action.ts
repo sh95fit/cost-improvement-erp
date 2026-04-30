@@ -446,12 +446,13 @@ export async function addRecipeBOMSlotAction(
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "UPDATE");
     const input = createRecipeBOMSlotSchema.parse(rawInput);
-    const slot = await recipeBomService.addRecipeBOMSlot(recipeBomId, input);
+    // ★ 변경: 슬롯 생성 시 구성재료 전체 자동 할당
+    const slot = await recipeBomService.addRecipeBOMSlotWithIngredients(recipeBomId, input);
     await createAuditLog({
       session,
       action: "CREATE",
       entityType: "RecipeBOMSlot",
-      entityId: slot.id,
+      entityId: slot?.id ?? "",
       after: slot as unknown as Record<string, unknown>,
     });
     return actionOk(slot);

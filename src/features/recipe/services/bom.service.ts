@@ -79,7 +79,6 @@ export async function createBOM(companyId: string, input: CreateBOMInput) {
 }
 
 // ── BOM 상태 변경 ──
-// ★ 보강: ARCHIVED→ACTIVE 허용, 마지막 ACTIVE 보관 차단
 export async function updateBOMStatus(
   companyId: string,
   id: string,
@@ -90,22 +89,15 @@ export async function updateBOMStatus(
   });
   if (!bom) throw new Error("NOT_FOUND");
 
-  // ACTIVE → ARCHIVED 전환 시: 마지막 ACTIVE인지 확인
+  // ★ 마지막 ACTIVE 보관 차단
   if (bom.status === "ACTIVE" && input.status === "ARCHIVED") {
     const activeCount = await prisma.bOM.count({
-      where: {
-        companyId,
-        semiProductId: bom.semiProductId,
-        status: "ACTIVE",
-        deletedAt: null,
-      },
+      where: { companyId, semiProductId: bom.semiProductId, status: "ACTIVE", deletedAt: null },
     });
-    if (activeCount <= 1) {
-      throw new Error("LAST_ACTIVE_BOM");
-    }
+    if (activeCount <= 1) throw new Error("LAST_ACTIVE_BOM");
   }
 
-  // ACTIVE로 전환 시: 기존 ACTIVE를 ARCHIVED로 자동 전환
+  // ★ ACTIVE 전환 시 기존 ACTIVE 자동 보관
   if (input.status === "ACTIVE") {
     return withTransaction(async (tx) => {
       await tx.bOM.updateMany({
@@ -133,17 +125,14 @@ export async function updateBOMStatus(
 }
 
 // ── BOM 삭제 (soft-delete) ──
-// ★ 보강: ACTIVE 상태 삭제 차단
 export async function deleteBOM(companyId: string, id: string) {
   const bom = await prisma.bOM.findFirst({
     where: { id, companyId, deletedAt: null },
   });
-
   if (!bom) return null;
 
-  if (bom.status === "ACTIVE") {
-    throw new Error("CANNOT_DELETE_ACTIVE");
-  }
+  // ★ ACTIVE 삭제 차단
+  if (bom.status === "ACTIVE") throw new Error("CANNOT_DELETE_ACTIVE");
 
   return prisma.bOM.update({
     where: { id },
@@ -155,6 +144,7 @@ export async function deleteBOM(companyId: string, id: string) {
 // BOMItem
 // ════════════════════════════════════════
 
+// ── BOMItem 추가 ──
 export async function addBOMItem(bomId: string, input: CreateBOMItemInput) {
   return prisma.bOMItem.create({
     data: {
@@ -167,6 +157,7 @@ export async function addBOMItem(bomId: string, input: CreateBOMItemInput) {
   });
 }
 
+// ── BOMItem 수정 ──
 export async function updateBOMItem(id: string, input: UpdateBOMItemInput) {
   return prisma.bOMItem.update({
     where: { id },
@@ -174,12 +165,14 @@ export async function updateBOMItem(id: string, input: UpdateBOMItemInput) {
   });
 }
 
+// ── BOMItem 삭제 ──
 export async function deleteBOMItem(id: string) {
   return prisma.bOMItem.delete({
     where: { id },
   });
 }
 
+// ── BOMItem 일괄 저장 (기존 아이템 전체 교체) ──
 export async function replaceBOMItems(
   bomId: string,
   items: CreateBOMItemInput[]

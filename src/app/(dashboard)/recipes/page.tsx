@@ -44,7 +44,6 @@ export default function RecipesPage() {
         />
       );
     }
-
     return (
       <RecipeList
         key={refreshKey}
@@ -66,7 +65,6 @@ export default function RecipesPage() {
         />
       );
     }
-
     return (
       <SemiProductList
         key={refreshKey}
@@ -98,26 +96,22 @@ export default function RecipesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ★ 레시피 상세 모달 (Sheet → Dialog) */}
+      {/* 레시피 상세 다이얼로그 */}
       {selectedRecipe && (
         <RecipeDetailDialog
           recipe={selectedRecipe}
           open={!!selectedRecipe}
-          onOpenChange={(open) => {
-            if (!open) setSelectedRecipe(null);
-          }}
+          onOpenChange={(open) => { if (!open) setSelectedRecipe(null); }}
           onUpdated={handleRecipeUpdated}
         />
       )}
 
-      {/* ★ 반제품 상세 모달 (Sheet → Dialog) */}
+      {/* 반제품 상세 다이얼로그 */}
       {selectedSemiProduct && (
         <SemiProductDetailDialog
           semiProduct={selectedSemiProduct}
           open={!!selectedSemiProduct}
-          onOpenChange={(open) => {
-            if (!open) setSelectedSemiProduct(null);
-          }}
+          onOpenChange={(open) => { if (!open) setSelectedSemiProduct(null); }}
           onUpdated={handleSemiProductUpdated}
         />
       )}

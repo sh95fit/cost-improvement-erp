@@ -673,6 +673,7 @@ model RecipeBOM {
   version     Int       @default(1)
   status      BOMStatus @default(DRAFT)
   baseWeightG Float     @map("base_weight_g")
+  activatedAt DateTime? @map("activated_at")             
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
@@ -685,7 +686,6 @@ model RecipeBOM {
   @@index([recipeId])
   @@map("recipe_boms")
 }
-
 // ★ 신규: 레시피 BOM 슬롯 (용기 그룹별)
 model RecipeBOMSlot {
   id               String @id @default(cuid())
@@ -1416,20 +1416,21 @@ model CookingPlanItem {
   @@map("cooking_plan_items")
 }
 
-// ★ 변경: CookingPlanSlot - recipeVariantId → recipeId + recipeBomId
+// CookingPlanSlot - recipeVariantId → recipeId + recipeBomId
 model CookingPlanSlot {
-  id            String   @id @default(cuid())
-  cookingPlanId String   @map("cooking_plan_id")
-  slotIndex     Int      @map("slot_index")
-  recipeId      String?  @map("recipe_id")                  // ★ 변경
-  recipeBomId   String?  @map("recipe_bom_id")              // ★ 신규
-  servings      Int      @default(1)
-  note          String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  cookingPlanId   String   @map("cooking_plan_id")
+  slotIndex       Int      @map("slot_index")
+  recipeId        String?  @map("recipe_id")
+  recipeBomId     String?  @map("recipe_bom_id")
+  servings        Int      @default(1)
+  note            String?
+  bomSnapshotJson Json?    @map("bom_snapshot_json")       // ★ 추가
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   cookingPlan CookingPlan @relation(fields: [cookingPlanId], references: [id])
-  recipe      Recipe?     @relation(fields: [recipeId], references: [id])              // ★ 변경
+  recipe      Recipe?     @relation(fields: [recipeId], references: [id])
 
   @@unique([cookingPlanId, slotIndex])
   @@index([cookingPlanId])

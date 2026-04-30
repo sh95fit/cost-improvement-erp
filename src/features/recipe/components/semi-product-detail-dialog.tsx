@@ -51,13 +51,11 @@ import {
   Trash2,
   Loader2,
   Check,
-  Archive,
   RotateCcw,
   AlertTriangle,
 } from "lucide-react";
 import type { SemiProductRow } from "./semi-product-list";
 
-// ★ v4 타입: itemType, subsidiaryMaster 제거
 type BOMItemRow = {
   id: string;
   quantity: number;
@@ -72,6 +70,8 @@ type BOMRow = {
   status: string;
   baseQuantity: number;
   baseUnit: string;
+  createdAt: string;
+  updatedAt: string;
   items: BOMItemRow[];
 };
 
@@ -93,6 +93,15 @@ const BOM_STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-green-50 text-green-700",
   ARCHIVED: "bg-orange-50 text-orange-700",
 };
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
 
 export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
@@ -148,17 +157,13 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
     }
   }, [errorMessage]);
 
-  // ── BOM 생성 ★ v4: ownerType 제거 ──
   const handleCreateBOM = async () => {
     const result = await createBOMWithAutoVersionAction({
       semiProductId: semiProduct.id,
     });
-    if (result.success) {
-      loadDetail();
-    }
+    if (result.success) loadDetail();
   };
 
-  // ── BOM 상태 변경 ──
   const handleBOMStatus = async (bomId: string, status: string) => {
     setErrorMessage(null);
     const result = await updateBOMStatusAction(bomId, { status });
@@ -169,7 +174,6 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
     }
   };
 
-  // ── BOM 삭제 ──
   const handleDeleteBOM = async (bomId: string) => {
     setErrorMessage(null);
     const result = await deleteBOMAction(bomId);
@@ -180,7 +184,6 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
     }
   };
 
-  // ── BOM 아이템 추가 ★ v4: materialMasterId만 ──
   const handleAddItem = async (bomId: string) => {
     if (!newItemId || !newItemQty || !newItemUnit) return;
     setItemSaving(true);
@@ -204,13 +207,11 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
     }
   };
 
-  // ── BOM 아이템 삭제 ──
   const handleDeleteItem = async (itemId: string) => {
     const result = await deleteBOMItemAction(itemId);
     if (result.success) loadDetail();
   };
 
-  // ── 삭제 확인 처리 ──
   const handleConfirmDelete = async () => {
     if (!deleteConfirm) return;
     const { type, id } = deleteConfirm;
@@ -281,7 +282,6 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
 
     return (
       <div className="space-y-4">
-        {/* 에러 메시지 */}
         {errorMessage && (
           <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -303,18 +303,25 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
             <div key={bom.id} className="rounded border bg-gray-50/50 p-3 space-y-2">
               {/* BOM 헤더 */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">v{bom.version}</span>
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                      BOM_STATUS_STYLES[bom.status] ?? "bg-gray-100"
-                    }`}
-                  >
-                    {BOM_STATUS_LABELS[bom.status] ?? bom.status}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    ({bom.baseQuantity}{bom.baseUnit} 기준)
-                  </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">v{bom.version}</span>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        BOM_STATUS_STYLES[bom.status] ?? "bg-gray-100"
+                      }`}
+                    >
+                      {BOM_STATUS_LABELS[bom.status] ?? bom.status}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      ({bom.baseQuantity}{bom.baseUnit} 기준)
+                    </span>
+                  </div>
+                  {/* ★ 날짜 표시 */}
+                  <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                    <span>생성: {formatDate(bom.createdAt)}</span>
+                    <span>수정: {formatDate(bom.updatedAt)}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   {bom.status === "DRAFT" && (
@@ -328,18 +335,7 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
                       확정
                     </Button>
                   )}
-                  {bom.status === "ACTIVE" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-orange-600"
-                      onClick={() => handleBOMStatus(bom.id, "ARCHIVED")}
-                    >
-                      <Archive className="mr-1 h-3 w-3" />
-                      보관
-                    </Button>
-                  )}
-                  {/* ★ ARCHIVED → ACTIVE 복원 */}
+                  {/* ★ ACTIVE 보관 버튼 제거 */}
                   {bom.status === "ARCHIVED" && (
                     <Button
                       variant="ghost"
@@ -366,7 +362,7 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
                 </div>
               </div>
 
-              {/* BOM 아이템 테이블 ★ v4: 자재만 */}
+              {/* BOM 아이템 테이블 */}
               {bom.items.length > 0 && (
                 <div className="rounded border">
                   <Table>
@@ -416,7 +412,7 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
                 </div>
               )}
 
-              {/* BOM 아이템 추가 (DRAFT만) ★ v4: 자재만 */}
+              {/* BOM 아이템 추가 (DRAFT만) */}
               {bom.status === "DRAFT" && (
                 <>
                   {addingItemBomId === bom.id ? (
@@ -499,8 +495,9 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
 
   return (
     <>
+      {/* ★ max-w-5xl로 확대 */}
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               <span>{semiProduct.name}</span>

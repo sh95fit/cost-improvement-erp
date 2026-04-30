@@ -97,7 +97,6 @@ export async function createRecipeBOM(
 }
 
 // ── RecipeBOM 상태 변경 ──
-// ★ 보강: ARCHIVED→ACTIVE 허용, 마지막 ACTIVE 보관 차단
 export async function updateRecipeBOMStatus(
   companyId: string,
   id: string,
@@ -108,22 +107,15 @@ export async function updateRecipeBOMStatus(
   });
   if (!bom) throw new Error("NOT_FOUND");
 
-  // ACTIVE → ARCHIVED 전환 시: 마지막 ACTIVE인지 확인
+  // ★ 마지막 ACTIVE 보관 차단
   if (bom.status === "ACTIVE" && input.status === "ARCHIVED") {
     const activeCount = await prisma.recipeBOM.count({
-      where: {
-        companyId,
-        recipeId: bom.recipeId,
-        status: "ACTIVE",
-        deletedAt: null,
-      },
+      where: { companyId, recipeId: bom.recipeId, status: "ACTIVE", deletedAt: null },
     });
-    if (activeCount <= 1) {
-      throw new Error("LAST_ACTIVE_BOM");
-    }
+    if (activeCount <= 1) throw new Error("LAST_ACTIVE_BOM");
   }
 
-  // ACTIVE로 전환 시: 기존 ACTIVE를 ARCHIVED로 자동 전환 (DRAFT→ACTIVE, ARCHIVED→ACTIVE 모두)
+  // ★ ACTIVE 전환 시 기존 ACTIVE 자동 보관 + activatedAt 기록
   if (input.status === "ACTIVE") {
     return withTransaction(async (tx) => {
       await tx.recipeBOM.updateMany({
@@ -139,7 +131,7 @@ export async function updateRecipeBOMStatus(
 
       return tx.recipeBOM.update({
         where: { id },
-        data: { status: input.status },
+        data: { status: input.status, activatedAt: new Date() },
       });
     });
   }
@@ -168,17 +160,14 @@ export async function updateRecipeBOMBaseWeight(
 }
 
 // ── RecipeBOM 삭제 (soft-delete) ──
-// ★ 보강: ACTIVE 상태 삭제 차단
 export async function deleteRecipeBOM(companyId: string, id: string) {
   const bom = await prisma.recipeBOM.findFirst({
     where: { id, companyId, deletedAt: null },
   });
-
   if (!bom) return null;
 
-  if (bom.status === "ACTIVE") {
-    throw new Error("CANNOT_DELETE_ACTIVE");
-  }
+  // ★ ACTIVE 삭제 차단
+  if (bom.status === "ACTIVE") throw new Error("CANNOT_DELETE_ACTIVE");
 
   return prisma.recipeBOM.update({
     where: { id },
@@ -186,10 +175,36 @@ export async function deleteRecipeBOM(companyId: string, id: string) {
   });
 }
 
+// ── RecipeBOM 전체 스냅샷 JSON 생성 ──
+export async function buildRecipeBOMSnapshot(companyId: string, id: string) {
+  const bom = await getRecipeBOMById(companyId, id);
+  return {
+    id: bom.id,
+    version: bom.version,
+    status: bom.status,
+    baseWeightG: bom.baseWeightG,
+    snapshotAt: new Date().toISOString(),
+    slots: bom.slots.map((slot) => ({
+      containerGroup: slot.containerGroup,
+      slotIndex: slot.slotIndex,
+      totalWeightG: slot.totalWeightG,
+      note: slot.note,
+      items: slot.items.map((item) => ({
+        ingredientType: item.ingredientType,
+        materialMaster: item.materialMaster,
+        semiProduct: item.semiProduct,
+        weightG: item.weightG,
+        unit: item.unit,
+      })),
+    })),
+  };
+}
+
 // ════════════════════════════════════════
 // RecipeBOMSlot
 // ════════════════════════════════════════
 
+// ── 슬롯 추가 ──
 export async function addRecipeBOMSlot(
   recipeBomId: string,
   input: CreateRecipeBOMSlotInput
@@ -205,6 +220,65 @@ export async function addRecipeBOMSlot(
   });
 }
 
+// ── 슬롯 추가 + 구성재료 전체 자동 할당 ──
+export async function addRecipeBOMSlotWithIngredients(
+  recipeBomId: string,
+  input: CreateRecipeBOMSlotInput
+) {
+  return withTransaction(async (tx) => {
+    // 1. 슬롯 생성
+    const slot = await tx.recipeBOMSlot.create({
+      data: { ...input, recipeBomId },
+      include: {
+        containerGroup: { select: { id: true, name: true, code: true } },
+      },
+    });
+
+    // 2. 해당 BOM의 레시피에서 구성재료 전체 조회
+    const bom = await tx.recipeBOM.findUnique({
+      where: { id: recipeBomId },
+      select: { recipeId: true },
+    });
+    if (!bom) throw new Error("NOT_FOUND");
+
+    const ingredients = await tx.recipeIngredient.findMany({
+      where: { recipeId: bom.recipeId },
+      orderBy: { sortOrder: "asc" },
+    });
+
+    // 3. 모든 구성재료를 슬롯 아이템으로 추가 (weightG=0, 사용자가 중량만 입력)
+    if (ingredients.length > 0) {
+      await tx.recipeBOMSlotItem.createMany({
+        data: ingredients.map((ing, idx) => ({
+          recipeBomSlotId: slot.id,
+          ingredientType: ing.ingredientType,
+          materialMasterId: ing.materialMasterId,
+          semiProductId: ing.semiProductId,
+          weightG: 0,
+          unit: "g",
+          sortOrder: idx,
+        })),
+      });
+    }
+
+    // 4. 생성된 슬롯 + 아이템 포함하여 반환
+    return tx.recipeBOMSlot.findUnique({
+      where: { id: slot.id },
+      include: {
+        containerGroup: { select: { id: true, name: true, code: true } },
+        items: {
+          include: {
+            materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+            semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    });
+  });
+}
+
+// ── 슬롯 수정 ──
 export async function updateRecipeBOMSlot(
   id: string,
   input: UpdateRecipeBOMSlotInput
@@ -215,6 +289,7 @@ export async function updateRecipeBOMSlot(
   });
 }
 
+// ── 슬롯 삭제 (하위 아이템도 삭제) ──
 export async function deleteRecipeBOMSlot(id: string) {
   return withTransaction(async (tx) => {
     await tx.recipeBOMSlotItem.deleteMany({
@@ -230,6 +305,7 @@ export async function deleteRecipeBOMSlot(id: string) {
 // RecipeBOMSlotItem
 // ════════════════════════════════════════
 
+// ── 슬롯 아이템 추가 ──
 export async function addRecipeBOMSlotItem(
   recipeBomSlotId: string,
   input: CreateRecipeBOMSlotItemInput
@@ -246,6 +322,7 @@ export async function addRecipeBOMSlotItem(
   });
 }
 
+// ── 슬롯 아이템 수정 ──
 export async function updateRecipeBOMSlotItem(
   id: string,
   input: UpdateRecipeBOMSlotItemInput
@@ -256,6 +333,7 @@ export async function updateRecipeBOMSlotItem(
   });
 }
 
+// ── 슬롯 아이템 삭제 ──
 export async function deleteRecipeBOMSlotItem(id: string) {
   return prisma.recipeBOMSlotItem.delete({
     where: { id },
