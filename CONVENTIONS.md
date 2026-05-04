@@ -37,3 +37,7 @@
 - 함수/변수: camelCase (`getMaterialById`)
 - DB 컬럼: snake_case (`material_type`) — Prisma `@map`으로 매핑
 - API 경로: kebab-case (`/api/material-masters`)
+
+## 작업 프로세스 규칙
+11. **PROGRESS.md 갱신 없이 다음 Phase 진행 금지** — 매 Phase 완료 시 PROGRESS.md의 해당 Phase를 ✅로 변경하고, 변경 내용·계획 대비 변경·발견된 이슈를 기록한 후 커밋한다.
+12. **6단계 프로세스 미준수 금지** — 모든 Phase는 깃 배포 → 레포 검증 → 프로세스 검증 → 테스트 → 보완 → PROGRESS.md 갱신 순서를 따른다.
