@@ -1,6 +1,7 @@
+// src/features/recipe/components/recipe-detail-dialog.tsx — 전체 코드
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -49,9 +50,13 @@ import {
   deleteRecipeBOMSlotAction,
   updateRecipeBOMSlotItemAction,
   deleteRecipeBOMSlotItemAction,
+  getSemiProductsAction,
 } from "../actions/recipe.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
-import { getContainerGroupsAction, getContainerGroupByIdAction } from "@/features/container/actions/container.action";
+import {
+  getContainerGroupsAction,
+  getContainerGroupByIdAction,
+} from "@/features/container/actions/container.action";
 import {
   Pencil,
   Plus,
@@ -63,10 +68,18 @@ import {
   RotateCcw,
   AlertTriangle,
   Save,
+  Search,
 } from "lucide-react";
 import type { RecipeRow } from "./recipe-list";
 
 // ── 타입 정의 ──
+
+type OptionItem = {
+  id: string;
+  name: string;
+  code: string;
+  unit: string;
+};
 
 type IngredientRow = {
   id: string;
@@ -135,7 +148,12 @@ function formatDate(dateStr: string | null | undefined): string {
   });
 }
 
-export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Props) {
+export function RecipeDetailDialog({
+  recipe,
+  open,
+  onOpenChange,
+  onUpdated,
+}: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
   const [recipeBoms, setRecipeBoms] = useState<RecipeBOMRow[]>([]);
@@ -145,9 +163,12 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
 
   // 재료 추가 폼
   const [showIngredientForm, setShowIngredientForm] = useState(false);
-  const [newIngredientType, setNewIngredientType] = useState<"MATERIAL" | "SEMI_PRODUCT">("MATERIAL");
+  const [newIngredientType, setNewIngredientType] = useState<
+    "MATERIAL" | "SEMI_PRODUCT"
+  >("MATERIAL");
   const [newIngredientId, setNewIngredientId] = useState("");
   const [ingredientSaving, setIngredientSaving] = useState(false);
+  const [ingredientSearch, setIngredientSearch] = useState("");
 
   // 슬롯 추가 폼
   const [addingSlotBomId, setAddingSlotBomId] = useState<string | null>(null);
@@ -158,24 +179,51 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
   const [slotSaving, setSlotSaving] = useState(false);
 
   // 슬롯 아이템 중량 편집
-  const [editingWeights, setEditingWeights] = useState<Record<string, string>>({});
+  const [editingWeights, setEditingWeights] = useState<Record<string, string>>(
+    {}
+  );
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
-  // 옵션 데이터
-  const [materialOptions, setMaterialOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
-  const [containerGroupOptions, setContainerGroupOptions] = useState<{ id: string; name: string; code: string }[]>([]);
+  // ★ 수정: 식자재 + 반제품 옵션 분리
+  const [materialOptions, setMaterialOptions] = useState<OptionItem[]>([]);
+  const [semiProductOptions, setSemiProductOptions] = useState<OptionItem[]>([]);
+  const [containerGroupOptions, setContainerGroupOptions] = useState<
+    { id: string; name: string; code: string }[]
+  >([]);
+  const [containerGroupsLoaded, setContainerGroupsLoaded] = useState(false);
 
-  const [selectedGroupSlots, setSelectedGroupSlots] = useState<{ slotIndex: number; label: string; volumeMl: number | null }[]>([]);
+  const [selectedGroupSlots, setSelectedGroupSlots] = useState<
+    { slotIndex: number; label: string; volumeMl: number | null }[]
+  >([]);
 
   // 삭제 확인
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: string;
+    id: string;
+    name: string;
+  } | null>(null);
+
+  // ★ 신규: 현재 타입에 따라 필터된 옵션 목록
+  const currentIngredientOptions = useMemo(() => {
+    const source =
+      newIngredientType === "MATERIAL" ? materialOptions : semiProductOptions;
+    if (!ingredientSearch.trim()) return source;
+    const keyword = ingredientSearch.trim().toLowerCase();
+    return source.filter(
+      (opt) =>
+        opt.name.toLowerCase().includes(keyword) ||
+        opt.code.toLowerCase().includes(keyword)
+    );
+  }, [newIngredientType, materialOptions, semiProductOptions, ingredientSearch]);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
       const result = await getRecipeByIdAction(recipe.id);
       if (result.success && result.data) {
-        setIngredients(result.data.ingredients as unknown as IngredientRow[]);
+        setIngredients(
+          result.data.ingredients as unknown as IngredientRow[]
+        );
         setRecipeBoms(result.data.recipeBoms as unknown as RecipeBOMRow[]);
       }
     } finally {
@@ -183,53 +231,107 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     }
   }, [recipe.id]);
 
-  // 용기 그룹을 별도 API에서 로딩
+  // ★ 수정: 식자재 + 반제품 + 용기 그룹 모두 로딩, 에러 로깅 추가
   const loadOptions = useCallback(async () => {
-    const matResult = await getMaterialsAction({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
-    if (matResult.success) {
-      setMaterialOptions(
-        matResult.data.items.map((m) => ({ id: m.id, name: m.name, code: m.code, unit: m.unit }))
-      );
-    }
-    // 용기 그룹 로딩
+    // 식자재 로딩
     try {
-      const cgResult = await getContainerGroupsAction({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
-      if (cgResult.success) {
-        setContainerGroupOptions(
-          cgResult.data.items.map((g) => ({ id: g.id, name: g.name, code: g.code }))
+      const matResult = await getMaterialsAction({
+        page: 1,
+        limit: 200,
+        sortBy: "name",
+        sortOrder: "asc",
+      });
+      if (matResult.success) {
+        setMaterialOptions(
+          matResult.data.items.map((m) => ({
+            id: m.id,
+            name: m.name,
+            code: m.code,
+            unit: m.unit,
+          }))
         );
       }
     } catch {
-      // API 실패 시 BOM 데이터에서 추출 (아래 useEffect fallback)
+      console.error("식자재 목록 로딩 실패");
+    }
+
+    // ★ 신규: 반제품 로딩
+    try {
+      const spResult = await getSemiProductsAction({
+        page: 1,
+        limit: 200,
+        sortBy: "name",
+        sortOrder: "asc",
+      });
+      if (spResult.success) {
+        setSemiProductOptions(
+          spResult.data.items.map((sp) => ({
+            id: sp.id,
+            name: sp.name,
+            code: sp.code,
+            unit: sp.unit,
+          }))
+        );
+      }
+    } catch {
+      console.error("반제품 목록 로딩 실패");
+    }
+
+    // 용기 그룹 로딩
+    try {
+      const cgResult = await getContainerGroupsAction({
+        page: 1,
+        limit: 200,
+        sortBy: "name",
+        sortOrder: "asc",
+      });
+      if (cgResult.success && cgResult.data.items.length > 0) {
+        setContainerGroupOptions(
+          cgResult.data.items.map((g) => ({
+            id: g.id,
+            name: g.name,
+            code: g.code,
+          }))
+        );
+        setContainerGroupsLoaded(true);
+      } else {
+        // API 성공했지만 데이터가 없는 경우
+        setContainerGroupsLoaded(true);
+      }
+    } catch {
+      console.error("용기 그룹 목록 로딩 실패 — BOM 데이터에서 추출 시도");
+      setContainerGroupsLoaded(false);
     }
   }, []);
 
-    // 용기그룹 선택 시 슬롯 목록 로딩
-    const handleContainerGroupChange = async (groupId: string) => {
-      setNewSlotContainerGroupId(groupId);
-      setNewSlotIndex("");
-      setNewSlotWeight("100");
-      setSelectedGroupSlots([]);
-      if (!groupId) return;
-      try {
-        const result = await getContainerGroupByIdAction(groupId);
-        if (result.success && result.data) {
-          const slots = result.data.slots.map((s: { slotIndex: number; label: string; volumeMl: number | null }) => ({
+  // 용기그룹 선택 시 슬롯 목록 로딩
+  const handleContainerGroupChange = async (groupId: string) => {
+    setNewSlotContainerGroupId(groupId);
+    setNewSlotIndex("");
+    setNewSlotWeight("100");
+    setSelectedGroupSlots([]);
+    if (!groupId) return;
+    try {
+      const result = await getContainerGroupByIdAction(groupId);
+      if (result.success && result.data) {
+        const slots = result.data.slots.map(
+          (s: { slotIndex: number; label: string; volumeMl: number | null }) => ({
             slotIndex: s.slotIndex,
             label: s.label,
             volumeMl: s.volumeMl,
-          }));
-          setSelectedGroupSlots(slots);
-        }
-      } catch {
-        // 실패 시 수동 입력 fallback
+          })
+        );
+        setSelectedGroupSlots(slots);
       }
-    };
-  
+    } catch {
+      // 실패 시 수동 입력 fallback
+    }
+  };
 
-  // fallback: API에서 못 가져오면 BOM 데이터에서 추출
+  // ★ 수정: fallback 조건 개선 — containerGroupsLoaded로 판단
   useEffect(() => {
-    if (containerGroupOptions.length > 0) return; // 이미 API에서 로딩됨
+    if (containerGroupsLoaded) return; // API에서 이미 처리됨
+    if (containerGroupOptions.length > 0) return; // 이미 설정됨
     const groups: { id: string; name: string; code: string }[] = [];
     const seen = new Set<string>();
     recipeBoms.forEach((bom) =>
@@ -241,12 +343,19 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
       })
     );
     if (groups.length > 0) setContainerGroupOptions(groups);
-  }, [recipeBoms, containerGroupOptions.length]);
+  }, [recipeBoms, containerGroupOptions.length, containerGroupsLoaded]);
 
   useEffect(() => {
     if (open) {
       loadDetail();
       loadOptions();
+    } else {
+      // 다이얼로그 닫을 때 상태 초기화
+      setShowIngredientForm(false);
+      setAddingSlotBomId(null);
+      setIngredientSearch("");
+      setNewIngredientId("");
+      setErrorMessage(null);
     }
   }, [open, loadDetail, loadOptions]);
 
@@ -273,9 +382,12 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
       const result = await addIngredientAction(recipe.id, input);
       if (result.success) {
         setNewIngredientId("");
+        setIngredientSearch("");
         setShowIngredientForm(false);
         loadDetail();
         onUpdated();
+      } else {
+        setErrorMessage(result.error?.message ?? "재료 추가에 실패했습니다");
       }
     } finally {
       setIngredientSaving(false);
@@ -292,7 +404,6 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
   };
 
   // ── RecipeBOM 생성 ──
-  // ★ 변경: 에러 표시 추가
   const handleCreateRecipeBOM = async () => {
     setErrorMessage(null);
     const result = await createRecipeBOMWithAutoVersionAction({
@@ -313,7 +424,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     if (result.success) {
       loadDetail();
     } else {
-      setErrorMessage(result.error.message);
+      setErrorMessage(result.error?.message ?? "상태 변경에 실패했습니다");
     }
   };
 
@@ -324,7 +435,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     if (result.success) {
       loadDetail();
     } else {
-      setErrorMessage(result.error.message);
+      setErrorMessage(result.error?.message ?? "BOM 삭제에 실패했습니다");
     }
   };
 
@@ -336,7 +447,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
       const result = await addRecipeBOMSlotAction(bomId, {
         containerGroupId: newSlotContainerGroupId,
         slotIndex: parseInt(newSlotIndex) || 0,
-        totalWeightG: parseFloat(newSlotWeight) || 100,
+        totalWeightG: parseFloat(newSlotWeight) || 0,
         note: newSlotNote || undefined,
         sortOrder: 0,
       });
@@ -346,7 +457,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
         setNewSlotIndex("0");
         setNewSlotWeight("100");
         setNewSlotNote("");
+        setSelectedGroupSlots([]);
         loadDetail();
+      } else {
+        setErrorMessage(result.error?.message ?? "슬롯 추가에 실패했습니다");
       }
     } finally {
       setSlotSaving(false);
@@ -367,7 +481,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     if (isNaN(weight) || weight < 0) return;
     setSavingItemId(itemId);
     try {
-      const result = await updateRecipeBOMSlotItemAction(itemId, { weightG: weight });
+      const result = await updateRecipeBOMSlotItemAction(itemId, {
+        weightG: weight,
+      });
       if (result.success) {
         setEditingWeights((prev) => {
           const next = { ...prev };
@@ -419,7 +535,11 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     return (
       <div className="space-y-6">
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsEditing(true)}
+          >
             <Pencil className="mr-2 h-3.5 w-3.5" />
             수정
           </Button>
@@ -465,22 +585,32 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                   {ingredients.map((ing) => (
                     <TableRow key={ing.id}>
                       <TableCell className="text-xs">
-                        <span className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
-                          ing.ingredientType === "MATERIAL"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-purple-50 text-purple-700"
-                        }`}>
-                          {ing.ingredientType === "MATERIAL" ? "식자재" : "반제품"}
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
+                            ing.ingredientType === "MATERIAL"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-purple-50 text-purple-700"
+                          }`}
+                        >
+                          {ing.ingredientType === "MATERIAL"
+                            ? "식자재"
+                            : "반제품"}
                         </span>
                       </TableCell>
                       <TableCell className="text-xs font-medium">
-                        {ing.materialMaster?.name ?? ing.semiProduct?.name ?? "-"}
+                        {ing.materialMaster?.name ??
+                          ing.semiProduct?.name ??
+                          "-"}
                       </TableCell>
                       <TableCell className="text-xs text-gray-400">
-                        {ing.materialMaster?.code ?? ing.semiProduct?.code ?? "-"}
+                        {ing.materialMaster?.code ??
+                          ing.semiProduct?.code ??
+                          "-"}
                       </TableCell>
                       <TableCell className="text-xs text-gray-400">
-                        {ing.materialMaster?.unit ?? ing.semiProduct?.unit ?? "-"}
+                        {ing.materialMaster?.unit ??
+                          ing.semiProduct?.unit ??
+                          "-"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -519,7 +649,15 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">재료 관리</h3>
             {!showIngredientForm && (
-              <Button size="sm" variant="outline" onClick={() => setShowIngredientForm(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowIngredientForm(true);
+                  setIngredientSearch("");
+                  setNewIngredientId("");
+                }}
+              >
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 재료 추가
               </Button>
@@ -529,6 +667,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           {showIngredientForm && (
             <div className="rounded-md border border-blue-200 bg-blue-50/50 p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
+                {/* 재료 타입 선택 */}
                 <div className="space-y-1">
                   <Label className="text-xs">재료 타입</Label>
                   <Select
@@ -536,37 +675,97 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                     onValueChange={(v) => {
                       setNewIngredientType(v as "MATERIAL" | "SEMI_PRODUCT");
                       setNewIngredientId("");
+                      setIngredientSearch("");
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MATERIAL">식자재</SelectItem>
                       <SelectItem value="SEMI_PRODUCT">반제품</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* ★ 수정: 검색 + 올바른 옵션 목록 사용 */}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
                   </Label>
-                  <Select value={newIngredientId} onValueChange={setNewIngredientId}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="선택" /></SelectTrigger>
-                    <SelectContent>
-                      {materialOptions.map((opt) => (
-                        <SelectItem key={opt.id} value={opt.id}>
-                          {opt.name} ({opt.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1.5">
+                    {/* 검색 입력 */}
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                      <Input
+                        placeholder="이름 또는 코드로 검색..."
+                        className="h-7 pl-7 text-xs"
+                        value={ingredientSearch}
+                        onChange={(e) => setIngredientSearch(e.target.value)}
+                      />
+                    </div>
+                    {/* 선택 드롭다운 */}
+                    <Select
+                      value={newIngredientId}
+                      onValueChange={setNewIngredientId}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue
+                          placeholder={
+                            currentIngredientOptions.length === 0
+                              ? newIngredientType === "MATERIAL"
+                                ? "등록된 식자재가 없습니다"
+                                : "등록된 반제품이 없습니다"
+                              : "선택"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currentIngredientOptions.length === 0 ? (
+                          <div className="px-2 py-3 text-center text-xs text-gray-400">
+                            {ingredientSearch.trim()
+                              ? `"${ingredientSearch}" 검색 결과가 없습니다`
+                              : newIngredientType === "MATERIAL"
+                                ? "등록된 식자재가 없습니다"
+                                : "등록된 반제품이 없습니다"}
+                          </div>
+                        ) : (
+                          currentIngredientOptions.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>
+                              {opt.name} ({opt.code}) — {opt.unit}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {ingredientSearch.trim() && (
+                      <p className="text-xs text-gray-400">
+                        {currentIngredientOptions.length}건 검색됨
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddIngredient} disabled={ingredientSaving}>
-                  {ingredientSaving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                <Button
+                  size="sm"
+                  onClick={handleAddIngredient}
+                  disabled={ingredientSaving || !newIngredientId}
+                >
+                  {ingredientSaving && (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  )}
                   추가
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowIngredientForm(false)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowIngredientForm(false);
+                    setIngredientSearch("");
+                    setNewIngredientId("");
+                  }}
+                >
                   취소
                 </Button>
               </div>
@@ -574,7 +773,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           )}
 
           {ingredients.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-500">등록된 재료가 없습니다.</p>
+            <p className="py-4 text-center text-sm text-gray-500">
+              등록된 재료가 없습니다.
+            </p>
           ) : (
             <div className="rounded border">
               <Table>
@@ -590,19 +791,27 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                   {ingredients.map((ing) => (
                     <TableRow key={ing.id}>
                       <TableCell className="text-xs">
-                        <span className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
-                          ing.ingredientType === "MATERIAL"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-purple-50 text-purple-700"
-                        }`}>
-                          {ing.ingredientType === "MATERIAL" ? "식자재" : "반제품"}
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-xs ${
+                            ing.ingredientType === "MATERIAL"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-purple-50 text-purple-700"
+                          }`}
+                        >
+                          {ing.ingredientType === "MATERIAL"
+                            ? "식자재"
+                            : "반제품"}
                         </span>
                       </TableCell>
                       <TableCell className="text-xs font-medium">
-                        {ing.materialMaster?.name ?? ing.semiProduct?.name ?? "-"}
+                        {ing.materialMaster?.name ??
+                          ing.semiProduct?.name ??
+                          "-"}
                       </TableCell>
                       <TableCell className="text-xs text-gray-400">
-                        {ing.materialMaster?.code ?? ing.semiProduct?.code ?? "-"}
+                        {ing.materialMaster?.code ??
+                          ing.semiProduct?.code ??
+                          "-"}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -613,7 +822,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                             setDeleteConfirm({
                               type: "ingredient",
                               id: ing.id,
-                              name: ing.materialMaster?.name ?? ing.semiProduct?.name ?? "",
+                              name:
+                                ing.materialMaster?.name ??
+                                ing.semiProduct?.name ??
+                                "",
                             })
                           }
                         >
@@ -631,7 +843,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
         {/* ── RecipeBOM 섹션 ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">레시피 BOM (배식 중량)</h3>
+            <h3 className="text-sm font-semibold text-gray-700">
+              레시피 BOM (배식 중량)
+            </h3>
             <Button size="sm" variant="outline" onClick={handleCreateRecipeBOM}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               새 BOM 버전
@@ -639,7 +853,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           </div>
 
           {recipeBoms.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-500">BOM이 없습니다.</p>
+            <p className="py-4 text-center text-sm text-gray-500">
+              BOM이 없습니다.
+            </p>
           ) : (
             recipeBoms.map((bom) => {
               const isExpanded = expandedBom === bom.id;
@@ -647,7 +863,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                 <div key={bom.id} className="rounded-md border">
                   <div
                     className="flex cursor-pointer items-center justify-between px-4 py-3 hover:bg-gray-50"
-                    onClick={() => setExpandedBom(isExpanded ? null : bom.id)}
+                    onClick={() =>
+                      setExpandedBom(isExpanded ? null : bom.id)
+                    }
                   >
                     <div className="flex items-center gap-3">
                       {isExpanded ? (
@@ -674,7 +892,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="flex items-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {bom.status === "DRAFT" && (
                         <Button
                           variant="ghost"
@@ -703,7 +924,11 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                           size="icon"
                           className="h-7 w-7"
                           onClick={() =>
-                            setDeleteConfirm({ type: "bom", id: bom.id, name: `v${bom.version}` })
+                            setDeleteConfirm({
+                              type: "bom",
+                              id: bom.id,
+                              name: `v${bom.version}`,
+                            })
                           }
                         >
                           <Trash2 className="h-3.5 w-3.5 text-red-500" />
@@ -716,18 +941,32 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                     <div className="border-t px-4 py-4 space-y-4">
                       {bom.slots.length === 0 ? (
                         <p className="text-center text-sm text-gray-400 py-2">
-                          슬롯이 없습니다. 슬롯을 추가하면 구성재료가 자동으로 할당됩니다.
+                          슬롯이 없습니다. 슬롯을 추가하면 구성재료가 자동으로
+                          할당됩니다.
                         </p>
                       ) : (
                         bom.slots.map((slot) => (
-                          <div key={slot.id} className="rounded border bg-gray-50/50 p-3 space-y-2">
+                          <div
+                            key={slot.id}
+                            className="rounded border bg-gray-50/50 p-3 space-y-2"
+                          >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 text-sm">
-                                <span className="font-medium">{slot.containerGroup.name}</span>
-                                <span className="text-gray-400">Slot {slot.slotIndex}</span>
-                                <span className="font-mono text-blue-700">{slot.totalWeightG}g</span>
+                                <span className="font-medium">
+                                  {slot.containerGroup.name}
+                                </span>
+                                <span className="text-gray-400">
+                                  Slot {slot.slotIndex}
+                                </span>
+                                {slot.totalWeightG > 0 && (
+                                  <span className="font-mono text-blue-700">
+                                    {slot.totalWeightG}g
+                                  </span>
+                                )}
                                 {slot.note && (
-                                  <span className="text-xs text-gray-400">({slot.note})</span>
+                                  <span className="text-xs text-gray-400">
+                                    ({slot.note})
+                                  </span>
                                 )}
                               </div>
                               {bom.status === "DRAFT" && (
@@ -736,7 +975,11 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   size="icon"
                                   className="h-6 w-6"
                                   onClick={() =>
-                                    setDeleteConfirm({ type: "slot", id: slot.id, name: slot.containerGroup.name })
+                                    setDeleteConfirm({
+                                      type: "slot",
+                                      id: slot.id,
+                                      name: slot.containerGroup.name,
+                                    })
                                   }
                                 >
                                   <Trash2 className="h-3 w-3 text-red-400" />
@@ -749,30 +992,47 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                 <Table>
                                   <TableHeader>
                                     <TableRow>
-                                      <TableHead className="text-xs">구분</TableHead>
-                                      <TableHead className="text-xs">재료명</TableHead>
-                                      <TableHead className="text-xs text-right">중량(g)</TableHead>
+                                      <TableHead className="text-xs">
+                                        구분
+                                      </TableHead>
+                                      <TableHead className="text-xs">
+                                        재료명
+                                      </TableHead>
+                                      <TableHead className="text-xs text-right">
+                                        중량(g)
+                                      </TableHead>
                                       {bom.status === "DRAFT" && (
-                                        <TableHead className="w-[80px] text-xs">작업</TableHead>
+                                        <TableHead className="w-[80px] text-xs">
+                                          작업
+                                        </TableHead>
                                       )}
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
                                     {slot.items.map((item) => {
-                                      const isEditingWeight = editingWeights[item.id] !== undefined;
+                                      const isEditingWeight =
+                                        editingWeights[item.id] !== undefined;
                                       return (
                                         <TableRow key={item.id}>
                                           <TableCell className="text-xs">
-                                            <span className={`inline-flex rounded px-1 py-0.5 ${
-                                              item.ingredientType === "MATERIAL"
-                                                ? "bg-blue-50 text-blue-600"
-                                                : "bg-purple-50 text-purple-600"
-                                            }`}>
-                                              {item.ingredientType === "MATERIAL" ? "자재" : "반제품"}
+                                            <span
+                                              className={`inline-flex rounded px-1 py-0.5 ${
+                                                item.ingredientType ===
+                                                "MATERIAL"
+                                                  ? "bg-blue-50 text-blue-600"
+                                                  : "bg-purple-50 text-purple-600"
+                                              }`}
+                                            >
+                                              {item.ingredientType ===
+                                              "MATERIAL"
+                                                ? "자재"
+                                                : "반제품"}
                                             </span>
                                           </TableCell>
                                           <TableCell className="text-xs font-medium">
-                                            {item.materialMaster?.name ?? item.semiProduct?.name ?? "-"}
+                                            {item.materialMaster?.name ??
+                                              item.semiProduct?.name ??
+                                              "-"}
                                           </TableCell>
                                           <TableCell className="text-right">
                                             {bom.status === "DRAFT" ? (
@@ -781,21 +1041,39 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                                 min={0}
                                                 step="any"
                                                 className="h-7 w-20 text-xs text-right ml-auto"
-                                                value={isEditingWeight ? editingWeights[item.id] : String(item.weightG)}
+                                                value={
+                                                  isEditingWeight
+                                                    ? editingWeights[item.id]
+                                                    : String(item.weightG)
+                                                }
                                                 onChange={(e) =>
-                                                  setEditingWeights((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                                  setEditingWeights((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: e.target.value,
+                                                  }))
                                                 }
                                                 onBlur={() => {
-                                                  if (isEditingWeight && editingWeights[item.id] !== String(item.weightG)) {
-                                                    handleSaveItemWeight(item.id);
+                                                  if (
+                                                    isEditingWeight &&
+                                                    editingWeights[item.id] !==
+                                                      String(item.weightG)
+                                                  ) {
+                                                    handleSaveItemWeight(
+                                                      item.id
+                                                    );
                                                   }
                                                 }}
                                                 onKeyDown={(e) => {
-                                                  if (e.key === "Enter") handleSaveItemWeight(item.id);
+                                                  if (e.key === "Enter")
+                                                    handleSaveItemWeight(
+                                                      item.id
+                                                    );
                                                 }}
                                               />
                                             ) : (
-                                              <span className="text-xs font-mono">{item.weightG}g</span>
+                                              <span className="text-xs font-mono">
+                                                {item.weightG}g
+                                              </span>
                                             )}
                                           </TableCell>
                                           {bom.status === "DRAFT" && (
@@ -806,10 +1084,17 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-6 w-6"
-                                                    onClick={() => handleSaveItemWeight(item.id)}
-                                                    disabled={savingItemId === item.id}
+                                                    onClick={() =>
+                                                      handleSaveItemWeight(
+                                                        item.id
+                                                      )
+                                                    }
+                                                    disabled={
+                                                      savingItemId === item.id
+                                                    }
                                                   >
-                                                    {savingItemId === item.id ? (
+                                                    {savingItemId ===
+                                                    item.id ? (
                                                       <Loader2 className="h-3 w-3 animate-spin" />
                                                     ) : (
                                                       <Save className="h-3 w-3 text-green-600" />
@@ -824,7 +1109,12 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                                     setDeleteConfirm({
                                                       type: "slotItem",
                                                       id: item.id,
-                                                      name: item.materialMaster?.name ?? item.semiProduct?.name ?? "",
+                                                      name:
+                                                        item.materialMaster
+                                                          ?.name ??
+                                                        item.semiProduct
+                                                          ?.name ??
+                                                        "",
                                                     })
                                                   }
                                                 >
@@ -849,7 +1139,8 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                           {addingSlotBomId === bom.id ? (
                             <div className="rounded border border-dashed border-green-300 bg-green-50/30 p-3 space-y-3">
                               <p className="text-xs text-gray-500">
-                                슬롯 추가 시 해당 레시피의 전체 구성재료가 자동으로 할당됩니다.
+                                슬롯 추가 시 해당 레시피의 전체 구성재료가
+                                자동으로 할당됩니다.
                               </p>
                               <div className="grid grid-cols-2 gap-3">
                                 {/* 용기 그룹 선택 */}
@@ -858,26 +1149,41 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   {containerGroupOptions.length > 0 ? (
                                     <Select
                                       value={newSlotContainerGroupId}
-                                      onValueChange={handleContainerGroupChange}
+                                      onValueChange={
+                                        handleContainerGroupChange
+                                      }
                                     >
                                       <SelectTrigger className="h-8 text-xs">
                                         <SelectValue placeholder="용기 그룹 선택" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {containerGroupOptions.map((g) => (
-                                          <SelectItem key={g.id} value={g.id}>
+                                          <SelectItem
+                                            key={g.id}
+                                            value={g.id}
+                                          >
                                             {g.name} ({g.code})
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
                                   ) : (
-                                    <Input
-                                      placeholder="용기 그룹 ID (용기 관리에서 먼저 등록)"
-                                      className="h-8 text-xs"
-                                      value={newSlotContainerGroupId}
-                                      onChange={(e) => setNewSlotContainerGroupId(e.target.value)}
-                                    />
+                                    <div className="space-y-1">
+                                      <Input
+                                        placeholder="용기 관리에서 먼저 등록해 주세요"
+                                        className="h-8 text-xs"
+                                        value={newSlotContainerGroupId}
+                                        onChange={(e) =>
+                                          setNewSlotContainerGroupId(
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                      <p className="text-xs text-amber-600">
+                                        용기 그룹이 없습니다. 용기 관리
+                                        페이지에서 먼저 등록해 주세요.
+                                      </p>
+                                    </div>
                                   )}
                                 </div>
 
@@ -889,9 +1195,13 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                       value={newSlotIndex}
                                       onValueChange={(v) => {
                                         setNewSlotIndex(v);
-                                        const slot = selectedGroupSlots.find((s) => String(s.slotIndex) === v);
+                                        const slot = selectedGroupSlots.find(
+                                          (s) => String(s.slotIndex) === v
+                                        );
                                         if (slot?.volumeMl) {
-                                          setNewSlotWeight(String(slot.volumeMl));
+                                          setNewSlotWeight(
+                                            String(slot.volumeMl)
+                                          );
                                         }
                                       }}
                                     >
@@ -900,8 +1210,15 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                       </SelectTrigger>
                                       <SelectContent>
                                         {selectedGroupSlots.map((s) => (
-                                          <SelectItem key={s.slotIndex} value={String(s.slotIndex)}>
-                                            {s.label} (#{s.slotIndex}{s.volumeMl ? `, ${s.volumeMl}ml` : ""})
+                                          <SelectItem
+                                            key={s.slotIndex}
+                                            value={String(s.slotIndex)}
+                                          >
+                                            {s.label} (#{s.slotIndex}
+                                            {s.volumeMl
+                                              ? `, ${s.volumeMl}ml`
+                                              : ""}
+                                            )
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
@@ -909,23 +1226,33 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   ) : (
                                     <Input
                                       type="number"
-                                      placeholder="슬롯 인덱스"
+                                      placeholder={
+                                        newSlotContainerGroupId
+                                          ? "해당 그룹에 슬롯이 없습니다"
+                                          : "용기 그룹을 먼저 선택하세요"
+                                      }
                                       className="h-8 text-xs"
                                       value={newSlotIndex}
-                                      onChange={(e) => setNewSlotIndex(e.target.value)}
+                                      onChange={(e) =>
+                                        setNewSlotIndex(e.target.value)
+                                      }
                                     />
                                   )}
                                 </div>
 
-                                {/* 총 중량 */}
+                                {/* 총 중량 (선택) */}
                                 <div className="space-y-1">
-                                  <Label className="text-xs">총 중량(g)</Label>
+                                  <Label className="text-xs">
+                                    총 중량(g) — 선택
+                                  </Label>
                                   <Input
                                     type="number"
-                                    placeholder="총 중량(g)"
+                                    placeholder="0 (미입력 가능)"
                                     className="h-8 text-xs"
                                     value={newSlotWeight}
-                                    onChange={(e) => setNewSlotWeight(e.target.value)}
+                                    onChange={(e) =>
+                                      setNewSlotWeight(e.target.value)
+                                    }
                                   />
                                 </div>
 
@@ -936,7 +1263,9 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                     placeholder="메모"
                                     className="h-8 text-xs"
                                     value={newSlotNote}
-                                    onChange={(e) => setNewSlotNote(e.target.value)}
+                                    onChange={(e) =>
+                                      setNewSlotNote(e.target.value)
+                                    }
                                   />
                                 </div>
                               </div>
@@ -945,9 +1274,15 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   size="sm"
                                   className="h-7 text-xs"
                                   onClick={() => handleAddSlot(bom.id)}
-                                  disabled={slotSaving || !newSlotContainerGroupId}
+                                  disabled={
+                                    slotSaving || !newSlotContainerGroupId
+                                  }
                                 >
-                                  {slotSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "추가"}
+                                  {slotSaving ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    "추가"
+                                  )}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -956,6 +1291,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                                   onClick={() => {
                                     setAddingSlotBomId(null);
                                     setSelectedGroupSlots([]);
+                                    setNewSlotContainerGroupId("");
                                   }}
                                 >
                                   취소
@@ -993,14 +1329,20 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               <span>{recipe.name}</span>
-              <span className="text-sm font-mono text-gray-400">{recipe.code}</span>
+              <span className="text-sm font-mono text-gray-400">
+                {recipe.code}
+              </span>
             </DialogTitle>
-            <DialogDescription>레시피 상세 정보 및 BOM 관리</DialogDescription>
+            <DialogDescription>
+              레시피 상세 정보 및 BOM 관리
+            </DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue="info">
             <TabsList className="w-full">
-              <TabsTrigger value="info" className="flex-1">기본정보 (조회)</TabsTrigger>
+              <TabsTrigger value="info" className="flex-1">
+                기본정보 (조회)
+              </TabsTrigger>
               <TabsTrigger value="ingredients" className="flex-1">
                 재료 / BOM 편집 ({ingredients.length} / {recipeBoms.length})
               </TabsTrigger>
@@ -1015,7 +1357,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+      <AlertDialog
+        open={!!deleteConfirm}
+        onOpenChange={() => setDeleteConfirm(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>삭제 확인</AlertDialogTitle>
@@ -1025,7 +1370,10 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
               삭제
             </AlertDialogAction>
           </AlertDialogFooter>
