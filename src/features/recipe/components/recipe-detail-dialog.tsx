@@ -85,8 +85,18 @@ type IngredientRow = {
   id: string;
   ingredientType: string;
   sortOrder: number;
-  materialMaster: { id: string; name: string; code: string; unit: string } | null;
-  semiProduct: { id: string; name: string; code: string; unit: string } | null;
+  materialMaster: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  } | null;
+  semiProduct: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  } | null;
 };
 
 type RecipeBOMSlotItemRow = {
@@ -95,8 +105,18 @@ type RecipeBOMSlotItemRow = {
   weightG: number;
   unit: string;
   sortOrder: number;
-  materialMaster: { id: string; name: string; code: string; unit: string } | null;
-  semiProduct: { id: string; name: string; code: string; unit: string } | null;
+  materialMaster: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  } | null;
+  semiProduct: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  } | null;
 };
 
 type RecipeBOMSlotRow = {
@@ -148,6 +168,40 @@ function formatDate(dateStr: string | null | undefined): string {
   });
 }
 
+// ★ FIX: 다중 페이지 전체 로딩 헬퍼 (스키마 max(100) 준수)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadAllPages<T>(
+  fetcher: (query: Record<string, unknown>) => Promise<any>,
+  sortBy: string
+): Promise<T[]> {
+  try {
+    const first = await fetcher({
+      page: 1,
+      limit: 100,
+      sortBy,
+      sortOrder: "asc",
+    });
+    if (!first.success) return [];
+
+    const allItems: T[] = [...first.data.items];
+    const totalPages: number = first.data.pagination.totalPages;
+
+    if (totalPages > 1) {
+      const remaining = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          fetcher({ page: i + 2, limit: 100, sortBy, sortOrder: "asc" })
+        )
+      );
+      for (const res of remaining) {
+        if (res.success) allItems.push(...res.data.items);
+      }
+    }
+    return allItems;
+  } catch {
+    return [];
+  }
+}
+
 export function RecipeDetailDialog({
   recipe,
   open,
@@ -184,7 +238,7 @@ export function RecipeDetailDialog({
   );
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
-  // ★ FIX: 옵션 로딩 상태 추가
+  // 옵션 상태
   const [materialOptions, setMaterialOptions] = useState<OptionItem[]>([]);
   const [semiProductOptions, setSemiProductOptions] = useState<OptionItem[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
@@ -204,7 +258,7 @@ export function RecipeDetailDialog({
     name: string;
   } | null>(null);
 
-  // ★ FIX: 현재 타입에 따라 필터된 옵션 목록
+  // 현재 타입에 따라 필터된 옵션 목록
   const currentIngredientOptions = useMemo(() => {
     const source =
       newIngredientType === "MATERIAL" ? materialOptions : semiProductOptions;
@@ -232,82 +286,51 @@ export function RecipeDetailDialog({
     }
   }, [recipe.id]);
 
-  // ★ FIX: loadOptions 전면 재작성 — 에러 로깅 강화, success 확인 엄격화
+  // ★ FIX: loadOptions — limit: 100 (스키마 max 준수) + 다중 페이지 로딩
   const loadOptions = useCallback(async () => {
     setOptionsLoading(true);
     try {
-      // 식자재, 반제품, 용기 그룹 동시 로딩
-      const [matResult, spResult, cgResult] = await Promise.allSettled([
-        getMaterialsAction({
-          page: 1,
-          limit: 500,
-          sortBy: "name",
-          sortOrder: "asc",
-        }),
-        getSemiProductsAction({
-          page: 1,
-          limit: 500,
-          sortBy: "name",
-          sortOrder: "asc",
-        }),
-        getContainerGroupsAction({
-          page: 1,
-          limit: 500,
-          sortBy: "name",
-          sortOrder: "asc",
-        }),
+      const [matItems, spItems, cgItems] = await Promise.all([
+        loadAllPages<Record<string, unknown>>(getMaterialsAction, "name"),
+        loadAllPages<Record<string, unknown>>(getSemiProductsAction, "name"),
+        loadAllPages<Record<string, unknown>>(getContainerGroupsAction, "name"),
       ]);
 
-      // ★ FIX: 식자재 — fulfilled + success 모두 확인
-      if (matResult.status === "fulfilled" && matResult.value.success) {
-        const items = matResult.value.data.items ?? [];
-        console.log(`[loadOptions] 식자재 ${items.length}건 로드`);
-        setMaterialOptions(
-          items.map((m: Record<string, unknown>) => ({
-            id: m.id as string,
-            name: m.name as string,
-            code: m.code as string,
-            unit: m.unit as string,
-          }))
-        );
-      } else {
-        console.error("[loadOptions] 식자재 로딩 실패:", matResult);
-      }
+      // 식자재
+      console.log(`[loadOptions] 식자재 ${matItems.length}건 로드`);
+      setMaterialOptions(
+        matItems.map((m) => ({
+          id: m.id as string,
+          name: m.name as string,
+          code: m.code as string,
+          unit: m.unit as string,
+        }))
+      );
 
-      // ★ FIX: 반제품
-      if (spResult.status === "fulfilled" && spResult.value.success) {
-        const items = spResult.value.data.items ?? [];
-        console.log(`[loadOptions] 반제품 ${items.length}건 로드`);
-        setSemiProductOptions(
-          items.map((sp: Record<string, unknown>) => ({
-            id: sp.id as string,
-            name: sp.name as string,
-            code: sp.code as string,
-            unit: sp.unit as string,
-          }))
-        );
-      } else {
-        console.error("[loadOptions] 반제품 로딩 실패:", spResult);
-      }
+      // 반제품
+      console.log(`[loadOptions] 반제품 ${spItems.length}건 로드`);
+      setSemiProductOptions(
+        spItems.map((sp) => ({
+          id: sp.id as string,
+          name: sp.name as string,
+          code: sp.code as string,
+          unit: sp.unit as string,
+        }))
+      );
 
-      // ★ FIX: 용기 그룹 — 성공 여부와 관계없이 loaded 플래그 설정
-      if (cgResult.status === "fulfilled" && cgResult.value.success) {
-        const items = cgResult.value.data.items ?? [];
-        console.log(`[loadOptions] 용기 그룹 ${items.length}건 로드`);
-        setContainerGroupOptions(
-          items.map((g: Record<string, unknown>) => ({
-            id: g.id as string,
-            name: g.name as string,
-            code: g.code as string,
-          }))
-        );
-        setContainerGroupsLoaded(true);
-      } else {
-        console.error("[loadOptions] 용기 그룹 로딩 실패:", cgResult);
-        // ★ FIX: 실패해도 loaded=true로 설정하여 fallback 무한 루프 방지
-        // fallback은 아래 useEffect에서 처리
-        setContainerGroupsLoaded(false);
-      }
+      // 용기 그룹
+      console.log(`[loadOptions] 용기 그룹 ${cgItems.length}건 로드`);
+      setContainerGroupOptions(
+        cgItems.map((g) => ({
+          id: g.id as string,
+          name: g.name as string,
+          code: g.code as string,
+        }))
+      );
+      setContainerGroupsLoaded(true);
+    } catch (err) {
+      console.error("[loadOptions] 전체 로딩 실패:", err);
+      setContainerGroupsLoaded(false);
     } finally {
       setOptionsLoading(false);
     }
@@ -323,22 +346,28 @@ export function RecipeDetailDialog({
     try {
       const result = await getContainerGroupByIdAction(groupId);
       if (result.success && result.data) {
-        const slots = (result.data.slots as { slotIndex: number; label: string; volumeMl: number | null }[]).map(
-          (s) => ({
-            slotIndex: s.slotIndex,
-            label: s.label,
-            volumeMl: s.volumeMl,
-          })
-        );
+        const slots = (
+          result.data.slots as {
+            slotIndex: number;
+            label: string;
+            volumeMl: number | null;
+          }[]
+        ).map((s) => ({
+          slotIndex: s.slotIndex,
+          label: s.label,
+          volumeMl: s.volumeMl,
+        }));
         setSelectedGroupSlots(slots);
-        console.log(`[handleContainerGroupChange] ${groupId}: 슬롯 ${slots.length}개 로드`);
+        console.log(
+          `[handleContainerGroupChange] ${groupId}: 슬롯 ${slots.length}개 로드`
+        );
       }
     } catch (err) {
       console.error("[handleContainerGroupChange] 슬롯 로딩 실패:", err);
     }
   };
 
-  // ★ FIX: fallback 조건 — containerGroupsLoaded가 false이고 BOM에서 추출 가능할 때만
+  // fallback — API 실패 시 BOM 데이터에서 용기 그룹 추출
   useEffect(() => {
     if (containerGroupsLoaded) return;
     if (containerGroupOptions.length > 0) return;
@@ -682,7 +711,6 @@ export function RecipeDetailDialog({
 
           {showIngredientForm && (
             <div className="rounded-md border border-blue-200 bg-blue-50/50 p-4 space-y-3">
-              {/* ★ FIX: 옵션 로딩 중 표시 */}
               {optionsLoading && (
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -711,11 +739,10 @@ export function RecipeDetailDialog({
                   </Select>
                 </div>
 
-                {/* ★ FIX: 검색 + 올바른 옵션 목록 사용 */}
+                {/* 검색 + 올바른 옵션 목록 사용 */}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
-                    {/* ★ FIX: 로딩된 수량 표시 */}
                     <span className="ml-1 text-gray-400">
                       ({newIngredientType === "MATERIAL"
                         ? materialOptions.length
@@ -1174,7 +1201,7 @@ export function RecipeDetailDialog({
                                 자동으로 할당됩니다.
                               </p>
                               <div className="grid grid-cols-2 gap-3">
-                                {/* ★ FIX: 용기 그룹 선택 — 항상 Select 사용, 빈 경우 안내 */}
+                                {/* 용기 그룹 선택 — 항상 Select 사용 */}
                                 <div className="space-y-1">
                                   <Label className="text-xs">
                                     용기 그룹
@@ -1184,7 +1211,9 @@ export function RecipeDetailDialog({
                                   </Label>
                                   <Select
                                     value={newSlotContainerGroupId}
-                                    onValueChange={handleContainerGroupChange}
+                                    onValueChange={
+                                      handleContainerGroupChange
+                                    }
                                   >
                                     <SelectTrigger className="h-8 text-xs">
                                       <SelectValue
@@ -1198,7 +1227,8 @@ export function RecipeDetailDialog({
                                     <SelectContent>
                                       {containerGroupOptions.length === 0 ? (
                                         <div className="px-2 py-3 text-center text-xs text-gray-400">
-                                          용기 관리 페이지에서 먼저 등록해 주세요
+                                          용기 관리 페이지에서 먼저 등록해
+                                          주세요
                                         </div>
                                       ) : (
                                         containerGroupOptions.map((g) => (
