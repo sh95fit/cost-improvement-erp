@@ -1,4 +1,4 @@
-// src/app/(dashboard)/containers/page.tsx — 전체 코드
+// src/app/(dashboard)/containers/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback, Fragment } from "react";
@@ -29,6 +29,8 @@ import {
   Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight,
   Loader2, ChevronDown, ChevronUp, Save, X,
 } from "lucide-react";
+import { toast } from "sonner";
+import { logger } from "@/lib/utils/logger";
 
 type SlotRow = { id: string; slotIndex: number; label: string; volumeMl: number | null };
 type GroupRow = {
@@ -68,14 +70,6 @@ export default function ContainersPage() {
 
   // 삭제 확인
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string; groupId?: string } | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [errorMessage]);
 
   // ── 목록 조회 ──
   const fetchData = useCallback(async (page = 1) => {
@@ -93,11 +87,12 @@ export default function ContainersPage() {
         setItems(fetchedItems);
         setPagination(result.data.pagination);
       } else {
-        setErrorMessage("용기 그룹 목록 조회에 실패했습니다");
+        toast.error("용기 그룹 목록 조회에 실패했습니다");
         setItems([]);
       }
-    } catch {
-      setErrorMessage("용기 그룹 목록 조회 중 오류가 발생했습니다");
+    } catch (err) {
+      logger.error("[ContainersPage.fetchData] 실패:", err);
+      toast.error("용기 그룹 목록 조회 중 오류가 발생했습니다");
       setItems([]);
     } finally {
       setLoading(false);
@@ -116,8 +111,8 @@ export default function ContainersPage() {
           prev.map((g) => (g.id === groupId ? { ...g, slots: updated.slots, name: updated.name } : g))
         );
       }
-    } catch {
-      // 삭제된 경우 무시
+    } catch (err) {
+      logger.error("[ContainersPage.refreshGroup] 실패:", err);
     }
   };
 
@@ -128,12 +123,16 @@ export default function ContainersPage() {
     try {
       const result = await createContainerGroupAction({ name: newGroupName.trim() });
       if (result.success) {
+        toast.success("용기 그룹이 등록되었습니다");
         setNewGroupName("");
         setShowCreateForm(false);
         fetchData(1);
       } else {
-        setErrorMessage("용기 그룹 생성에 실패했습니다");
+        toast.error(result.error?.message ?? "용기 그룹 생성에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[ContainersPage.handleCreate] 실패:", err);
+      toast.error("용기 그룹 등록 중 오류가 발생했습니다");
     } finally {
       setSaving(false);
     }
@@ -146,12 +145,16 @@ export default function ContainersPage() {
     try {
       const result = await updateContainerGroupAction(editingGroupId, { name: editingGroupName.trim() });
       if (result.success) {
+        toast.success("용기 그룹명이 수정되었습니다");
         setEditingGroupId(null);
         setEditingGroupName("");
         fetchData(pagination.page);
       } else {
-        setErrorMessage("용기 그룹 수정에 실패했습니다");
+        toast.error(result.error?.message ?? "용기 그룹 수정에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[ContainersPage.handleUpdate] 실패:", err);
+      toast.error("용기 그룹 수정 중 오류가 발생했습니다");
     } finally {
       setSaving(false);
     }
@@ -168,13 +171,17 @@ export default function ContainersPage() {
         volumeMl: newSlotVolume ? parseFloat(newSlotVolume) : undefined,
       });
       if (result.success) {
+        toast.success("슬롯이 추가되었습니다");
         setNewSlotName("");
         setNewSlotVolume("");
         setAddSlotGroupId(null);
         await refreshGroup(targetGroupId);
       } else {
-        setErrorMessage(result.error?.message ?? "슬롯 추가에 실패했습니다");
+        toast.error(result.error?.message ?? "슬롯 추가에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[ContainersPage.handleAddSlot] 실패:", err);
+      toast.error("슬롯 추가 중 오류가 발생했습니다");
     } finally {
       setSlotSaving(false);
     }
@@ -191,11 +198,15 @@ export default function ContainersPage() {
       else input.volumeMl = null;
       const result = await updateContainerSlotAction(editingSlotId, input);
       if (result.success) {
+        toast.success("슬롯이 수정되었습니다");
         setEditingSlotId(null);
         if (expandedGroupId) await refreshGroup(expandedGroupId);
       } else {
-        setErrorMessage("슬롯 수정에 실패했습니다");
+        toast.error(result.error?.message ?? "슬롯 수정에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[ContainersPage.handleUpdateSlot] 실패:", err);
+      toast.error("슬롯 수정 중 오류가 발생했습니다");
     } finally {
       setSlotUpdating(false);
     }
@@ -205,21 +216,28 @@ export default function ContainersPage() {
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     const { type, id, groupId } = deleteTarget;
-    if (type === "group") {
-      const result = await deleteContainerGroupAction(id);
-      if (result.success) {
-        if (expandedGroupId === id) setExpandedGroupId(null);
-        fetchData(pagination.page);
-      } else {
-        setErrorMessage("용기 그룹 삭제에 실패했습니다");
+    try {
+      if (type === "group") {
+        const result = await deleteContainerGroupAction(id);
+        if (result.success) {
+          toast.success("용기 그룹이 삭제되었습니다");
+          if (expandedGroupId === id) setExpandedGroupId(null);
+          fetchData(pagination.page);
+        } else {
+          toast.error(result.error?.message ?? "용기 그룹 삭제에 실패했습니다");
+        }
+      } else if (type === "slot") {
+        const result = await deleteContainerSlotAction(id);
+        if (result.success) {
+          toast.success("슬롯이 삭제되었습니다");
+          if (groupId) await refreshGroup(groupId);
+        } else {
+          toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+        }
       }
-    } else if (type === "slot") {
-      const result = await deleteContainerSlotAction(id);
-      if (result.success && groupId) {
-        await refreshGroup(groupId);
-      } else {
-        setErrorMessage("슬롯 삭제에 실패했습니다");
-      }
+    } catch (err) {
+      logger.error("[ContainersPage.handleConfirmDelete] 실패:", err);
+      toast.error("삭제 중 오류가 발생했습니다");
     }
     setDeleteTarget(null);
   };
@@ -239,13 +257,6 @@ export default function ContainersPage() {
           용기 그룹과 슬롯(칸)을 관리합니다. 부속품(뚜껑, 띠지 등)은 부자재 관리에서 처리합니다.
         </p>
       </div>
-
-      {/* ── 에러 배너 ── */}
-      {errorMessage && (
-        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {errorMessage}
-        </div>
-      )}
 
       {/* ── 검색 + 등록 버튼 ── */}
       <div className="flex items-center gap-3">
@@ -301,7 +312,7 @@ export default function ContainersPage() {
         </p>
       )}
 
-      {/* ══════ 메인 테이블 (아코디언 행 포함) ══════ */}
+      {/* ══════ 메인 테이블 ══════ */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -338,7 +349,6 @@ export default function ContainersPage() {
                 const isExpanded = expandedGroupId === item.id;
                 return (
                   <Fragment key={item.id}>
-                    {/* ── 그룹 행 ── */}
                     <TableRow
                       className={`cursor-pointer transition-colors ${isExpanded ? "bg-blue-50/50 border-l-2 border-l-blue-400" : "hover:bg-gray-50"}`}
                       onClick={() => toggleExpand(item.id)}
@@ -409,7 +419,6 @@ export default function ContainersPage() {
                       </TableCell>
                     </TableRow>
 
-                    {/* ── 슬롯 확장 행 (그룹 행 바로 아래, 테이블 내부) ── */}
                     {isExpanded && (
                       <TableRow className="bg-blue-50/20 hover:bg-blue-50/20">
                         <TableCell colSpan={7} className="p-0 border-t-0">
@@ -547,7 +556,6 @@ export default function ContainersPage() {
         </div>
       )}
 
-      {/* 페이지가 1페이지뿐일 때도 총 건수 표시 */}
       {pagination.totalPages <= 1 && pagination.total > 0 && (
         <p className="text-sm text-gray-500">총 {pagination.total}건</p>
       )}

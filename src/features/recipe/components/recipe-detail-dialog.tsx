@@ -1,4 +1,4 @@
-// src/features/recipe/components/recipe-detail-dialog.tsx — 전체 코드
+// src/features/recipe/components/recipe-detail-dialog.tsx
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -66,10 +66,11 @@ import {
   ChevronUp,
   Check,
   RotateCcw,
-  AlertTriangle,
   Save,
   Search,
 } from "lucide-react";
+import { toast } from "sonner";
+import { logger } from "@/lib/utils/logger";
 import type { RecipeRow } from "./recipe-list";
 
 // ── 타입 정의 ──
@@ -168,12 +169,12 @@ function formatDate(dateStr: string | null | undefined): string {
   });
 }
 
-// ★ FIX: 다중 페이지 전체 로딩 헬퍼 (스키마 max(100) 준수)
+// ★ 다중 페이지 전체 로딩 헬퍼 (스키마 max(100) 준수)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadAllPages<T>(
   fetcher: (query: Record<string, unknown>) => Promise<any>,
   sortBy: string
-): Promise<T[]> {
+): Promise<{ items: T[]; error?: string }> {
   try {
     const first = await fetcher({
       page: 1,
@@ -181,7 +182,9 @@ async function loadAllPages<T>(
       sortBy,
       sortOrder: "asc",
     });
-    if (!first.success) return [];
+    if (!first.success) {
+      return { items: [], error: first.error?.message ?? "조회 실패" };
+    }
 
     const allItems: T[] = [...first.data.items];
     const totalPages: number = first.data.pagination.totalPages;
@@ -196,9 +199,9 @@ async function loadAllPages<T>(
         if (res.success) allItems.push(...res.data.items);
       }
     }
-    return allItems;
-  } catch {
-    return [];
+    return { items: allItems };
+  } catch (err) {
+    return { items: [], error: String(err) };
   }
 }
 
@@ -213,7 +216,6 @@ export function RecipeDetailDialog({
   const [recipeBoms, setRecipeBoms] = useState<RecipeBOMRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedBom, setExpandedBom] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // 재료 추가 폼
   const [showIngredientForm, setShowIngredientForm] = useState(false);
@@ -280,56 +282,78 @@ export function RecipeDetailDialog({
           result.data.ingredients as unknown as IngredientRow[]
         );
         setRecipeBoms(result.data.recipeBoms as unknown as RecipeBOMRow[]);
+      } else {
+        toast.error("레시피 상세 조회에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[loadDetail] 실패:", err);
+      toast.error("레시피 상세 조회 중 오류가 발생했습니다");
     } finally {
       setLoading(false);
     }
   }, [recipe.id]);
 
-  // ★ FIX: loadOptions — limit: 100 (스키마 max 준수) + 다중 페이지 로딩
+  // ★ loadOptions — limit: 100 (스키마 max 준수) + 다중 페이지 로딩 + toast 에러
   const loadOptions = useCallback(async () => {
     setOptionsLoading(true);
     try {
-      const [matItems, spItems, cgItems] = await Promise.all([
+      const [matResult, spResult, cgResult] = await Promise.all([
         loadAllPages<Record<string, unknown>>(getMaterialsAction, "name"),
         loadAllPages<Record<string, unknown>>(getSemiProductsAction, "name"),
         loadAllPages<Record<string, unknown>>(getContainerGroupsAction, "name"),
       ]);
 
       // 식자재
-      console.log(`[loadOptions] 식자재 ${matItems.length}건 로드`);
-      setMaterialOptions(
-        matItems.map((m) => ({
-          id: m.id as string,
-          name: m.name as string,
-          code: m.code as string,
-          unit: m.unit as string,
-        }))
-      );
+      if (matResult.error) {
+        logger.error("[loadOptions] 식자재 로딩 실패:", matResult.error);
+        toast.error(`식자재 목록 로딩 실패: ${matResult.error}`);
+      } else {
+        logger.info(`[loadOptions] 식자재 ${matResult.items.length}건 로드`);
+        setMaterialOptions(
+          matResult.items.map((m) => ({
+            id: m.id as string,
+            name: m.name as string,
+            code: m.code as string,
+            unit: m.unit as string,
+          }))
+        );
+      }
 
       // 반제품
-      console.log(`[loadOptions] 반제품 ${spItems.length}건 로드`);
-      setSemiProductOptions(
-        spItems.map((sp) => ({
-          id: sp.id as string,
-          name: sp.name as string,
-          code: sp.code as string,
-          unit: sp.unit as string,
-        }))
-      );
+      if (spResult.error) {
+        logger.error("[loadOptions] 반제품 로딩 실패:", spResult.error);
+        toast.error(`반제품 목록 로딩 실패: ${spResult.error}`);
+      } else {
+        logger.info(`[loadOptions] 반제품 ${spResult.items.length}건 로드`);
+        setSemiProductOptions(
+          spResult.items.map((sp) => ({
+            id: sp.id as string,
+            name: sp.name as string,
+            code: sp.code as string,
+            unit: sp.unit as string,
+          }))
+        );
+      }
 
       // 용기 그룹
-      console.log(`[loadOptions] 용기 그룹 ${cgItems.length}건 로드`);
-      setContainerGroupOptions(
-        cgItems.map((g) => ({
-          id: g.id as string,
-          name: g.name as string,
-          code: g.code as string,
-        }))
-      );
-      setContainerGroupsLoaded(true);
+      if (cgResult.error) {
+        logger.error("[loadOptions] 용기 그룹 로딩 실패:", cgResult.error);
+        toast.error(`용기 그룹 로딩 실패: ${cgResult.error}`);
+        setContainerGroupsLoaded(false);
+      } else {
+        logger.info(`[loadOptions] 용기 그룹 ${cgResult.items.length}건 로드`);
+        setContainerGroupOptions(
+          cgResult.items.map((g) => ({
+            id: g.id as string,
+            name: g.name as string,
+            code: g.code as string,
+          }))
+        );
+        setContainerGroupsLoaded(true);
+      }
     } catch (err) {
-      console.error("[loadOptions] 전체 로딩 실패:", err);
+      logger.error("[loadOptions] 전체 로딩 실패:", err);
+      toast.error("옵션 데이터를 불러오지 못했습니다. 새로고침해 주세요.");
       setContainerGroupsLoaded(false);
     } finally {
       setOptionsLoading(false);
@@ -358,12 +382,15 @@ export function RecipeDetailDialog({
           volumeMl: s.volumeMl,
         }));
         setSelectedGroupSlots(slots);
-        console.log(
+        logger.info(
           `[handleContainerGroupChange] ${groupId}: 슬롯 ${slots.length}개 로드`
         );
+      } else {
+        toast.error("용기 그룹 슬롯 조회에 실패했습니다");
       }
     } catch (err) {
-      console.error("[handleContainerGroupChange] 슬롯 로딩 실패:", err);
+      logger.error("[handleContainerGroupChange] 슬롯 로딩 실패:", err);
+      toast.error("용기 그룹 슬롯 로딩 중 오류가 발생했습니다");
     }
   };
 
@@ -384,7 +411,7 @@ export function RecipeDetailDialog({
       })
     );
     if (groups.length > 0) {
-      console.log(`[fallback] BOM에서 용기 그룹 ${groups.length}건 추출`);
+      logger.info(`[fallback] BOM에서 용기 그룹 ${groups.length}건 추출`);
       setContainerGroupOptions(groups);
     }
   }, [recipeBoms, containerGroupOptions.length, containerGroupsLoaded]);
@@ -399,18 +426,9 @@ export function RecipeDetailDialog({
       setAddingSlotBomId(null);
       setIngredientSearch("");
       setNewIngredientId("");
-      setErrorMessage(null);
       setOptionsLoading(false);
     }
   }, [open, loadDetail, loadOptions]);
-
-  // 에러 메시지 자동 숨김
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [errorMessage]);
 
   // ── 재료 추가 ──
   const handleAddIngredient = async () => {
@@ -426,14 +444,18 @@ export function RecipeDetailDialog({
       };
       const result = await addIngredientAction(recipe.id, input);
       if (result.success) {
+        toast.success("재료가 추가되었습니다");
         setNewIngredientId("");
         setIngredientSearch("");
         setShowIngredientForm(false);
         loadDetail();
         onUpdated();
       } else {
-        setErrorMessage(result.error?.message ?? "재료 추가에 실패했습니다");
+        toast.error(result.error?.message ?? "재료 추가에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[handleAddIngredient] 실패:", err);
+      toast.error("재료 추가 중 오류가 발생했습니다");
     } finally {
       setIngredientSaving(false);
     }
@@ -441,46 +463,70 @@ export function RecipeDetailDialog({
 
   // ── 재료 삭제 ──
   const handleDeleteIngredient = async (id: string) => {
-    const result = await deleteIngredientAction(id);
-    if (result.success) {
-      loadDetail();
-      onUpdated();
+    try {
+      const result = await deleteIngredientAction(id);
+      if (result.success) {
+        toast.success("재료가 삭제되었습니다");
+        loadDetail();
+        onUpdated();
+      } else {
+        toast.error(result.error?.message ?? "재료 삭제에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleDeleteIngredient] 실패:", err);
+      toast.error("재료 삭제 중 오류가 발생했습니다");
     }
   };
 
   // ── RecipeBOM 생성 ──
   const handleCreateRecipeBOM = async () => {
-    setErrorMessage(null);
-    const result = await createRecipeBOMWithAutoVersionAction({
-      recipeId: recipe.id,
-      baseWeightG: 0,
-    });
-    if (result.success) {
-      loadDetail();
-    } else {
-      setErrorMessage(result.error?.message ?? "BOM 생성에 실패했습니다");
+    try {
+      const result = await createRecipeBOMWithAutoVersionAction({
+        recipeId: recipe.id,
+        baseWeightG: 0,
+      });
+      if (result.success) {
+        toast.success("새 BOM 버전이 생성되었습니다");
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "BOM 생성에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleCreateRecipeBOM] 실패:", err);
+      toast.error("BOM 생성 중 오류가 발생했습니다");
     }
   };
 
   // ── RecipeBOM 상태 변경 ──
   const handleBOMStatus = async (bomId: string, status: string) => {
-    setErrorMessage(null);
-    const result = await updateRecipeBOMStatusAction(bomId, { status });
-    if (result.success) {
-      loadDetail();
-    } else {
-      setErrorMessage(result.error?.message ?? "상태 변경에 실패했습니다");
+    try {
+      const result = await updateRecipeBOMStatusAction(bomId, { status });
+      if (result.success) {
+        const label = BOM_STATUS_LABELS[status] ?? status;
+        toast.success(`BOM 상태가 '${label}'(으)로 변경되었습니다`);
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "상태 변경에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleBOMStatus] 실패:", err);
+      toast.error("BOM 상태 변경 중 오류가 발생했습니다");
     }
   };
 
   // ── RecipeBOM 삭제 ──
   const handleDeleteBOM = async (bomId: string) => {
-    setErrorMessage(null);
-    const result = await deleteRecipeBOMAction(bomId);
-    if (result.success) {
-      loadDetail();
-    } else {
-      setErrorMessage(result.error?.message ?? "BOM 삭제에 실패했습니다");
+    try {
+      const result = await deleteRecipeBOMAction(bomId);
+      if (result.success) {
+        toast.success("BOM이 삭제되었습니다");
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "BOM 삭제에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleDeleteBOM] 실패:", err);
+      toast.error("BOM 삭제 중 오류가 발생했습니다");
     }
   };
 
@@ -497,6 +543,7 @@ export function RecipeDetailDialog({
         sortOrder: 0,
       });
       if (result.success) {
+        toast.success("슬롯이 추가되었습니다 (구성재료 자동 할당)");
         setAddingSlotBomId(null);
         setNewSlotContainerGroupId("");
         setNewSlotIndex("0");
@@ -505,8 +552,11 @@ export function RecipeDetailDialog({
         setSelectedGroupSlots([]);
         loadDetail();
       } else {
-        setErrorMessage(result.error?.message ?? "슬롯 추가에 실패했습니다");
+        toast.error(result.error?.message ?? "슬롯 추가에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[handleAddSlot] 실패:", err);
+      toast.error("슬롯 추가 중 오류가 발생했습니다");
     } finally {
       setSlotSaving(false);
     }
@@ -514,8 +564,18 @@ export function RecipeDetailDialog({
 
   // ── 슬롯 삭제 ──
   const handleDeleteSlot = async (slotId: string) => {
-    const result = await deleteRecipeBOMSlotAction(slotId);
-    if (result.success) loadDetail();
+    try {
+      const result = await deleteRecipeBOMSlotAction(slotId);
+      if (result.success) {
+        toast.success("슬롯이 삭제되었습니다");
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleDeleteSlot] 실패:", err);
+      toast.error("슬롯 삭제 중 오류가 발생했습니다");
+    }
   };
 
   // ── 슬롯 아이템 중량 저장 ──
@@ -523,20 +583,29 @@ export function RecipeDetailDialog({
     const weightStr = editingWeights[itemId];
     if (!weightStr) return;
     const weight = parseFloat(weightStr);
-    if (isNaN(weight) || weight < 0) return;
+    if (isNaN(weight) || weight < 0) {
+      toast.error("올바른 중량 값을 입력해 주세요");
+      return;
+    }
     setSavingItemId(itemId);
     try {
       const result = await updateRecipeBOMSlotItemAction(itemId, {
         weightG: weight,
       });
       if (result.success) {
+        toast.success("중량이 저장되었습니다");
         setEditingWeights((prev) => {
           const next = { ...prev };
           delete next[itemId];
           return next;
         });
         loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "중량 저장에 실패했습니다");
       }
+    } catch (err) {
+      logger.error("[handleSaveItemWeight] 실패:", err);
+      toast.error("중량 저장 중 오류가 발생했습니다");
     } finally {
       setSavingItemId(null);
     }
@@ -544,8 +613,18 @@ export function RecipeDetailDialog({
 
   // ── 슬롯 아이템 삭제 (제외) ──
   const handleDeleteSlotItem = async (itemId: string) => {
-    const result = await deleteRecipeBOMSlotItemAction(itemId);
-    if (result.success) loadDetail();
+    try {
+      const result = await deleteRecipeBOMSlotItemAction(itemId);
+      if (result.success) {
+        toast.success("아이템이 제외되었습니다");
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "아이템 삭제에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleDeleteSlotItem] 실패:", err);
+      toast.error("아이템 삭제 중 오류가 발생했습니다");
+    }
   };
 
   // ── 삭제 확인 처리 ──
@@ -682,13 +761,6 @@ export function RecipeDetailDialog({
 
     return (
       <div className="space-y-6">
-        {errorMessage && (
-          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {errorMessage}
-          </div>
-        )}
-
         {/* ── 재료 편집 섹션 ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -739,7 +811,7 @@ export function RecipeDetailDialog({
                   </Select>
                 </div>
 
-                {/* 검색 + 올바른 옵션 목록 사용 */}
+                {/* 검색 + 옵션 목록 */}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
@@ -750,7 +822,6 @@ export function RecipeDetailDialog({
                     </span>
                   </Label>
                   <div className="space-y-1.5">
-                    {/* 검색 입력 */}
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
                       <Input
@@ -760,7 +831,6 @@ export function RecipeDetailDialog({
                         onChange={(e) => setIngredientSearch(e.target.value)}
                       />
                     </div>
-                    {/* 선택 드롭다운 */}
                     <Select
                       value={newIngredientId}
                       onValueChange={setNewIngredientId}
@@ -1201,7 +1271,7 @@ export function RecipeDetailDialog({
                                 자동으로 할당됩니다.
                               </p>
                               <div className="grid grid-cols-2 gap-3">
-                                {/* 용기 그룹 선택 — 항상 Select 사용 */}
+                                {/* 용기 그룹 선택 */}
                                 <div className="space-y-1">
                                   <Label className="text-xs">
                                     용기 그룹
