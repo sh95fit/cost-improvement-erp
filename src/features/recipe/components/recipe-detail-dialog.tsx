@@ -50,8 +50,7 @@ import {
   deleteRecipeBOMSlotItemAction,
 } from "../actions/recipe.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
-// ★ 추가: 용기 그룹 API
-import { getContainerGroupsAction } from "@/features/container/actions/container.action";
+import { getContainerGroupsAction, getContainerGroupByIdAction } from "@/features/container/actions/container.action";
 import {
   Pencil,
   Plus,
@@ -165,6 +164,8 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
   const [materialOptions, setMaterialOptions] = useState<{ id: string; name: string; code: string; unit: string }[]>([]);
   const [containerGroupOptions, setContainerGroupOptions] = useState<{ id: string; name: string; code: string }[]>([]);
 
+  const [selectedGroupSlots, setSelectedGroupSlots] = useState<{ slotIndex: number; label: string; volumeMl: number | null }[]>([]);
+
   // 삭제 확인
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
 
@@ -181,7 +182,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     }
   }, [recipe.id]);
 
-  // ★ 변경: 용기 그룹을 별도 API에서 로딩
+  // 용기 그룹을 별도 API에서 로딩
   const loadOptions = useCallback(async () => {
     const matResult = await getMaterialsAction({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
     if (matResult.success) {
@@ -202,7 +203,30 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
     }
   }, []);
 
-  // ★ fallback: API에서 못 가져오면 BOM 데이터에서 추출
+    // 용기그룹 선택 시 슬롯 목록 로딩
+    const handleContainerGroupChange = async (groupId: string) => {
+      setNewSlotContainerGroupId(groupId);
+      setNewSlotIndex("");
+      setNewSlotWeight("100");
+      setSelectedGroupSlots([]);
+      if (!groupId) return;
+      try {
+        const result = await getContainerGroupByIdAction(groupId);
+        if (result.success && result.data) {
+          const slots = result.data.slots.map((s: { slotIndex: number; label: string; volumeMl: number | null }) => ({
+            slotIndex: s.slotIndex,
+            label: s.label,
+            volumeMl: s.volumeMl,
+          }));
+          setSelectedGroupSlots(slots);
+        }
+      } catch {
+        // 실패 시 수동 입력 fallback
+      }
+    };
+  
+
+  // fallback: API에서 못 가져오면 BOM 데이터에서 추출
   useEffect(() => {
     if (containerGroupOptions.length > 0) return; // 이미 API에서 로딩됨
     const groups: { id: string; name: string; code: string }[] = [];
@@ -822,35 +846,119 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
                       {bom.status === "DRAFT" && (
                         <>
                           {addingSlotBomId === bom.id ? (
-                            <div className="rounded border border-dashed border-green-300 bg-green-50/30 p-3 space-y-2">
-                              <p className="text-xs text-gray-500">슬롯 추가 시 해당 레시피의 전체 구성재료가 자동으로 할당됩니다.</p>
-                              <div className="grid grid-cols-4 gap-2">
-                                {containerGroupOptions.length > 0 ? (
-                                  <Select value={newSlotContainerGroupId} onValueChange={setNewSlotContainerGroupId}>
-                                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="용기 그룹" /></SelectTrigger>
-                                    <SelectContent>
-                                      {containerGroupOptions.map((g) => (
-                                        <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
+                            <div className="rounded border border-dashed border-green-300 bg-green-50/30 p-3 space-y-3">
+                              <p className="text-xs text-gray-500">
+                                슬롯 추가 시 해당 레시피의 전체 구성재료가 자동으로 할당됩니다.
+                              </p>
+                              <div className="grid grid-cols-2 gap-3">
+                                {/* 용기 그룹 선택 */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">용기 그룹</Label>
+                                  {containerGroupOptions.length > 0 ? (
+                                    <Select
+                                      value={newSlotContainerGroupId}
+                                      onValueChange={handleContainerGroupChange}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="용기 그룹 선택" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {containerGroupOptions.map((g) => (
+                                          <SelectItem key={g.id} value={g.id}>
+                                            {g.name} ({g.code})
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      placeholder="용기 그룹 ID (용기 관리에서 먼저 등록)"
+                                      className="h-8 text-xs"
+                                      value={newSlotContainerGroupId}
+                                      onChange={(e) => setNewSlotContainerGroupId(e.target.value)}
+                                    />
+                                  )}
+                                </div>
+
+                                {/* 슬롯 선택 */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">슬롯 (칸)</Label>
+                                  {selectedGroupSlots.length > 0 ? (
+                                    <Select
+                                      value={newSlotIndex}
+                                      onValueChange={(v) => {
+                                        setNewSlotIndex(v);
+                                        const slot = selectedGroupSlots.find((s) => String(s.slotIndex) === v);
+                                        if (slot?.volumeMl) {
+                                          setNewSlotWeight(String(slot.volumeMl));
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="슬롯 선택" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {selectedGroupSlots.map((s) => (
+                                          <SelectItem key={s.slotIndex} value={String(s.slotIndex)}>
+                                            {s.label} (#{s.slotIndex}{s.volumeMl ? `, ${s.volumeMl}ml` : ""})
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      type="number"
+                                      placeholder="슬롯 인덱스"
+                                      className="h-8 text-xs"
+                                      value={newSlotIndex}
+                                      onChange={(e) => setNewSlotIndex(e.target.value)}
+                                    />
+                                  )}
+                                </div>
+
+                                {/* 총 중량 */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">총 중량(g)</Label>
                                   <Input
-                                    placeholder="용기그룹 ID"
+                                    type="number"
+                                    placeholder="총 중량(g)"
                                     className="h-8 text-xs"
-                                    value={newSlotContainerGroupId}
-                                    onChange={(e) => setNewSlotContainerGroupId(e.target.value)}
+                                    value={newSlotWeight}
+                                    onChange={(e) => setNewSlotWeight(e.target.value)}
                                   />
-                                )}
-                                <Input type="number" placeholder="슬롯 인덱스" className="h-8 text-xs" value={newSlotIndex} onChange={(e) => setNewSlotIndex(e.target.value)} />
-                                <Input type="number" placeholder="총 중량(g)" className="h-8 text-xs" value={newSlotWeight} onChange={(e) => setNewSlotWeight(e.target.value)} />
-                                <Input placeholder="메모(선택)" className="h-8 text-xs" value={newSlotNote} onChange={(e) => setNewSlotNote(e.target.value)} />
+                                </div>
+
+                                {/* 메모 */}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">메모 (선택)</Label>
+                                  <Input
+                                    placeholder="메모"
+                                    className="h-8 text-xs"
+                                    value={newSlotNote}
+                                    onChange={(e) => setNewSlotNote(e.target.value)}
+                                  />
+                                </div>
                               </div>
                               <div className="flex gap-2">
-                                <Button size="sm" className="h-7 text-xs" onClick={() => handleAddSlot(bom.id)} disabled={slotSaving}>
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => handleAddSlot(bom.id)}
+                                  disabled={slotSaving || !newSlotContainerGroupId}
+                                >
                                   {slotSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "추가"}
                                 </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAddingSlotBomId(null)}>취소</Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setAddingSlotBomId(null);
+                                    setSelectedGroupSlots([]);
+                                  }}
+                                >
+                                  취소
+                                </Button>
                               </div>
                             </div>
                           ) : (
