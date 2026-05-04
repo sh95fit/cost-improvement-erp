@@ -1,7 +1,6 @@
-// src/app/(dashboard)/containers/page.tsx — 전체 코드
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -101,7 +100,11 @@ export default function ContainersPage() {
       const result = await getContainerGroupByIdAction(groupId);
       if (result.success) {
         const updated = result.data as unknown as GroupRow;
-        setItems((prev) => prev.map((g) => (g.id === groupId ? { ...g, slots: updated.slots, name: updated.name } : g)));
+        setItems((prev) =>
+          prev.map((g) =>
+            g.id === groupId ? { ...g, slots: updated.slots, name: updated.name } : g
+          )
+        );
       }
     } catch {
       // 삭제된 경우
@@ -144,8 +147,9 @@ export default function ContainersPage() {
   const handleAddSlot = async () => {
     if (!addSlotGroupId || !newSlotName.trim()) return;
     setSlotSaving(true);
+    const targetGroupId = addSlotGroupId;
     try {
-      const result = await addContainerSlotAction(addSlotGroupId, {
+      const result = await addContainerSlotAction(targetGroupId, {
         label: newSlotName.trim(),
         volumeMl: newSlotVolume ? parseFloat(newSlotVolume) : undefined,
       });
@@ -153,7 +157,7 @@ export default function ContainersPage() {
         setNewSlotName("");
         setNewSlotVolume("");
         setAddSlotGroupId(null);
-        await refreshGroup(addSlotGroupId);
+        await refreshGroup(targetGroupId);
       } else {
         setErrorMessage(result.error?.message ?? "슬롯 추가에 실패했습니다");
       }
@@ -207,11 +211,139 @@ export default function ContainersPage() {
     setEditingSlotId(null);
   };
 
+  // ── 슬롯 확장 행 렌더링 ──
+  const renderSlotExpansion = (group: GroupRow) => (
+    <TableRow>
+      <TableCell colSpan={7} className="p-0">
+        <div className="border-t border-blue-100 bg-blue-50/30 px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500">
+              슬롯 구성
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => {
+                setAddSlotGroupId(group.id);
+                setNewSlotName("");
+                setNewSlotVolume("");
+              }}
+            >
+              <Plus className="mr-1 h-3 w-3" />
+              슬롯 추가
+            </Button>
+          </div>
+
+          {group.slots.length === 0 ? (
+            <p className="text-center text-xs text-gray-400 py-3">
+              등록된 슬롯이 없습니다. 슬롯을 추가해 주세요.
+            </p>
+          ) : (
+            <div className="rounded border bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[60px] text-xs">번호</TableHead>
+                    <TableHead className="text-xs">슬롯명</TableHead>
+                    <TableHead className="w-[120px] text-xs text-right">용량(ml)</TableHead>
+                    <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {group.slots.map((slot) => (
+                    <TableRow key={slot.id}>
+                      {editingSlotId === slot.id ? (
+                        <>
+                          <TableCell className="text-xs font-mono text-gray-400">
+                            {slot.slotIndex}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-7 text-xs"
+                              value={editingSlotName}
+                              onChange={(e) => setEditingSlotName(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
+                              autoFocus
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              className="h-7 w-24 text-xs text-right ml-auto"
+                              value={editingSlotVolume}
+                              onChange={(e) => setEditingSlotVolume(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={handleUpdateSlot}
+                                disabled={slotUpdating}
+                              >
+                                {slotUpdating
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : <Save className="h-3 w-3 text-green-600" />
+                                }
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => setEditingSlotId(null)}
+                              >
+                                <X className="h-3 w-3 text-gray-400" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
+                          <TableCell className="text-xs font-medium">{slot.label}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">
+                            {slot.volumeMl != null ? `${slot.volumeMl}` : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => {
+                                  setEditingSlotId(slot.id);
+                                  setEditingSlotName(slot.label);
+                                  setEditingSlotVolume(slot.volumeMl != null ? String(slot.volumeMl) : "");
+                                }}
+                              >
+                                <Pencil className="h-3 w-3 text-gray-400" />
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label, groupId: group.id })}
+                              >
+                                <Trash2 className="h-3 w-3 text-red-400" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">용기 관리</h1>
-        <p className="text-sm text-gray-500">용기 그룹과 슬롯(칸)을 관리합니다. 부속품(뚜껑, 띠지 등)은 부자재 관리에서 처리합니다.</p>
+        <p className="text-sm text-gray-500">
+          용기 그룹과 슬롯(칸)을 관리합니다. 부속품(뚜껑, 띠지 등)은 부자재 관리에서 처리합니다.
+        </p>
       </div>
 
       {errorMessage && (
@@ -256,14 +388,21 @@ export default function ContainersPage() {
               {saving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
               등록
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => { setShowCreateForm(false); setNewGroupName(""); }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setShowCreateForm(false);
+                setNewGroupName("");
+              }}
+            >
               취소
             </Button>
           </div>
         </div>
       )}
 
-      {/* 테이블 + 아코디언 */}
+      {/* 테이블 (아코디언 행 포함) */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -294,72 +433,86 @@ export default function ContainersPage() {
               items.map((item) => {
                 const isExpanded = expandedGroupId === item.id;
                 return (
-                  <TableRow key={item.id} className="group">
-                    {/* 펼치기 버튼 */}
-                    <TableCell className="w-[40px] px-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => toggleExpand(item.id)}
-                      >
+                  <Fragment key={item.id}>
+                    {/* ── 그룹 행 ── */}
+                    <TableRow
+                      className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-blue-50/40" : ""}`}
+                      onClick={() => toggleExpand(item.id)}
+                    >
+                      <TableCell className="w-[40px] px-2">
                         {isExpanded
-                          ? <ChevronUp className="h-4 w-4 text-gray-400" />
+                          ? <ChevronUp className="h-4 w-4 text-blue-500" />
                           : <ChevronDown className="h-4 w-4 text-gray-400" />
                         }
-                      </Button>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{item.code}</TableCell>
-                    <TableCell>
-                      {editingGroupId === item.id ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            className="h-7 text-sm"
-                            value={editingGroupName}
-                            onChange={(e) => setEditingGroupName(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleUpdate()}
-                          />
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleUpdate}>저장</Button>
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingGroupId(null)}>취소</Button>
-                        </div>
-                      ) : (
-                        <span className="font-medium">{item.name}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                        {item.slots.length}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {item.slots.length > 0 ? (
-                        <span className="text-xs text-gray-500">
-                          {item.slots.map((s) => s.label).join(", ")}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{item.code}</TableCell>
+                      <TableCell>
+                        {editingGroupId === item.id ? (
+                          <div
+                            className="flex items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Input
+                              className="h-7 text-sm"
+                              value={editingGroupName}
+                              onChange={(e) => setEditingGroupName(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleUpdate()}
+                            />
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleUpdate}>
+                              저장
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingGroupId(null)}>
+                              취소
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="font-medium">{item.name}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                          {item.slots.length}
                         </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">미설정</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {new Date(item.createdAt).toLocaleDateString("ko-KR")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7"
-                          onClick={(e) => { e.stopPropagation(); setEditingGroupId(item.id); setEditingGroupName(item.name); }}
+                      </TableCell>
+                      <TableCell>
+                        {item.slots.length > 0 ? (
+                          <span className="text-xs text-gray-500">
+                            {item.slots.map((s) => s.label).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">미설정</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-500">
+                        {new Date(item.createdAt).toLocaleDateString("ko-KR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div
+                          className="flex items-center justify-end gap-1"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <Pencil className="h-3.5 w-3.5 text-gray-500" />
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7"
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: "group", id: item.id, name: item.name }); }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={() => {
+                              setEditingGroupId(item.id);
+                              setEditingGroupName(item.name);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={() => setDeleteTarget({ type: "group", id: item.id, name: item.name })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* ── 슬롯 확장 행 (테이블 내부) ── */}
+                    {isExpanded && renderSlotExpansion(item)}
+                  </Fragment>
                 );
               })
             )}
@@ -367,142 +520,26 @@ export default function ContainersPage() {
         </Table>
       </div>
 
-      {/* 아코디언 영역 — 펼쳐진 그룹의 슬롯 상세 */}
-      {expandedGroupId && (() => {
-        const group = items.find((g) => g.id === expandedGroupId);
-        if (!group) return null;
-        return (
-          <div className="rounded-md border border-blue-100 bg-blue-50/30 p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">
-                {group.name} <span className="text-gray-400 font-normal">({group.code})</span> — 슬롯 관리
-              </h3>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setAddSlotGroupId(group.id);
-                  setNewSlotName("");
-                  setNewSlotVolume("");
-                }}
-              >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                슬롯 추가
-              </Button>
-            </div>
-
-            {group.slots.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-4">
-                등록된 슬롯이 없습니다. 슬롯을 추가해 주세요.
-              </p>
-            ) : (
-              <div className="rounded border bg-white">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[60px] text-xs">번호</TableHead>
-                      <TableHead className="text-xs">슬롯명</TableHead>
-                      <TableHead className="w-[120px] text-xs text-right">용량(ml)</TableHead>
-                      <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {group.slots.map((slot) => (
-                      <TableRow key={slot.id}>
-                        {editingSlotId === slot.id ? (
-                          <>
-                            <TableCell className="text-xs font-mono text-gray-400">
-                              {slot.slotIndex}
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                className="h-7 text-xs"
-                                value={editingSlotName}
-                                onChange={(e) => setEditingSlotName(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
-                              />
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Input
-                                type="number"
-                                className="h-7 w-24 text-xs text-right ml-auto"
-                                value={editingSlotVolume}
-                                onChange={(e) => setEditingSlotVolume(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
-                              />
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={handleUpdateSlot}
-                                  disabled={slotUpdating}
-                                >
-                                  {slotUpdating
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <Save className="h-3 w-3 text-green-600" />
-                                  }
-                                </Button>
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => setEditingSlotId(null)}
-                                >
-                                  <X className="h-3 w-3 text-gray-400" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </>
-                        ) : (
-                          <>
-                            <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
-                            <TableCell className="text-xs font-medium">{slot.label}</TableCell>
-                            <TableCell className="text-xs text-right font-mono">
-                              {slot.volumeMl != null ? `${slot.volumeMl}` : "-"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => {
-                                    setEditingSlotId(slot.id);
-                                    setEditingSlotName(slot.label);
-                                    setEditingSlotVolume(slot.volumeMl != null ? String(slot.volumeMl) : "");
-                                  }}
-                                >
-                                  <Pencil className="h-3 w-3 text-gray-400" />
-                                </Button>
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label, groupId: group.id })}
-                                >
-                                  <Trash2 className="h-3 w-3 text-red-400" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
       {/* 페이지네이션 */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            총 {pagination.total}건
-          </p>
+          <p className="text-sm text-gray-500">총 {pagination.total}건</p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={pagination.page <= 1} onClick={() => fetchData(pagination.page - 1)}>
+            <Button
+              variant="outline" size="sm"
+              disabled={pagination.page <= 1}
+              onClick={() => fetchData(pagination.page - 1)}
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm">{pagination.page} / {pagination.totalPages}</span>
-            <Button variant="outline" size="sm" disabled={pagination.page >= pagination.totalPages} onClick={() => fetchData(pagination.page + 1)}>
+            <span className="text-sm">
+              {pagination.page} / {pagination.totalPages}
+            </span>
+            <Button
+              variant="outline" size="sm"
+              disabled={pagination.page >= pagination.totalPages}
+              onClick={() => fetchData(pagination.page + 1)}
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -510,7 +547,10 @@ export default function ContainersPage() {
       )}
 
       {/* ══════ 슬롯 추가 모달 ══════ */}
-      <Dialog open={!!addSlotGroupId} onOpenChange={(open) => { if (!open) setAddSlotGroupId(null); }}>
+      <Dialog
+        open={!!addSlotGroupId}
+        onOpenChange={(open) => { if (!open) setAddSlotGroupId(null); }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>슬롯 추가</DialogTitle>
@@ -540,7 +580,9 @@ export default function ContainersPage() {
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setAddSlotGroupId(null)}>취소</Button>
+              <Button variant="ghost" onClick={() => setAddSlotGroupId(null)}>
+                취소
+              </Button>
               <Button onClick={handleAddSlot} disabled={slotSaving || !newSlotName.trim()}>
                 {slotSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 추가
