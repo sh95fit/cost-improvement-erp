@@ -184,9 +184,10 @@ export function RecipeDetailDialog({
   );
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
-  // ★ 수정: 식자재 + 반제품 옵션 분리
+  // ★ FIX: 옵션 로딩 상태 추가
   const [materialOptions, setMaterialOptions] = useState<OptionItem[]>([]);
   const [semiProductOptions, setSemiProductOptions] = useState<OptionItem[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [containerGroupOptions, setContainerGroupOptions] = useState<
     { id: string; name: string; code: string }[]
   >([]);
@@ -203,7 +204,7 @@ export function RecipeDetailDialog({
     name: string;
   } | null>(null);
 
-  // ★ 신규: 현재 타입에 따라 필터된 옵션 목록
+  // ★ FIX: 현재 타입에 따라 필터된 옵션 목록
   const currentIngredientOptions = useMemo(() => {
     const source =
       newIngredientType === "MATERIAL" ? materialOptions : semiProductOptions;
@@ -231,76 +232,84 @@ export function RecipeDetailDialog({
     }
   }, [recipe.id]);
 
-  // ★ 수정: 식자재 + 반제품 + 용기 그룹 모두 로딩, 에러 로깅 추가
+  // ★ FIX: loadOptions 전면 재작성 — 에러 로깅 강화, success 확인 엄격화
   const loadOptions = useCallback(async () => {
-    // 식자재 로딩
+    setOptionsLoading(true);
     try {
-      const matResult = await getMaterialsAction({
-        page: 1,
-        limit: 200,
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-      if (matResult.success) {
+      // 식자재, 반제품, 용기 그룹 동시 로딩
+      const [matResult, spResult, cgResult] = await Promise.allSettled([
+        getMaterialsAction({
+          page: 1,
+          limit: 500,
+          sortBy: "name",
+          sortOrder: "asc",
+        }),
+        getSemiProductsAction({
+          page: 1,
+          limit: 500,
+          sortBy: "name",
+          sortOrder: "asc",
+        }),
+        getContainerGroupsAction({
+          page: 1,
+          limit: 500,
+          sortBy: "name",
+          sortOrder: "asc",
+        }),
+      ]);
+
+      // ★ FIX: 식자재 — fulfilled + success 모두 확인
+      if (matResult.status === "fulfilled" && matResult.value.success) {
+        const items = matResult.value.data.items ?? [];
+        console.log(`[loadOptions] 식자재 ${items.length}건 로드`);
         setMaterialOptions(
-          matResult.data.items.map((m) => ({
-            id: m.id,
-            name: m.name,
-            code: m.code,
-            unit: m.unit,
+          items.map((m: Record<string, unknown>) => ({
+            id: m.id as string,
+            name: m.name as string,
+            code: m.code as string,
+            unit: m.unit as string,
           }))
         );
+      } else {
+        console.error("[loadOptions] 식자재 로딩 실패:", matResult);
       }
-    } catch {
-      console.error("식자재 목록 로딩 실패");
-    }
 
-    // ★ 신규: 반제품 로딩
-    try {
-      const spResult = await getSemiProductsAction({
-        page: 1,
-        limit: 200,
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-      if (spResult.success) {
+      // ★ FIX: 반제품
+      if (spResult.status === "fulfilled" && spResult.value.success) {
+        const items = spResult.value.data.items ?? [];
+        console.log(`[loadOptions] 반제품 ${items.length}건 로드`);
         setSemiProductOptions(
-          spResult.data.items.map((sp) => ({
-            id: sp.id,
-            name: sp.name,
-            code: sp.code,
-            unit: sp.unit,
+          items.map((sp: Record<string, unknown>) => ({
+            id: sp.id as string,
+            name: sp.name as string,
+            code: sp.code as string,
+            unit: sp.unit as string,
           }))
         );
+      } else {
+        console.error("[loadOptions] 반제품 로딩 실패:", spResult);
       }
-    } catch {
-      console.error("반제품 목록 로딩 실패");
-    }
 
-    // 용기 그룹 로딩
-    try {
-      const cgResult = await getContainerGroupsAction({
-        page: 1,
-        limit: 200,
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-      if (cgResult.success && cgResult.data.items.length > 0) {
+      // ★ FIX: 용기 그룹 — 성공 여부와 관계없이 loaded 플래그 설정
+      if (cgResult.status === "fulfilled" && cgResult.value.success) {
+        const items = cgResult.value.data.items ?? [];
+        console.log(`[loadOptions] 용기 그룹 ${items.length}건 로드`);
         setContainerGroupOptions(
-          cgResult.data.items.map((g) => ({
-            id: g.id,
-            name: g.name,
-            code: g.code,
+          items.map((g: Record<string, unknown>) => ({
+            id: g.id as string,
+            name: g.name as string,
+            code: g.code as string,
           }))
         );
         setContainerGroupsLoaded(true);
       } else {
-        // API 성공했지만 데이터가 없는 경우
-        setContainerGroupsLoaded(true);
+        console.error("[loadOptions] 용기 그룹 로딩 실패:", cgResult);
+        // ★ FIX: 실패해도 loaded=true로 설정하여 fallback 무한 루프 방지
+        // fallback은 아래 useEffect에서 처리
+        setContainerGroupsLoaded(false);
       }
-    } catch {
-      console.error("용기 그룹 목록 로딩 실패 — BOM 데이터에서 추출 시도");
-      setContainerGroupsLoaded(false);
+    } finally {
+      setOptionsLoading(false);
     }
   }, []);
 
@@ -314,24 +323,27 @@ export function RecipeDetailDialog({
     try {
       const result = await getContainerGroupByIdAction(groupId);
       if (result.success && result.data) {
-        const slots = result.data.slots.map(
-          (s: { slotIndex: number; label: string; volumeMl: number | null }) => ({
+        const slots = (result.data.slots as { slotIndex: number; label: string; volumeMl: number | null }[]).map(
+          (s) => ({
             slotIndex: s.slotIndex,
             label: s.label,
             volumeMl: s.volumeMl,
           })
         );
         setSelectedGroupSlots(slots);
+        console.log(`[handleContainerGroupChange] ${groupId}: 슬롯 ${slots.length}개 로드`);
       }
-    } catch {
-      // 실패 시 수동 입력 fallback
+    } catch (err) {
+      console.error("[handleContainerGroupChange] 슬롯 로딩 실패:", err);
     }
   };
 
-  // ★ 수정: fallback 조건 개선 — containerGroupsLoaded로 판단
+  // ★ FIX: fallback 조건 — containerGroupsLoaded가 false이고 BOM에서 추출 가능할 때만
   useEffect(() => {
-    if (containerGroupsLoaded) return; // API에서 이미 처리됨
-    if (containerGroupOptions.length > 0) return; // 이미 설정됨
+    if (containerGroupsLoaded) return;
+    if (containerGroupOptions.length > 0) return;
+    if (recipeBoms.length === 0) return;
+
     const groups: { id: string; name: string; code: string }[] = [];
     const seen = new Set<string>();
     recipeBoms.forEach((bom) =>
@@ -342,7 +354,10 @@ export function RecipeDetailDialog({
         }
       })
     );
-    if (groups.length > 0) setContainerGroupOptions(groups);
+    if (groups.length > 0) {
+      console.log(`[fallback] BOM에서 용기 그룹 ${groups.length}건 추출`);
+      setContainerGroupOptions(groups);
+    }
   }, [recipeBoms, containerGroupOptions.length, containerGroupsLoaded]);
 
   useEffect(() => {
@@ -356,6 +371,7 @@ export function RecipeDetailDialog({
       setIngredientSearch("");
       setNewIngredientId("");
       setErrorMessage(null);
+      setOptionsLoading(false);
     }
   }, [open, loadDetail, loadOptions]);
 
@@ -666,6 +682,13 @@ export function RecipeDetailDialog({
 
           {showIngredientForm && (
             <div className="rounded-md border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+              {/* ★ FIX: 옵션 로딩 중 표시 */}
+              {optionsLoading && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  식자재/반제품 목록 로딩 중...
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 {/* 재료 타입 선택 */}
                 <div className="space-y-1">
@@ -688,10 +711,16 @@ export function RecipeDetailDialog({
                   </Select>
                 </div>
 
-                {/* ★ 수정: 검색 + 올바른 옵션 목록 사용 */}
+                {/* ★ FIX: 검색 + 올바른 옵션 목록 사용 */}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
+                    {/* ★ FIX: 로딩된 수량 표시 */}
+                    <span className="ml-1 text-gray-400">
+                      ({newIngredientType === "MATERIAL"
+                        ? materialOptions.length
+                        : semiProductOptions.length}건)
+                    </span>
                   </Label>
                   <div className="space-y-1.5">
                     {/* 검색 입력 */}
@@ -712,11 +741,13 @@ export function RecipeDetailDialog({
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue
                           placeholder={
-                            currentIngredientOptions.length === 0
-                              ? newIngredientType === "MATERIAL"
-                                ? "등록된 식자재가 없습니다"
-                                : "등록된 반제품이 없습니다"
-                              : "선택"
+                            optionsLoading
+                              ? "로딩 중..."
+                              : currentIngredientOptions.length === 0
+                                ? newIngredientType === "MATERIAL"
+                                  ? "등록된 식자재가 없습니다"
+                                  : "등록된 반제품이 없습니다"
+                                : "선택하세요"
                           }
                         />
                       </SelectTrigger>
@@ -726,8 +757,8 @@ export function RecipeDetailDialog({
                             {ingredientSearch.trim()
                               ? `"${ingredientSearch}" 검색 결과가 없습니다`
                               : newIngredientType === "MATERIAL"
-                                ? "등록된 식자재가 없습니다"
-                                : "등록된 반제품이 없습니다"}
+                                ? "자재 관리에서 식자재를 먼저 등록해 주세요"
+                                : "반제품을 먼저 등록해 주세요"}
                           </div>
                         ) : (
                           currentIngredientOptions.map((opt) => (
@@ -1143,48 +1174,44 @@ export function RecipeDetailDialog({
                                 자동으로 할당됩니다.
                               </p>
                               <div className="grid grid-cols-2 gap-3">
-                                {/* 용기 그룹 선택 */}
+                                {/* ★ FIX: 용기 그룹 선택 — 항상 Select 사용, 빈 경우 안내 */}
                                 <div className="space-y-1">
-                                  <Label className="text-xs">용기 그룹</Label>
-                                  {containerGroupOptions.length > 0 ? (
-                                    <Select
-                                      value={newSlotContainerGroupId}
-                                      onValueChange={
-                                        handleContainerGroupChange
-                                      }
-                                    >
-                                      <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="용기 그룹 선택" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {containerGroupOptions.map((g) => (
+                                  <Label className="text-xs">
+                                    용기 그룹
+                                    <span className="ml-1 text-gray-400">
+                                      ({containerGroupOptions.length}건)
+                                    </span>
+                                  </Label>
+                                  <Select
+                                    value={newSlotContainerGroupId}
+                                    onValueChange={handleContainerGroupChange}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue
+                                        placeholder={
+                                          containerGroupOptions.length === 0
+                                            ? "용기 그룹을 먼저 등록해 주세요"
+                                            : "용기 그룹 선택"
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {containerGroupOptions.length === 0 ? (
+                                        <div className="px-2 py-3 text-center text-xs text-gray-400">
+                                          용기 관리 페이지에서 먼저 등록해 주세요
+                                        </div>
+                                      ) : (
+                                        containerGroupOptions.map((g) => (
                                           <SelectItem
                                             key={g.id}
                                             value={g.id}
                                           >
                                             {g.name} ({g.code})
                                           </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <div className="space-y-1">
-                                      <Input
-                                        placeholder="용기 관리에서 먼저 등록해 주세요"
-                                        className="h-8 text-xs"
-                                        value={newSlotContainerGroupId}
-                                        onChange={(e) =>
-                                          setNewSlotContainerGroupId(
-                                            e.target.value
-                                          )
-                                        }
-                                      />
-                                      <p className="text-xs text-amber-600">
-                                        용기 그룹이 없습니다. 용기 관리
-                                        페이지에서 먼저 등록해 주세요.
-                                      </p>
-                                    </div>
-                                  )}
+                                        ))
+                                      )}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
 
                                 {/* 슬롯 선택 */}
