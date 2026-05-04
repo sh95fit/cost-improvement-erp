@@ -1,3 +1,4 @@
+// src/app/(dashboard)/containers/page.tsx — 전체 코드
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -8,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -16,25 +17,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   getContainerGroupsAction,
+  getContainerGroupByIdAction,
   createContainerGroupAction,
   updateContainerGroupAction,
   deleteContainerGroupAction,
   addContainerSlotAction,
   updateContainerSlotAction,
   deleteContainerSlotAction,
-  addContainerAccessoryAction,
-  deleteContainerAccessoryAction,
 } from "@/features/container/actions/container.action";
 import {
-  Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight, Loader2, Box,
+  Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight,
+  Loader2, ChevronDown, ChevronUp, Save, X,
 } from "lucide-react";
 
 type SlotRow = { id: string; slotIndex: number; label: string; volumeMl: number | null };
-type AccessoryRow = { id: string; name: string; description: string | null };
 type GroupRow = {
   id: string; name: string; code: string;
   createdAt: string; updatedAt: string;
-  slots: SlotRow[]; accessories: AccessoryRow[];
+  slots: SlotRow[];
 };
 
 export default function ContainersPage() {
@@ -50,21 +50,33 @@ export default function ContainersPage() {
   const [editingGroupName, setEditingGroupName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // 상세 (슬롯/부속품 관리)
-  const [selectedGroup, setSelectedGroup] = useState<GroupRow | null>(null);
+  // 아코디언 (행별 슬롯 펼치기)
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
-  // 슬롯 추가
-  const [newSlotLabel, setNewSlotLabel] = useState("");
+  // 슬롯 추가 모달
+  const [addSlotGroupId, setAddSlotGroupId] = useState<string | null>(null);
+  const [newSlotName, setNewSlotName] = useState("");
   const [newSlotVolume, setNewSlotVolume] = useState("");
   const [slotSaving, setSlotSaving] = useState(false);
 
-  // 부속품 추가
-  const [newAccName, setNewAccName] = useState("");
-  const [newAccDesc, setNewAccDesc] = useState("");
-  const [accSaving, setAccSaving] = useState(false);
+  // 슬롯 수정
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  const [editingSlotName, setEditingSlotName] = useState("");
+  const [editingSlotVolume, setEditingSlotVolume] = useState("");
+  const [slotUpdating, setSlotUpdating] = useState(false);
 
   // 삭제
-  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string; groupId?: string } | null>(null);
+
+  // 에러 메시지
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
 
   const fetchData = useCallback(async (page = 1) => {
     setLoading(true);
@@ -83,7 +95,20 @@ export default function ContainersPage() {
 
   useEffect(() => { fetchData(1); }, [fetchData]);
 
-  // 그룹 생성
+  // ── 그룹 새로고침 (단건) ──
+  const refreshGroup = async (groupId: string) => {
+    try {
+      const result = await getContainerGroupByIdAction(groupId);
+      if (result.success) {
+        const updated = result.data as unknown as GroupRow;
+        setItems((prev) => prev.map((g) => (g.id === groupId ? { ...g, slots: updated.slots, name: updated.name } : g)));
+      }
+    } catch {
+      // 삭제된 경우
+    }
+  };
+
+  // ── 그룹 생성 ──
   const handleCreate = async () => {
     if (!newGroupName.trim()) return;
     setSaving(true);
@@ -99,7 +124,7 @@ export default function ContainersPage() {
     }
   };
 
-  // 그룹 수정
+  // ── 그룹 수정 ──
   const handleUpdate = async () => {
     if (!editingGroupId || !editingGroupName.trim()) return;
     setSaving(true);
@@ -109,98 +134,91 @@ export default function ContainersPage() {
         setEditingGroupId(null);
         setEditingGroupName("");
         fetchData(pagination.page);
-        if (selectedGroup?.id === editingGroupId) {
-          setSelectedGroup({ ...selectedGroup, name: editingGroupName.trim() });
-        }
       }
     } finally {
       setSaving(false);
     }
   };
 
-  // 슬롯 추가
+  // ── 슬롯 추가 ──
   const handleAddSlot = async () => {
-    if (!selectedGroup || !newSlotLabel.trim()) return;
+    if (!addSlotGroupId || !newSlotName.trim()) return;
     setSlotSaving(true);
     try {
-      const nextIndex = selectedGroup.slots.length > 0
-        ? Math.max(...selectedGroup.slots.map((s) => s.slotIndex)) + 1
-        : 0;
-      const result = await addContainerSlotAction(selectedGroup.id, {
-        slotIndex: nextIndex,
-        label: newSlotLabel.trim(),
+      const result = await addContainerSlotAction(addSlotGroupId, {
+        label: newSlotName.trim(),
         volumeMl: newSlotVolume ? parseFloat(newSlotVolume) : undefined,
       });
       if (result.success) {
-        setNewSlotLabel("");
+        setNewSlotName("");
         setNewSlotVolume("");
-        await refreshSelectedGroup();
+        setAddSlotGroupId(null);
+        await refreshGroup(addSlotGroupId);
+      } else {
+        setErrorMessage(result.error?.message ?? "슬롯 추가에 실패했습니다");
       }
     } finally {
       setSlotSaving(false);
     }
   };
 
-  // 부속품 추가
-  const handleAddAccessory = async () => {
-    if (!selectedGroup || !newAccName.trim()) return;
-    setAccSaving(true);
+  // ── 슬롯 수정 ──
+  const handleUpdateSlot = async () => {
+    if (!editingSlotId) return;
+    setSlotUpdating(true);
     try {
-      const result = await addContainerAccessoryAction(selectedGroup.id, {
-        name: newAccName.trim(),
-        description: newAccDesc.trim() || undefined,
-      });
+      const input: Record<string, unknown> = {};
+      if (editingSlotName.trim()) input.label = editingSlotName.trim();
+      if (editingSlotVolume !== "") input.volumeMl = parseFloat(editingSlotVolume) || null;
+      else input.volumeMl = null;
+
+      const result = await updateContainerSlotAction(editingSlotId, input);
       if (result.success) {
-        setNewAccName("");
-        setNewAccDesc("");
-        await refreshSelectedGroup();
+        setEditingSlotId(null);
+        if (expandedGroupId) await refreshGroup(expandedGroupId);
       }
     } finally {
-      setAccSaving(false);
+      setSlotUpdating(false);
     }
   };
 
-  // 상세 새로고침
-  const refreshSelectedGroup = async () => {
-    fetchData(pagination.page);
-    // items에서 다시 찾기 위해 짧은 딜레이 후 재조회
-    if (selectedGroup) {
-      const result = await getContainerGroupsAction({
-        page: 1, limit: 200, sortBy: "name", sortOrder: "asc",
-      });
-      if (result.success) {
-        const found = (result.data.items as unknown as GroupRow[]).find((g) => g.id === selectedGroup.id);
-        if (found) setSelectedGroup(found);
-      }
-    }
-  };
-
-  // 삭제 처리
+  // ── 삭제 처리 ──
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
-    const { type, id } = deleteTarget;
+    const { type, id, groupId } = deleteTarget;
     if (type === "group") {
       const result = await deleteContainerGroupAction(id);
       if (result.success) {
-        if (selectedGroup?.id === id) setSelectedGroup(null);
+        if (expandedGroupId === id) setExpandedGroupId(null);
         fetchData(pagination.page);
       }
     } else if (type === "slot") {
       const result = await deleteContainerSlotAction(id);
-      if (result.success) await refreshSelectedGroup();
-    } else if (type === "accessory") {
-      const result = await deleteContainerAccessoryAction(id);
-      if (result.success) await refreshSelectedGroup();
+      if (result.success && groupId) {
+        await refreshGroup(groupId);
+      }
     }
     setDeleteTarget(null);
+  };
+
+  // ── 아코디언 토글 ──
+  const toggleExpand = (groupId: string) => {
+    setExpandedGroupId((prev) => (prev === groupId ? null : groupId));
+    setEditingSlotId(null);
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">용기 관리</h1>
-        <p className="text-sm text-gray-500">용기 그룹, 슬롯(칸), 부속품을 관리합니다</p>
+        <p className="text-sm text-gray-500">용기 그룹과 슬롯(칸)을 관리합니다. 부속품(뚜껑, 띠지 등)은 부자재 관리에서 처리합니다.</p>
       </div>
+
+      {errorMessage && (
+        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
 
       {/* 검색 + 등록 */}
       <div className="flex items-center gap-3">
@@ -245,15 +263,16 @@ export default function ContainersPage() {
         </div>
       )}
 
-      {/* 테이블 */}
+      {/* 테이블 + 아코디언 */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]" />
               <TableHead className="w-[100px]">코드</TableHead>
               <TableHead>그룹명</TableHead>
               <TableHead className="w-[80px] text-center">슬롯 수</TableHead>
-              <TableHead className="w-[80px] text-center">부속품</TableHead>
+              <TableHead className="w-[200px]">슬롯 구성</TableHead>
               <TableHead className="w-[100px]">등록일</TableHead>
               <TableHead className="w-[80px] text-right">관리</TableHead>
             </TableRow>
@@ -261,79 +280,216 @@ export default function ContainersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                   등록된 용기 그룹이 없습니다
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((item) => (
-                <TableRow
-                  key={item.id}
-                  className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedGroup(item)}
-                >
-                  <TableCell className="font-mono text-sm">{item.code}</TableCell>
-                  <TableCell>
-                    {editingGroupId === item.id ? (
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <Input
-                          className="h-7 text-sm"
-                          value={editingGroupName}
-                          onChange={(e) => setEditingGroupName(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleUpdate()}
-                        />
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleUpdate}>저장</Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingGroupId(null)}>취소</Button>
-                      </div>
-                    ) : (
-                      <span className="font-medium">{item.name}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      {item.slots.length}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {item.accessories.length > 0 ? (
-                      <span className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
-                        {item.accessories.length}
+              items.map((item) => {
+                const isExpanded = expandedGroupId === item.id;
+                return (
+                  <TableRow key={item.id} className="group">
+                    {/* 펼치기 버튼 */}
+                    <TableCell className="w-[40px] px-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => toggleExpand(item.id)}
+                      >
+                        {isExpanded
+                          ? <ChevronUp className="h-4 w-4 text-gray-400" />
+                          : <ChevronDown className="h-4 w-4 text-gray-400" />
+                        }
+                      </Button>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{item.code}</TableCell>
+                    <TableCell>
+                      {editingGroupId === item.id ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className="h-7 text-sm"
+                            value={editingGroupName}
+                            onChange={(e) => setEditingGroupName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleUpdate()}
+                          />
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleUpdate}>저장</Button>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingGroupId(null)}>취소</Button>
+                        </div>
+                      ) : (
+                        <span className="font-medium">{item.name}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {item.slots.length}
                       </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm text-gray-500">
-                    {new Date(item.createdAt).toLocaleDateString("ko-KR")}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost" size="icon" className="h-7 w-7"
-                        onClick={() => { setEditingGroupId(item.id); setEditingGroupName(item.name); }}
-                      >
-                        <Pencil className="h-3.5 w-3.5 text-gray-500" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon" className="h-7 w-7"
-                        onClick={() => setDeleteTarget({ type: "group", id: item.id, name: item.name })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell>
+                      {item.slots.length > 0 ? (
+                        <span className="text-xs text-gray-500">
+                          {item.slots.map((s) => s.label).join(", ")}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">미설정</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-500">
+                      {new Date(item.createdAt).toLocaleDateString("ko-KR")}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={(e) => { e.stopPropagation(); setEditingGroupId(item.id); setEditingGroupName(item.name); }}
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: "group", id: item.id, name: item.name }); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
       </div>
+
+      {/* 아코디언 영역 — 펼쳐진 그룹의 슬롯 상세 */}
+      {expandedGroupId && (() => {
+        const group = items.find((g) => g.id === expandedGroupId);
+        if (!group) return null;
+        return (
+          <div className="rounded-md border border-blue-100 bg-blue-50/30 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700">
+                {group.name} <span className="text-gray-400 font-normal">({group.code})</span> — 슬롯 관리
+              </h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAddSlotGroupId(group.id);
+                  setNewSlotName("");
+                  setNewSlotVolume("");
+                }}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                슬롯 추가
+              </Button>
+            </div>
+
+            {group.slots.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-4">
+                등록된 슬롯이 없습니다. 슬롯을 추가해 주세요.
+              </p>
+            ) : (
+              <div className="rounded border bg-white">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[60px] text-xs">번호</TableHead>
+                      <TableHead className="text-xs">슬롯명</TableHead>
+                      <TableHead className="w-[120px] text-xs text-right">용량(ml)</TableHead>
+                      <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.slots.map((slot) => (
+                      <TableRow key={slot.id}>
+                        {editingSlotId === slot.id ? (
+                          <>
+                            <TableCell className="text-xs font-mono text-gray-400">
+                              {slot.slotIndex}
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                className="h-7 text-xs"
+                                value={editingSlotName}
+                                onChange={(e) => setEditingSlotName(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                className="h-7 w-24 text-xs text-right ml-auto"
+                                value={editingSlotVolume}
+                                onChange={(e) => setEditingSlotVolume(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleUpdateSlot()}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={handleUpdateSlot}
+                                  disabled={slotUpdating}
+                                >
+                                  {slotUpdating
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <Save className="h-3 w-3 text-green-600" />
+                                  }
+                                </Button>
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => setEditingSlotId(null)}
+                                >
+                                  <X className="h-3 w-3 text-gray-400" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
+                            <TableCell className="text-xs font-medium">{slot.label}</TableCell>
+                            <TableCell className="text-xs text-right font-mono">
+                              {slot.volumeMl != null ? `${slot.volumeMl}` : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => {
+                                    setEditingSlotId(slot.id);
+                                    setEditingSlotName(slot.label);
+                                    setEditingSlotVolume(slot.volumeMl != null ? String(slot.volumeMl) : "");
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3 text-gray-400" />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label, groupId: group.id })}
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-400" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 페이지네이션 */}
       {pagination.totalPages > 1 && (
@@ -353,146 +509,44 @@ export default function ContainersPage() {
         </div>
       )}
 
-      {/* ══════ 상세 다이얼로그 ══════ */}
-      <Dialog open={!!selectedGroup} onOpenChange={(open) => { if (!open) setSelectedGroup(null); }}>
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-          {selectedGroup && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-3">
-                  <Box className="h-5 w-5 text-blue-600" />
-                  <span>{selectedGroup.name}</span>
-                  <span className="text-sm font-mono text-gray-400">{selectedGroup.code}</span>
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-6 mt-4">
-                {/* ── 슬롯 관리 ── */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700">슬롯 (칸)</h3>
-
-                  {selectedGroup.slots.length > 0 && (
-                    <div className="rounded border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-[60px] text-xs">인덱스</TableHead>
-                            <TableHead className="text-xs">라벨</TableHead>
-                            <TableHead className="text-xs text-right">용량(ml)</TableHead>
-                            <TableHead className="w-[40px]" />
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {selectedGroup.slots.map((slot) => (
-                            <TableRow key={slot.id}>
-                              <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
-                              <TableCell className="text-xs font-medium">{slot.label}</TableCell>
-                              <TableCell className="text-xs text-right font-mono">
-                                {slot.volumeMl ?? "-"}
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label })}
-                                >
-                                  <Trash2 className="h-3 w-3 text-red-400" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs">라벨</Label>
-                      <Input
-                        placeholder="예: 밥, 국, 반찬1"
-                        className="h-8 text-xs"
-                        value={newSlotLabel}
-                        onChange={(e) => setNewSlotLabel(e.target.value)}
-                      />
-                    </div>
-                    <div className="w-28 space-y-1">
-                      <Label className="text-xs">용량(ml)</Label>
-                      <Input
-                        type="number" placeholder="선택"
-                        className="h-8 text-xs"
-                        value={newSlotVolume}
-                        onChange={(e) => setNewSlotVolume(e.target.value)}
-                      />
-                    </div>
-                    <Button size="sm" className="h-8 text-xs" onClick={handleAddSlot} disabled={slotSaving}>
-                      {slotSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="mr-1 h-3 w-3" />}
-                      추가
-                    </Button>
-                  </div>
-                </div>
-
-                {/* ── 부속품 관리 ── */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700">부속품</h3>
-
-                  {selectedGroup.accessories.length > 0 && (
-                    <div className="rounded border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs">부속품명</TableHead>
-                            <TableHead className="text-xs">설명</TableHead>
-                            <TableHead className="w-[40px]" />
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {selectedGroup.accessories.map((acc) => (
-                            <TableRow key={acc.id}>
-                              <TableCell className="text-xs font-medium">{acc.name}</TableCell>
-                              <TableCell className="text-xs text-gray-400">{acc.description || "-"}</TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => setDeleteTarget({ type: "accessory", id: acc.id, name: acc.name })}
-                                >
-                                  <Trash2 className="h-3 w-3 text-red-400" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs">부속품명</Label>
-                      <Input
-                        placeholder="예: 뚜껑, 수저세트"
-                        className="h-8 text-xs"
-                        value={newAccName}
-                        onChange={(e) => setNewAccName(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs">설명</Label>
-                      <Input
-                        placeholder="선택"
-                        className="h-8 text-xs"
-                        value={newAccDesc}
-                        onChange={(e) => setNewAccDesc(e.target.value)}
-                      />
-                    </div>
-                    <Button size="sm" className="h-8 text-xs" onClick={handleAddAccessory} disabled={accSaving}>
-                      {accSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="mr-1 h-3 w-3" />}
-                      추가
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
+      {/* ══════ 슬롯 추가 모달 ══════ */}
+      <Dialog open={!!addSlotGroupId} onOpenChange={(open) => { if (!open) setAddSlotGroupId(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>슬롯 추가</DialogTitle>
+            <DialogDescription>
+              새 슬롯을 추가합니다. 번호는 자동으로 부여됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1">
+              <Label className="text-sm">슬롯명</Label>
+              <Input
+                placeholder="예: 밥, 국, 반찬1, 반찬2"
+                value={newSlotName}
+                onChange={(e) => setNewSlotName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSlot()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">용량 (ml, 선택)</Label>
+              <Input
+                type="number"
+                placeholder="예: 300"
+                value={newSlotVolume}
+                onChange={(e) => setNewSlotVolume(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSlot()}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setAddSlotGroupId(null)}>취소</Button>
+              <Button onClick={handleAddSlot} disabled={slotSaving || !newSlotName.trim()}>
+                {slotSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                추가
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -503,6 +557,7 @@ export default function ContainersPage() {
             <AlertDialogTitle>삭제 확인</AlertDialogTitle>
             <AlertDialogDescription>
               &apos;{deleteTarget?.name}&apos;을(를) 삭제하시겠습니까?
+              {deleteTarget?.type === "group" && " 하위 슬롯도 함께 삭제됩니다."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

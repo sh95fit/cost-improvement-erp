@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -994,6 +995,7 @@ export function RecipeDetailDialog({ recipe, open, onOpenChange, onUpdated }: Pr
               <span>{recipe.name}</span>
               <span className="text-sm font-mono text-gray-400">{recipe.code}</span>
             </DialogTitle>
+            <DialogDescription>레시피 상세 정보 및 BOM 관리</DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue="info">

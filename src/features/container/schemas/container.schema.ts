@@ -1,3 +1,4 @@
+// src/features/container/schemas/container.schema.ts — 전체 코드
 import { z } from "zod";
 
 // ── 목록 조회 ──
@@ -17,9 +18,10 @@ export const createContainerGroupSchema = z.object({
 export const updateContainerGroupSchema = createContainerGroupSchema.partial();
 
 // ── 슬롯 생성/수정 ──
+// ★ 변경: slotIndex를 optional로 (서버에서 자동 채번)
 export const createContainerSlotSchema = z.object({
-  slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
-  label: z.string().min(1, "라벨은 필수입니다").max(50),
+  slotIndex: z.number().int().min(1).optional(),
+  label: z.string().min(1, "슬롯명은 필수입니다").max(50),
   volumeMl: z.number().min(0).optional(),
 });
 
@@ -28,7 +30,7 @@ export const updateContainerSlotSchema = z.object({
   volumeMl: z.number().min(0).nullable().optional(),
 });
 
-// ── 부속품 생성/수정 ──
+// ── 부속품 생성/수정 (DB 무결성 유지용) ──
 export const createContainerAccessorySchema = z.object({
   name: z.string().min(1, "부속품명은 필수입니다").max(100),
   description: z.string().max(200).optional(),

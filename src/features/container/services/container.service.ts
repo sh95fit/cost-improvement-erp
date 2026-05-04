@@ -1,3 +1,4 @@
+// src/features/container/services/container.service.ts — 전체 코드
 import { prisma } from "@/lib/prisma";
 import type {
   ContainerGroupListQuery,
@@ -21,6 +22,16 @@ async function generateContainerGroupCode(companyId: string): Promise<string> {
   if (!match) return "CTG-001";
   const next = parseInt(match[1], 10) + 1;
   return `CTG-${String(next).padStart(3, "0")}`;
+}
+
+// ── 슬롯 인덱스 자동 채번 (1부터 시작, 기존 최대+1) ──
+async function getNextSlotIndex(containerGroupId: string): Promise<number> {
+  const last = await prisma.containerSlot.findFirst({
+    where: { containerGroupId },
+    orderBy: { slotIndex: "desc" },
+    select: { slotIndex: true },
+  });
+  return (last?.slotIndex ?? 0) + 1;
 }
 
 // ════════════════════════════════════════
@@ -58,9 +69,6 @@ export async function getContainerGroups(
           select: { id: true, slotIndex: true, label: true, volumeMl: true },
           orderBy: { slotIndex: "asc" },
         },
-        accessories: {
-          select: { id: true, name: true, description: true },
-        },
       },
       orderBy: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
@@ -80,7 +88,6 @@ export async function getContainerGroupById(companyId: string, id: string) {
     where: { id, companyId, deletedAt: null },
     include: {
       slots: { orderBy: { slotIndex: "asc" } },
-      accessories: true,
     },
   });
   if (!group) throw new Error("NOT_FOUND");
@@ -96,7 +103,6 @@ export async function createContainerGroup(
     data: { ...input, companyId, code },
     include: {
       slots: { orderBy: { slotIndex: "asc" } },
-      accessories: true,
     },
   });
 }
@@ -131,12 +137,19 @@ export async function deleteContainerGroup(companyId: string, id: string) {
 // ContainerSlot
 // ════════════════════════════════════════
 
+// ★ 변경: slotIndex 자동 채번 (입력값 무시, 서버에서 결정)
 export async function addContainerSlot(
   containerGroupId: string,
   input: CreateContainerSlotInput
 ) {
+  const nextIndex = await getNextSlotIndex(containerGroupId);
   return prisma.containerSlot.create({
-    data: { ...input, containerGroupId },
+    data: {
+      containerGroupId,
+      slotIndex: nextIndex,
+      label: input.label,
+      volumeMl: input.volumeMl ?? null,
+    },
   });
 }
 
@@ -155,7 +168,7 @@ export async function deleteContainerSlot(id: string) {
 }
 
 // ════════════════════════════════════════
-// ContainerAccessory
+// ContainerAccessory (DB 무결성 유지용, UI에서는 미노출)
 // ════════════════════════════════════════
 
 export async function addContainerAccessory(

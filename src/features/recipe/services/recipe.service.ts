@@ -50,7 +50,7 @@ export async function getRecipes(companyId: string, query: RecipeListQuery) {
           orderBy: { sortOrder: "asc" },
         },
         recipeBoms: {
-          where: { deletedAt: null, status: "ACTIVE" },
+          where: { deletedAt: null },  // ★ status: "ACTIVE" 조건 제거
           select: { id: true, version: true, status: true },
         },
       },

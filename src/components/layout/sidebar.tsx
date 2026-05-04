@@ -1,3 +1,4 @@
+// src/components/layout/sidebar.tsx — 전체 코드
 "use client";
 
 import Link from "next/link";
@@ -16,7 +17,7 @@ import {
   ClipboardCheck,
   CalendarCheck,
   Building2,
-  Container,
+  PackageOpen,
 } from "lucide-react";
 
 const navigation = [
@@ -24,7 +25,7 @@ const navigation = [
   { name: "자재 관리", href: "/materials", icon: Package },
   { name: "부자재 관리", href: "/subsidiaries", icon: Box },
   { name: "공급업체 관리", href: "/suppliers", icon: Building2 },
-  { name: "용기 관리", href: "/containers", icon: Container },
+  { name: "용기 관리", href: "/containers", icon: PackageOpen },
   { name: "레시피 관리", href: "/recipes", icon: UtensilsCrossed },
   { name: "발주 관리", href: "/purchasing", icon: ShoppingCart },
   { name: "입고 관리", href: "/receiving", icon: ClipboardCheck },

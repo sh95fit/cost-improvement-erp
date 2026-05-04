@@ -1,3 +1,4 @@
+// src/features/recipe/schemas/recipe.schema.ts — 전체 코드
 import { z } from "zod";
 import { IngredientType, BOMStatus } from "@prisma/client";
 
@@ -55,7 +56,6 @@ export const createRecipeBOMSchema = z.object({
     .enum(bomStatusValues)
     .transform((v) => v as BOMStatus)
     .default("DRAFT"),
-  // ★ 변경: min(0.1) → min(0).default(0) — BOM 생성 시 기준중량 0 허용
   baseWeightG: z.number().min(0).default(0),
 });
 
@@ -63,7 +63,6 @@ export const updateRecipeBOMStatusSchema = z.object({
   status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
 });
 
-// ★ 변경: min(0.1) → min(0)
 export const updateRecipeBOMBaseWeightSchema = z.object({
   baseWeightG: z.number().min(0, "기준 중량은 0 이상이어야 합니다"),
 });
@@ -72,16 +71,18 @@ export const updateRecipeBOMBaseWeightSchema = z.object({
 // RecipeBOMSlot
 // ════════════════════════════════════════
 
+// ★ 변경: totalWeightG min(0.1) → min(0) — 초기 생성 시 0 허용
 export const createRecipeBOMSlotSchema = z.object({
   containerGroupId: z.string().min(1, "용기 그룹은 필수입니다"),
   slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
-  totalWeightG: z.number().min(0.1, "총 중량은 0.1g 이상이어야 합니다"),
+  totalWeightG: z.number().min(0, "총 중량은 0 이상이어야 합니다").default(0),
   note: z.string().max(200).optional(),
   sortOrder: z.number().int().min(0).default(0),
 });
 
+// ★ 변경: totalWeightG min(0.1) → min(0)
 export const updateRecipeBOMSlotSchema = z.object({
-  totalWeightG: z.number().min(0.1).optional(),
+  totalWeightG: z.number().min(0).optional(),
   note: z.string().max(200).optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
@@ -97,7 +98,6 @@ export const createRecipeBOMSlotItemSchema = z
       .transform((v) => v as IngredientType),
     materialMasterId: z.string().optional(),
     semiProductId: z.string().optional(),
-    // ★ 변경: min(0.01) → min(0).default(0) — 자동할당 시 weightG=0 허용
     weightG: z.number().min(0).default(0),
     unit: z.string().max(20).default("g"),
     sortOrder: z.number().int().min(0).default(0),
@@ -111,7 +111,6 @@ export const createRecipeBOMSlotItemSchema = z
     { message: "재료 타입에 맞는 ID가 필요합니다" }
   );
 
-// ★ 변경: min(0.01) → min(0)
 export const updateRecipeBOMSlotItemSchema = z.object({
   weightG: z.number().min(0).optional(),
   unit: z.string().max(20).optional(),

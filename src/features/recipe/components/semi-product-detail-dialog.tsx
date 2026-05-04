@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -571,6 +572,7 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
               <span>{semiProduct.name}</span>
               <span className="text-sm font-mono text-gray-400">{semiProduct.code}</span>
             </DialogTitle>
+            <DialogDescription>반제품 상세 정보 및 BOM 관리</DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue="info">
