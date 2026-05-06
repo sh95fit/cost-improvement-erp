@@ -21,6 +21,8 @@ import {
   setMaterialDefaultSupplierItemAction,
 } from "../actions/material.action";
 import { Pencil, X, Loader2, Star } from "lucide-react";
+import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
+import type { UnitCategory } from "@prisma/client";
 
 import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
 import type { MaterialRow } from "./material-list";
@@ -54,13 +56,6 @@ const MATERIAL_TYPE_LABELS: Record<string, string> = {
   PROCESSED: "가공식품",
   SEMI: "반제품",
   OTHER: "기타",
-};
-
-const UNIT_CATEGORY_LABELS: Record<string, string> = {
-  WEIGHT: "중량",
-  VOLUME: "용량",
-  COUNT: "수량",
-  LENGTH: "길이",
 };
 
 const GRADE_LABELS: Record<string, string> = {
@@ -179,11 +174,11 @@ export function MaterialDetailPanel({ material, onClose, onUpdated }: Props) {
           </div>
           <div>
             <p className="text-gray-500">단위</p>
-            <p>{material.unit}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">단위 분류</p>
-            <p>{UNIT_CATEGORY_LABELS[material.unitCategory] ?? material.unitCategory}</p>
+            <p>
+              {UNIT_CATEGORY_LABELS[material.unitCategory as UnitCategory] ?? material.unitCategory}
+              {" / "}
+              {material.unit}
+            </p>
           </div>
           <div>
             <p className="text-gray-500">재고 등급</p>

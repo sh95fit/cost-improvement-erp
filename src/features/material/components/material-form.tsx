@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,8 +22,13 @@ import {
   createMaterialAction,
   updateMaterialAction,
 } from "../actions/material.action";
-import type { MaterialMaster } from "@prisma/client";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import {
+  UNIT_OPTIONS,
+  UNIT_CATEGORY_LABELS,
+  getUnitOptionsByCategory,
+} from "@/lib/constants/unit-options";
+import type { UnitCategory } from "@prisma/client";
 
 type Props = {
   material?: {
@@ -50,10 +55,10 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
   const [materialType, setMaterialType] = useState<string>(
     material?.materialType ?? "RAW"
   );
-  const [unit, setUnit] = useState(material?.unit ?? "");
   const [unitCategory, setUnitCategory] = useState<string>(
     material?.unitCategory ?? "WEIGHT"
   );
+  const [unit, setUnit] = useState(material?.unit ?? "");
   const [stockGrade, setStockGrade] = useState<string>(
     material?.stockGrade ?? "C"
   );
@@ -68,6 +73,17 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 카테고리 변경 시: 현재 unit이 새 카테고리 옵션에 없으면 첫 번째 값으로 초기화
+  useEffect(() => {
+    const options = getUnitOptionsByCategory(unitCategory as UnitCategory);
+    const exists = options.some((opt) => opt.value === unit);
+    if (!exists && options.length > 0) {
+      setUnit(options[0].value);
+    }
+  }, [unitCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentUnitOptions = getUnitOptionsByCategory(unitCategory as UnitCategory);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,20 +175,10 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
         </div>
       </div>
 
-      {/* 단위 / 분류 */}
+      {/* 단위 / 분류 — Select Box 변환 (Phase 3) */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-gray-700">단위 / 분류</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="unit">단위 *</Label>
-            <Input
-              id="unit"
-              placeholder="예: kg, L, 개"
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              required
-            />
-          </div>
           <div className="space-y-2">
             <Label>단위 분류 *</Label>
             <Select value={unitCategory} onValueChange={setUnitCategory}>
@@ -180,10 +186,26 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="WEIGHT">중량</SelectItem>
-                <SelectItem value="VOLUME">용량</SelectItem>
-                <SelectItem value="COUNT">수량</SelectItem>
-                <SelectItem value="LENGTH">길이</SelectItem>
+                {(Object.keys(UNIT_OPTIONS) as UnitCategory[]).map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {UNIT_CATEGORY_LABELS[cat]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>단위 *</Label>
+            <Select value={unit} onValueChange={setUnit}>
+              <SelectTrigger>
+                <SelectValue placeholder="단위 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {currentUnitOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
