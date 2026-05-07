@@ -1,7 +1,7 @@
 // src/features/recipe/components/recipe-detail-dialog.tsx
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { RecipeForm } from "./recipe-form";
 import {
   getRecipeByIdAction,
@@ -45,9 +58,13 @@ import {
   deleteIngredientAction,
   createRecipeBOMWithAutoVersionAction,
   updateRecipeBOMStatusAction,
+  updateRecipeBOMBaseWeightAction,
   deleteRecipeBOMAction,
+  duplicateRecipeBOMAction,
   addRecipeBOMSlotAction,
+  updateRecipeBOMSlotAction,
   deleteRecipeBOMSlotAction,
+  addRecipeBOMSlotItemAction,
   updateRecipeBOMSlotItemAction,
   deleteRecipeBOMSlotItemAction,
   getSemiProductsAction,
@@ -67,10 +84,13 @@ import {
   Check,
   RotateCcw,
   Save,
-  Search,
+  Copy,
+  Archive,
+  ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
+import { cn } from "@/lib/utils";
 import type { RecipeRow } from "./recipe-list";
 
 // ── 타입 정의 ──
@@ -205,6 +225,76 @@ async function loadAllPages<T>(
   }
 }
 
+// ── Combobox 컴포넌트 (이슈 #4) ──
+function IngredientCombobox({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyText,
+  disabled,
+}: {
+  options: OptionItem[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+  emptyText: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-8 w-full justify-between text-xs font-normal"
+        >
+          {selected ? `${selected.name} (${selected.code})` : placeholder}
+          <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[340px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="이름 또는 코드 검색..." className="text-xs" />
+          <CommandList>
+            <CommandEmpty className="py-4 text-center text-xs text-gray-400">
+              {emptyText}
+            </CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.id}
+                  value={`${opt.name} ${opt.code}`}
+                  onSelect={() => {
+                    onChange(opt.id);
+                    setOpen(false);
+                  }}
+                  className="text-xs"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-3 w-3",
+                      value === opt.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {opt.name}
+                  <span className="ml-1 text-gray-400">({opt.code})</span>
+                  <span className="ml-auto text-gray-400">{opt.unit}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function RecipeDetailDialog({
   recipe,
   open,
@@ -217,14 +307,14 @@ export function RecipeDetailDialog({
   const [loading, setLoading] = useState(false);
   const [expandedBom, setExpandedBom] = useState<string | null>(null);
 
-  // 재료 추가 폼
+  // 재료 추가 폼 — 연속 모드 (이슈 #3)
   const [showIngredientForm, setShowIngredientForm] = useState(false);
   const [newIngredientType, setNewIngredientType] = useState<
     "MATERIAL" | "SEMI_PRODUCT"
   >("MATERIAL");
   const [newIngredientId, setNewIngredientId] = useState("");
   const [ingredientSaving, setIngredientSaving] = useState(false);
-  const [ingredientSearch, setIngredientSearch] = useState("");
+  const [continuousMode, setContinuousMode] = useState(true);
 
   // 슬롯 추가 폼
   const [addingSlotBomId, setAddingSlotBomId] = useState<string | null>(null);
@@ -239,6 +329,29 @@ export function RecipeDetailDialog({
     {}
   );
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+
+  // ★ Phase 6: baseWeightG 인라인 편집
+  const [editingBaseWeight, setEditingBaseWeight] = useState<Record<string, string>>({});
+  const [savingBaseWeight, setSavingBaseWeight] = useState<string | null>(null);
+
+  // ★ Phase 6: 슬롯 인라인 편집 (totalWeightG, note)
+  const [editingSlot, setEditingSlot] = useState<Record<string, { totalWeightG?: string; note?: string }>>({});
+  const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
+
+  // ★ Phase 6: 슬롯별 재료 추가
+  const [addingItemSlotId, setAddingItemSlotId] = useState<string | null>(null);
+  const [newItemType, setNewItemType] = useState<"MATERIAL" | "SEMI_PRODUCT">("MATERIAL");
+  const [newItemId, setNewItemId] = useState("");
+  const [newItemWeight, setNewItemWeight] = useState("0");
+  const [itemSaving, setItemSaving] = useState(false);
+
+  // ★ Phase 6: BOM 복제 로딩
+  const [duplicatingBomId, setDuplicatingBomId] = useState<string | null>(null);
+
+  // ★ Phase 6: 용기 슬롯 라벨 캐시 (이슈 #6)
+  const [slotLabelCache, setSlotLabelCache] = useState<
+    Record<string, { slotIndex: number; label: string; volumeMl: number | null }[]>
+  >({});
 
   // 옵션 상태
   const [materialOptions, setMaterialOptions] = useState<OptionItem[]>([]);
@@ -260,18 +373,50 @@ export function RecipeDetailDialog({
     name: string;
   } | null>(null);
 
-  // 현재 타입에 따라 필터된 옵션 목록
-  const currentIngredientOptions = useMemo(() => {
-    const source =
-      newIngredientType === "MATERIAL" ? materialOptions : semiProductOptions;
-    if (!ingredientSearch.trim()) return source;
-    const keyword = ingredientSearch.trim().toLowerCase();
-    return source.filter(
-      (opt) =>
-        opt.name.toLowerCase().includes(keyword) ||
-        opt.code.toLowerCase().includes(keyword)
-    );
-  }, [newIngredientType, materialOptions, semiProductOptions, ingredientSearch]);
+  // ★ Phase 6: 슬롯 라벨 조회 함수
+  const getSlotLabel = useCallback(
+    (containerGroupId: string, slotIndex: number): string | null => {
+      const slots = slotLabelCache[containerGroupId];
+      if (!slots) return null;
+      const match = slots.find((s) => s.slotIndex === slotIndex);
+      return match?.label ?? null;
+    },
+    [slotLabelCache]
+  );
+
+  // ★ Phase 6: 용기 그룹별 슬롯 라벨 일괄 조회
+  const loadSlotLabels = useCallback(
+    async (groupIds: string[]) => {
+      const uncached = groupIds.filter((id) => !slotLabelCache[id]);
+      if (uncached.length === 0) return;
+
+      const results = await Promise.allSettled(
+        uncached.map((id) => getContainerGroupByIdAction(id))
+      );
+
+      const newCache: typeof slotLabelCache = {};
+      results.forEach((result, idx) => {
+        if (result.status === "fulfilled" && result.value.success && result.value.data) {
+          newCache[uncached[idx]] = (
+            result.value.data.slots as {
+              slotIndex: number;
+              label: string;
+              volumeMl: number | null;
+            }[]
+          ).map((s) => ({
+            slotIndex: s.slotIndex,
+            label: s.label,
+            volumeMl: s.volumeMl,
+          }));
+        }
+      });
+
+      if (Object.keys(newCache).length > 0) {
+        setSlotLabelCache((prev) => ({ ...prev, ...newCache }));
+      }
+    },
+    [slotLabelCache]
+  );
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -281,7 +426,17 @@ export function RecipeDetailDialog({
         setIngredients(
           result.data.ingredients as unknown as IngredientRow[]
         );
-        setRecipeBoms(result.data.recipeBoms as unknown as RecipeBOMRow[]);
+        const boms = result.data.recipeBoms as unknown as RecipeBOMRow[];
+        setRecipeBoms(boms);
+
+        // ★ Phase 6: BOM 슬롯의 용기 그룹 라벨 일괄 로드
+        const groupIds = new Set<string>();
+        boms.forEach((bom) =>
+          bom.slots.forEach((slot) => groupIds.add(slot.containerGroup.id))
+        );
+        if (groupIds.size > 0) {
+          loadSlotLabels(Array.from(groupIds));
+        }
       } else {
         toast.error("레시피 상세 조회에 실패했습니다");
       }
@@ -291,7 +446,7 @@ export function RecipeDetailDialog({
     } finally {
       setLoading(false);
     }
-  }, [recipe.id]);
+  }, [recipe.id, loadSlotLabels]);
 
   // ★ loadOptions — limit: 100 (스키마 max 준수) + 다중 페이지 로딩 + toast 에러
   const loadOptions = useCallback(async () => {
@@ -303,7 +458,6 @@ export function RecipeDetailDialog({
         loadAllPages<Record<string, unknown>>(getContainerGroupsAction, "name"),
       ]);
 
-      // 식자재
       if (matResult.error) {
         logger.error("[loadOptions] 식자재 로딩 실패:", matResult.error);
         toast.error(`식자재 목록 로딩 실패: ${matResult.error}`);
@@ -319,7 +473,6 @@ export function RecipeDetailDialog({
         );
       }
 
-      // 반제품
       if (spResult.error) {
         logger.error("[loadOptions] 반제품 로딩 실패:", spResult.error);
         toast.error(`반제품 목록 로딩 실패: ${spResult.error}`);
@@ -335,7 +488,6 @@ export function RecipeDetailDialog({
         );
       }
 
-      // 용기 그룹
       if (cgResult.error) {
         logger.error("[loadOptions] 용기 그룹 로딩 실패:", cgResult.error);
         toast.error(`용기 그룹 로딩 실패: ${cgResult.error}`);
@@ -382,6 +534,8 @@ export function RecipeDetailDialog({
           volumeMl: s.volumeMl,
         }));
         setSelectedGroupSlots(slots);
+        // ★ Phase 6: 캐시에도 저장
+        setSlotLabelCache((prev) => ({ ...prev, [groupId]: slots }));
         logger.info(
           `[handleContainerGroupChange] ${groupId}: 슬롯 ${slots.length}개 로드`
         );
@@ -421,16 +575,17 @@ export function RecipeDetailDialog({
       loadDetail();
       loadOptions();
     } else {
-      // 다이얼로그 닫을 때 상태 초기화
       setShowIngredientForm(false);
       setAddingSlotBomId(null);
-      setIngredientSearch("");
       setNewIngredientId("");
       setOptionsLoading(false);
+      setEditingBaseWeight({});
+      setEditingSlot({});
+      setAddingItemSlotId(null);
     }
   }, [open, loadDetail, loadOptions]);
 
-  // ── 재료 추가 ──
+  // ── 재료 추가 (연속 모드 지원 — 이슈 #3) ──
   const handleAddIngredient = async () => {
     if (!newIngredientId) return;
     setIngredientSaving(true);
@@ -446,8 +601,9 @@ export function RecipeDetailDialog({
       if (result.success) {
         toast.success("재료가 추가되었습니다");
         setNewIngredientId("");
-        setIngredientSearch("");
-        setShowIngredientForm(false);
+        if (!continuousMode) {
+          setShowIngredientForm(false);
+        }
         loadDetail();
         onUpdated();
       } else {
@@ -497,6 +653,31 @@ export function RecipeDetailDialog({
     }
   };
 
+  // ★ Phase 6: RecipeBOM 복제
+  const handleDuplicateBOM = async (bomId: string) => {
+    setDuplicatingBomId(bomId);
+    try {
+      const result = await duplicateRecipeBOMAction(bomId);
+      if (result.success) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newBom = result.data as any;
+        toast.success(`BOM v${newBom?.version ?? "?"} 복제 완료 (초안)`);
+        loadDetail();
+        // 복제된 BOM으로 자동 확장
+        if (newBom?.id) {
+          setExpandedBom(newBom.id);
+        }
+      } else {
+        toast.error(result.error?.message ?? "BOM 복제에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleDuplicateBOM] 실패:", err);
+      toast.error("BOM 복제 중 오류가 발생했습니다");
+    } finally {
+      setDuplicatingBomId(null);
+    }
+  };
+
   // ── RecipeBOM 상태 변경 ──
   const handleBOMStatus = async (bomId: string, status: string) => {
     try {
@@ -527,6 +708,79 @@ export function RecipeDetailDialog({
     } catch (err) {
       logger.error("[handleDeleteBOM] 실패:", err);
       toast.error("BOM 삭제 중 오류가 발생했습니다");
+    }
+  };
+
+  // ★ Phase 6: baseWeightG 저장
+  const handleSaveBaseWeight = async (bomId: string) => {
+    const weightStr = editingBaseWeight[bomId];
+    if (weightStr === undefined) return;
+    const weight = parseFloat(weightStr);
+    if (isNaN(weight) || weight < 0) {
+      toast.error("올바른 기준 중량을 입력해 주세요");
+      return;
+    }
+    setSavingBaseWeight(bomId);
+    try {
+      const result = await updateRecipeBOMBaseWeightAction(bomId, {
+        baseWeightG: weight,
+      });
+      if (result.success) {
+        toast.success("기준 중량이 저장되었습니다");
+        setEditingBaseWeight((prev) => {
+          const next = { ...prev };
+          delete next[bomId];
+          return next;
+        });
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "기준 중량 저장에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleSaveBaseWeight] 실패:", err);
+      toast.error("기준 중량 저장 중 오류가 발생했습니다");
+    } finally {
+      setSavingBaseWeight(null);
+    }
+  };
+
+  // ★ Phase 6: 슬롯 인라인 편집 저장
+  const handleSaveSlot = async (slotId: string) => {
+    const edits = editingSlot[slotId];
+    if (!edits) return;
+    const input: Record<string, unknown> = {};
+    if (edits.totalWeightG !== undefined) {
+      const w = parseFloat(edits.totalWeightG);
+      if (isNaN(w) || w < 0) {
+        toast.error("올바른 중량 값을 입력해 주세요");
+        return;
+      }
+      input.totalWeightG = w;
+    }
+    if (edits.note !== undefined) {
+      input.note = edits.note || undefined;
+    }
+    if (Object.keys(input).length === 0) return;
+
+    setSavingSlotId(slotId);
+    try {
+      const result = await updateRecipeBOMSlotAction(slotId, input);
+      if (result.success) {
+        toast.success("슬롯 정보가 저장되었습니다");
+        setEditingSlot((prev) => {
+          const next = { ...prev };
+          delete next[slotId];
+          return next;
+        });
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "슬롯 수정에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleSaveSlot] 실패:", err);
+      toast.error("슬롯 수정 중 오류가 발생했습니다");
+    } finally {
+      setSavingSlotId(null);
     }
   };
 
@@ -611,6 +865,38 @@ export function RecipeDetailDialog({
     }
   };
 
+  // ★ Phase 6: 슬롯별 재료 추가
+  const handleAddSlotItem = async (slotId: string) => {
+    if (!newItemId) return;
+    setItemSaving(true);
+    try {
+      const input: Record<string, unknown> = {
+        ingredientType: newItemType,
+        ...(newItemType === "MATERIAL"
+          ? { materialMasterId: newItemId }
+          : { semiProductId: newItemId }),
+        weightG: parseFloat(newItemWeight) || 0,
+        unit: "g",
+        sortOrder: 999,
+      };
+      const result = await addRecipeBOMSlotItemAction(slotId, input);
+      if (result.success) {
+        toast.success("재료가 슬롯에 추가되었습니다");
+        setNewItemId("");
+        setNewItemWeight("0");
+        setAddingItemSlotId(null);
+        loadDetail();
+      } else {
+        toast.error(result.error?.message ?? "재료 추가에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[handleAddSlotItem] 실패:", err);
+      toast.error("재료 추가 중 오류가 발생했습니다");
+    } finally {
+      setItemSaving(false);
+    }
+  };
+
   // ── 슬롯 아이템 삭제 (제외) ──
   const handleDeleteSlotItem = async (itemId: string) => {
     try {
@@ -639,7 +925,13 @@ export function RecipeDetailDialog({
   };
 
   // ══════════════════════════════════════
-  // 기본정보 탭 (조회 전용)
+  // ★ Phase 6: 슬롯별 중량 합계 계산
+  // ══════════════════════════════════════
+  const calcSlotWeightSum = (items: RecipeBOMSlotItemRow[]) =>
+    items.reduce((sum, item) => sum + item.weightG, 0);
+
+  // ══════════════════════════════════════
+  // 기본정보 탭 (조회 전용) — 이슈 #7: 배식 구성 섹션 추가
   // ══════════════════════════════════════
   const renderInfoTab = () => {
     if (isEditing) {
@@ -655,6 +947,8 @@ export function RecipeDetailDialog({
         />
       );
     }
+
+    const activeBom = recipeBoms.find((b) => b.status === "ACTIVE");
 
     return (
       <div className="space-y-6">
@@ -687,11 +981,16 @@ export function RecipeDetailDialog({
             <p className="font-medium">{ingredients.length}개</p>
           </div>
           <div>
+            <p className="text-gray-500">BOM 버전 수</p>
+            <p className="font-medium">{recipeBoms.length}개</p>
+          </div>
+          <div>
             <p className="text-gray-500">등록일</p>
             <p>{new Date(recipe.createdAt).toLocaleDateString("ko-KR")}</p>
           </div>
         </div>
 
+        {/* 구성 재료 */}
         {ingredients.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-gray-700">구성 재료</h3>
@@ -743,6 +1042,84 @@ export function RecipeDetailDialog({
             </div>
           </div>
         )}
+
+        {/* ★ Phase 6 / 이슈 #7: 배식 구성 섹션 */}
+        {activeBom && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">
+              배식 구성 (사용중 BOM v{activeBom.version})
+            </h3>
+            <div className="text-xs text-gray-500 mb-2">
+              기준 중량: <span className="font-mono font-medium">{activeBom.baseWeightG}g</span>
+              {" · "}적용일: {formatDate(activeBom.activatedAt)}
+            </div>
+            {activeBom.slots.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2">슬롯이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {activeBom.slots.map((slot) => {
+                  const slotLabel = getSlotLabel(
+                    slot.containerGroup.id,
+                    slot.slotIndex
+                  );
+                  const weightSum = calcSlotWeightSum(slot.items);
+                  return (
+                    <div
+                      key={slot.id}
+                      className="rounded border p-3 bg-gray-50/50"
+                    >
+                      <div className="flex items-center gap-2 text-sm mb-1">
+                        <span className="font-medium">
+                          {slot.containerGroup.name}
+                        </span>
+                        <span className="text-gray-400">
+                          {slotLabel
+                            ? `${slotLabel} (#${slot.slotIndex})`
+                            : `Slot ${slot.slotIndex}`}
+                        </span>
+                        <span className="ml-auto font-mono text-blue-700 text-xs">
+                          {weightSum}g / {slot.totalWeightG}g
+                        </span>
+                      </div>
+                      {slot.items.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {slot.items.map((item) => (
+                            <span
+                              key={item.id}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+                                item.ingredientType === "MATERIAL"
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-purple-50 text-purple-700"
+                              }`}
+                            >
+                              {item.materialMaster?.name ??
+                                item.semiProduct?.name ??
+                                "-"}
+                              <span className="font-mono">{item.weightG}g</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {slot.note && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {slot.note}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!activeBom && recipeBoms.length > 0 && (
+          <div className="rounded border border-orange-200 bg-orange-50/50 p-3">
+            <p className="text-sm text-orange-700">
+              사용중인 BOM이 없습니다. &quot;재료 / BOM 편집&quot; 탭에서 BOM을 확정해 주세요.
+            </p>
+          </div>
+        )}
       </div>
     );
   };
@@ -771,7 +1148,6 @@ export function RecipeDetailDialog({
                 variant="outline"
                 onClick={() => {
                   setShowIngredientForm(true);
-                  setIngredientSearch("");
                   setNewIngredientId("");
                 }}
               >
@@ -798,7 +1174,6 @@ export function RecipeDetailDialog({
                     onValueChange={(v) => {
                       setNewIngredientType(v as "MATERIAL" | "SEMI_PRODUCT");
                       setNewIngredientId("");
-                      setIngredientSearch("");
                     }}
                   >
                     <SelectTrigger className="h-8 text-xs">
@@ -811,7 +1186,7 @@ export function RecipeDetailDialog({
                   </Select>
                 </div>
 
-                {/* 검색 + 옵션 목록 */}
+                {/* ★ Phase 6 / 이슈 #4: Combobox 전환 */}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {newIngredientType === "MATERIAL" ? "식자재" : "반제품"} 선택
@@ -821,81 +1196,61 @@ export function RecipeDetailDialog({
                         : semiProductOptions.length}건)
                     </span>
                   </Label>
-                  <div className="space-y-1.5">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
-                      <Input
-                        placeholder="이름 또는 코드로 검색..."
-                        className="h-7 pl-7 text-xs"
-                        value={ingredientSearch}
-                        onChange={(e) => setIngredientSearch(e.target.value)}
-                      />
-                    </div>
-                    <Select
-                      value={newIngredientId}
-                      onValueChange={setNewIngredientId}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue
-                          placeholder={
-                            optionsLoading
-                              ? "로딩 중..."
-                              : currentIngredientOptions.length === 0
-                                ? newIngredientType === "MATERIAL"
-                                  ? "등록된 식자재가 없습니다"
-                                  : "등록된 반제품이 없습니다"
-                                : "선택하세요"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {currentIngredientOptions.length === 0 ? (
-                          <div className="px-2 py-3 text-center text-xs text-gray-400">
-                            {ingredientSearch.trim()
-                              ? `"${ingredientSearch}" 검색 결과가 없습니다`
-                              : newIngredientType === "MATERIAL"
-                                ? "자재 관리에서 식자재를 먼저 등록해 주세요"
-                                : "반제품을 먼저 등록해 주세요"}
-                          </div>
-                        ) : (
-                          currentIngredientOptions.map((opt) => (
-                            <SelectItem key={opt.id} value={opt.id}>
-                              {opt.name} ({opt.code}) — {opt.unit}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {ingredientSearch.trim() && (
-                      <p className="text-xs text-gray-400">
-                        {currentIngredientOptions.length}건 검색됨
-                      </p>
-                    )}
-                  </div>
+                  <IngredientCombobox
+                    options={
+                      newIngredientType === "MATERIAL"
+                        ? materialOptions
+                        : semiProductOptions
+                    }
+                    value={newIngredientId}
+                    onChange={setNewIngredientId}
+                    placeholder={
+                      optionsLoading
+                        ? "로딩 중..."
+                        : "검색하여 선택..."
+                    }
+                    emptyText={
+                      newIngredientType === "MATERIAL"
+                        ? "자재 관리에서 식자재를 먼저 등록해 주세요"
+                        : "반제품을 먼저 등록해 주세요"
+                    }
+                    disabled={optionsLoading}
+                  />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleAddIngredient}
-                  disabled={ingredientSaving || !newIngredientId}
-                >
-                  {ingredientSaving && (
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                  )}
-                  추가
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowIngredientForm(false);
-                    setIngredientSearch("");
-                    setNewIngredientId("");
-                  }}
-                >
-                  취소
-                </Button>
+              {/* ★ Phase 6 / 이슈 #3: 연속 추가 모드 */}
+              <div className="flex items-center gap-4">
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleAddIngredient}
+                    disabled={ingredientSaving || !newIngredientId}
+                  >
+                    {ingredientSaving && (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    )}
+                    추가
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowIngredientForm(false);
+                      setNewIngredientId("");
+                    }}
+                  >
+                    완료
+                  </Button>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={continuousMode}
+                    onChange={(e) => setContinuousMode(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300"
+                  />
+                  연속 추가 모드
+                </label>
               </div>
             </div>
           )}
@@ -987,6 +1342,7 @@ export function RecipeDetailDialog({
           ) : (
             recipeBoms.map((bom) => {
               const isExpanded = expandedBom === bom.id;
+              const isEditingBW = editingBaseWeight[bom.id] !== undefined;
               return (
                 <div key={bom.id} className="rounded-md border">
                   <div
@@ -1011,6 +1367,10 @@ export function RecipeDetailDialog({
                           >
                             {BOM_STATUS_LABELS[bom.status] ?? bom.status}
                           </span>
+                          {/* ★ Phase 6: baseWeightG 표시 */}
+                          <span className="text-xs text-gray-400 font-mono">
+                            기준: {bom.baseWeightG}g
+                          </span>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
                           <span>생성: {formatDate(bom.createdAt)}</span>
@@ -1024,6 +1384,22 @@ export function RecipeDetailDialog({
                       className="flex items-center gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {/* ★ Phase 6: 복제 버튼 — 모든 상태에서 표시 */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-blue-600"
+                        onClick={() => handleDuplicateBOM(bom.id)}
+                        disabled={duplicatingBomId === bom.id}
+                      >
+                        {duplicatingBomId === bom.id ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Copy className="mr-1 h-3 w-3" />
+                        )}
+                        복제
+                      </Button>
+
                       {bom.status === "DRAFT" && (
                         <Button
                           variant="ghost"
@@ -1035,6 +1411,20 @@ export function RecipeDetailDialog({
                           확정
                         </Button>
                       )}
+
+                      {/* ★ Phase 6: ACTIVE BOM에 보관 버튼 추가 */}
+                      {bom.status === "ACTIVE" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-orange-600"
+                          onClick={() => handleBOMStatus(bom.id, "ARCHIVED")}
+                        >
+                          <Archive className="mr-1 h-3 w-3" />
+                          보관
+                        </Button>
+                      )}
+
                       {bom.status === "ARCHIVED" && (
                         <Button
                           variant="ghost"
@@ -1046,6 +1436,7 @@ export function RecipeDetailDialog({
                           복원
                         </Button>
                       )}
+
                       {bom.status !== "ACTIVE" && (
                         <Button
                           variant="ghost"
@@ -1067,199 +1458,427 @@ export function RecipeDetailDialog({
 
                   {isExpanded && (
                     <div className="border-t px-4 py-4 space-y-4">
+                      {/* ★ Phase 6: DRAFT일 때 baseWeightG 인라인 편집 */}
+                      {bom.status === "DRAFT" && (
+                        <div className="flex items-center gap-3 pb-2 border-b">
+                          <Label className="text-xs whitespace-nowrap">기준 중량(g):</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="h-7 w-28 text-xs"
+                            value={
+                              isEditingBW
+                                ? editingBaseWeight[bom.id]
+                                : String(bom.baseWeightG)
+                            }
+                            onChange={(e) =>
+                              setEditingBaseWeight((prev) => ({
+                                ...prev,
+                                [bom.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveBaseWeight(bom.id);
+                            }}
+                          />
+                          {isEditingBW && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleSaveBaseWeight(bom.id)}
+                              disabled={savingBaseWeight === bom.id}
+                            >
+                              {savingBaseWeight === bom.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Save className="h-3 w-3 text-green-600" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
                       {bom.slots.length === 0 ? (
                         <p className="text-center text-sm text-gray-400 py-2">
                           슬롯이 없습니다. 슬롯을 추가하면 구성재료가 자동으로
                           할당됩니다.
                         </p>
                       ) : (
-                        bom.slots.map((slot) => (
-                          <div
-                            key={slot.id}
-                            className="rounded border bg-gray-50/50 p-3 space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="font-medium">
-                                  {slot.containerGroup.name}
-                                </span>
-                                <span className="text-gray-400">
-                                  Slot {slot.slotIndex}
-                                </span>
-                                {slot.totalWeightG > 0 && (
-                                  <span className="font-mono text-blue-700">
-                                    {slot.totalWeightG}g
-                                  </span>
-                                )}
-                                {slot.note && (
-                                  <span className="text-xs text-gray-400">
-                                    ({slot.note})
-                                  </span>
-                                )}
-                              </div>
-                              {bom.status === "DRAFT" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() =>
-                                    setDeleteConfirm({
-                                      type: "slot",
-                                      id: slot.id,
-                                      name: slot.containerGroup.name,
-                                    })
-                                  }
-                                >
-                                  <Trash2 className="h-3 w-3 text-red-400" />
-                                </Button>
-                              )}
-                            </div>
+                        bom.slots.map((slot) => {
+                          const slotLabel = getSlotLabel(
+                            slot.containerGroup.id,
+                            slot.slotIndex
+                          );
+                          const weightSum = calcSlotWeightSum(slot.items);
+                          const slotEdits = editingSlot[slot.id];
+                          const isEditingSlotFields = !!slotEdits;
 
-                            {slot.items.length > 0 && (
-                              <div className="rounded border bg-white">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead className="text-xs">
-                                        구분
-                                      </TableHead>
-                                      <TableHead className="text-xs">
-                                        재료명
-                                      </TableHead>
-                                      <TableHead className="text-xs text-right">
-                                        중량(g)
-                                      </TableHead>
-                                      {bom.status === "DRAFT" && (
-                                        <TableHead className="w-[80px] text-xs">
-                                          작업
-                                        </TableHead>
+                          return (
+                            <div
+                              key={slot.id}
+                              className="rounded border bg-gray-50/50 p-3 space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="font-medium">
+                                    {slot.containerGroup.name}
+                                  </span>
+                                  {/* ★ Phase 6 / 이슈 #6: 실제 슬롯 라벨 표시 */}
+                                  <span className="text-gray-400">
+                                    {slotLabel
+                                      ? `${slotLabel} (#${slot.slotIndex})`
+                                      : `Slot ${slot.slotIndex}`}
+                                  </span>
+                                  {/* ★ Phase 6: 중량 합계 / 총 중량 표시 */}
+                                  <span
+                                    className={cn(
+                                      "font-mono text-xs",
+                                      weightSum > slot.totalWeightG && slot.totalWeightG > 0
+                                        ? "text-red-600"
+                                        : "text-blue-700"
+                                    )}
+                                  >
+                                    {weightSum}g / {slot.totalWeightG}g
+                                  </span>
+                                  {slot.note && bom.status !== "DRAFT" && (
+                                    <span className="text-xs text-gray-400">
+                                      ({slot.note})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {/* ★ Phase 6: 슬롯 인라인 편집 저장 버튼 */}
+                                  {isEditingSlotFields && bom.status === "DRAFT" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={() => handleSaveSlot(slot.id)}
+                                      disabled={savingSlotId === slot.id}
+                                    >
+                                      {savingSlotId === slot.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Save className="h-3 w-3 text-green-600" />
                                       )}
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {slot.items.map((item) => {
-                                      const isEditingWeight =
-                                        editingWeights[item.id] !== undefined;
-                                      return (
-                                        <TableRow key={item.id}>
-                                          <TableCell className="text-xs">
-                                            <span
-                                              className={`inline-flex rounded px-1 py-0.5 ${
-                                                item.ingredientType ===
+                                    </Button>
+                                  )}
+                                  {bom.status === "DRAFT" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={() =>
+                                        setDeleteConfirm({
+                                          type: "slot",
+                                          id: slot.id,
+                                          name: slot.containerGroup.name,
+                                        })
+                                      }
+                                    >
+                                      <Trash2 className="h-3 w-3 text-red-400" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* ★ Phase 6: DRAFT 슬롯 인라인 편집 (totalWeightG, note) */}
+                              {bom.status === "DRAFT" && (
+                                <div className="flex items-center gap-3 text-xs">
+                                  <Label className="whitespace-nowrap text-gray-500">총 중량(g):</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step="any"
+                                    className="h-6 w-20 text-xs"
+                                    value={
+                                      slotEdits?.totalWeightG !== undefined
+                                        ? slotEdits.totalWeightG
+                                        : String(slot.totalWeightG)
+                                    }
+                                    onChange={(e) =>
+                                      setEditingSlot((prev) => ({
+                                        ...prev,
+                                        [slot.id]: {
+                                          ...prev[slot.id],
+                                          totalWeightG: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleSaveSlot(slot.id);
+                                    }}
+                                  />
+                                  <Label className="whitespace-nowrap text-gray-500">메모:</Label>
+                                  <Input
+                                    className="h-6 flex-1 text-xs"
+                                    placeholder="메모"
+                                    value={
+                                      slotEdits?.note !== undefined
+                                        ? slotEdits.note
+                                        : slot.note ?? ""
+                                    }
+                                    onChange={(e) =>
+                                      setEditingSlot((prev) => ({
+                                        ...prev,
+                                        [slot.id]: {
+                                          ...prev[slot.id],
+                                          note: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleSaveSlot(slot.id);
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {slot.items.length > 0 && (
+                                <div className="rounded border bg-white">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="text-xs">
+                                          구분
+                                        </TableHead>
+                                        <TableHead className="text-xs">
+                                          재료명
+                                        </TableHead>
+                                        <TableHead className="text-xs text-right">
+                                          중량(g)
+                                        </TableHead>
+                                        {bom.status === "DRAFT" && (
+                                          <TableHead className="w-[80px] text-xs">
+                                            작업
+                                          </TableHead>
+                                        )}
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {slot.items.map((item) => {
+                                        const isEditingWeight =
+                                          editingWeights[item.id] !== undefined;
+                                        return (
+                                          <TableRow key={item.id}>
+                                            <TableCell className="text-xs">
+                                              <span
+                                                className={`inline-flex rounded px-1 py-0.5 ${
+                                                  item.ingredientType ===
+                                                  "MATERIAL"
+                                                    ? "bg-blue-50 text-blue-600"
+                                                    : "bg-purple-50 text-purple-600"
+                                                }`}
+                                              >
+                                                {item.ingredientType ===
                                                 "MATERIAL"
-                                                  ? "bg-blue-50 text-blue-600"
-                                                  : "bg-purple-50 text-purple-600"
-                                              }`}
-                                            >
-                                              {item.ingredientType ===
-                                              "MATERIAL"
-                                                ? "자재"
-                                                : "반제품"}
-                                            </span>
-                                          </TableCell>
-                                          <TableCell className="text-xs font-medium">
-                                            {item.materialMaster?.name ??
-                                              item.semiProduct?.name ??
-                                              "-"}
-                                          </TableCell>
-                                          <TableCell className="text-right">
-                                            {bom.status === "DRAFT" ? (
-                                              <Input
-                                                type="number"
-                                                min={0}
-                                                step="any"
-                                                className="h-7 w-20 text-xs text-right ml-auto"
-                                                value={
-                                                  isEditingWeight
-                                                    ? editingWeights[item.id]
-                                                    : String(item.weightG)
-                                                }
-                                                onChange={(e) =>
-                                                  setEditingWeights((prev) => ({
-                                                    ...prev,
-                                                    [item.id]: e.target.value,
-                                                  }))
-                                                }
-                                                onBlur={() => {
-                                                  if (
-                                                    isEditingWeight &&
-                                                    editingWeights[item.id] !==
-                                                      String(item.weightG)
-                                                  ) {
-                                                    handleSaveItemWeight(
-                                                      item.id
-                                                    );
-                                                  }
-                                                }}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter")
-                                                    handleSaveItemWeight(
-                                                      item.id
-                                                    );
-                                                }}
-                                              />
-                                            ) : (
-                                              <span className="text-xs font-mono">
-                                                {item.weightG}g
+                                                  ? "자재"
+                                                  : "반제품"}
                                               </span>
-                                            )}
-                                          </TableCell>
-                                          {bom.status === "DRAFT" && (
-                                            <TableCell>
-                                              <div className="flex items-center gap-1">
-                                                {isEditingWeight && (
+                                            </TableCell>
+                                            <TableCell className="text-xs font-medium">
+                                              {item.materialMaster?.name ??
+                                                item.semiProduct?.name ??
+                                                "-"}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              {bom.status === "DRAFT" ? (
+                                                <Input
+                                                  type="number"
+                                                  min={0}
+                                                  step="any"
+                                                  className="h-7 w-20 text-xs text-right ml-auto"
+                                                  value={
+                                                    isEditingWeight
+                                                      ? editingWeights[item.id]
+                                                      : String(item.weightG)
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditingWeights((prev) => ({
+                                                      ...prev,
+                                                      [item.id]: e.target.value,
+                                                    }))
+                                                  }
+                                                  onBlur={() => {
+                                                    if (
+                                                      isEditingWeight &&
+                                                      editingWeights[item.id] !==
+                                                        String(item.weightG)
+                                                    ) {
+                                                      handleSaveItemWeight(
+                                                        item.id
+                                                      );
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === "Enter")
+                                                      handleSaveItemWeight(
+                                                        item.id
+                                                      );
+                                                  }}
+                                                />
+                                              ) : (
+                                                <span className="text-xs font-mono">
+                                                  {item.weightG}g
+                                                </span>
+                                              )}
+                                            </TableCell>
+                                            {bom.status === "DRAFT" && (
+                                              <TableCell>
+                                                <div className="flex items-center gap-1">
+                                                  {isEditingWeight && (
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-6 w-6"
+                                                      onClick={() =>
+                                                        handleSaveItemWeight(
+                                                          item.id
+                                                        )
+                                                      }
+                                                      disabled={
+                                                        savingItemId === item.id
+                                                      }
+                                                    >
+                                                      {savingItemId ===
+                                                      item.id ? (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                      ) : (
+                                                        <Save className="h-3 w-3 text-green-600" />
+                                                      )}
+                                                    </Button>
+                                                  )}
                                                   <Button
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-6 w-6"
                                                     onClick={() =>
-                                                      handleSaveItemWeight(
-                                                        item.id
-                                                      )
-                                                    }
-                                                    disabled={
-                                                      savingItemId === item.id
+                                                      setDeleteConfirm({
+                                                        type: "slotItem",
+                                                        id: item.id,
+                                                        name:
+                                                          item.materialMaster
+                                                            ?.name ??
+                                                          item.semiProduct
+                                                            ?.name ??
+                                                          "",
+                                                      })
                                                     }
                                                   >
-                                                    {savingItemId ===
-                                                    item.id ? (
-                                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                                    ) : (
-                                                      <Save className="h-3 w-3 text-green-600" />
-                                                    )}
+                                                    <Trash2 className="h-3 w-3 text-red-400" />
                                                   </Button>
-                                                )}
-                                                <Button
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className="h-6 w-6"
-                                                  onClick={() =>
-                                                    setDeleteConfirm({
-                                                      type: "slotItem",
-                                                      id: item.id,
-                                                      name:
-                                                        item.materialMaster
-                                                          ?.name ??
-                                                        item.semiProduct
-                                                          ?.name ??
-                                                        "",
-                                                    })
-                                                  }
-                                                >
-                                                  <Trash2 className="h-3 w-3 text-red-400" />
-                                                </Button>
-                                              </div>
-                                            </TableCell>
+                                                </div>
+                                              </TableCell>
+                                            )}
+                                          </TableRow>
+                                        );
+                                      })}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+
+                              {/* ★ Phase 6: 슬롯별 재료 추가 버튼 */}
+                              {bom.status === "DRAFT" && (
+                                <>
+                                  {addingItemSlotId === slot.id ? (
+                                    <div className="rounded border border-dashed border-blue-300 bg-blue-50/30 p-2 space-y-2">
+                                      <div className="grid grid-cols-3 gap-2">
+                                        <div className="space-y-1">
+                                          <Label className="text-xs">타입</Label>
+                                          <Select
+                                            value={newItemType}
+                                            onValueChange={(v) => {
+                                              setNewItemType(v as "MATERIAL" | "SEMI_PRODUCT");
+                                              setNewItemId("");
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-7 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="MATERIAL">식자재</SelectItem>
+                                              <SelectItem value="SEMI_PRODUCT">반제품</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-xs">재료</Label>
+                                          <IngredientCombobox
+                                            options={
+                                              newItemType === "MATERIAL"
+                                                ? materialOptions
+                                                : semiProductOptions
+                                            }
+                                            value={newItemId}
+                                            onChange={setNewItemId}
+                                            placeholder="선택..."
+                                            emptyText="등록된 항목이 없습니다"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-xs">중량(g)</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            step="any"
+                                            className="h-8 text-xs"
+                                            value={newItemWeight}
+                                            onChange={(e) =>
+                                              setNewItemWeight(e.target.value)
+                                            }
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          className="h-6 text-xs"
+                                          onClick={() => handleAddSlotItem(slot.id)}
+                                          disabled={itemSaving || !newItemId}
+                                        >
+                                          {itemSaving ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            "추가"
                                           )}
-                                        </TableRow>
-                                      );
-                                    })}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            )}
-                          </div>
-                        ))
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 text-xs"
+                                          onClick={() => {
+                                            setAddingItemSlotId(null);
+                                            setNewItemId("");
+                                            setNewItemWeight("0");
+                                          }}
+                                        >
+                                          취소
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-xs text-blue-600"
+                                      onClick={() => {
+                                        setAddingItemSlotId(slot.id);
+                                        setNewItemId("");
+                                        setNewItemWeight("0");
+                                      }}
+                                    >
+                                      <Plus className="mr-1 h-3 w-3" />
+                                      재료 추가
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
 
                       {bom.status === "DRAFT" && (
@@ -1367,7 +1986,7 @@ export function RecipeDetailDialog({
                                   )}
                                 </div>
 
-                                {/* 총 중량 (선택) */}
+                                {/* 총 중량 */}
                                 <div className="space-y-1">
                                   <Label className="text-xs">
                                     총 중량(g) — 선택
