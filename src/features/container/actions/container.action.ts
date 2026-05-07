@@ -132,8 +132,31 @@ export async function deleteContainerGroupAction(
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
       if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "용기 그룹을 찾을 수 없습니다");
+      // ★ 의존성 에러 처리
+      if (error.message.startsWith("DEPENDENCY:")) {
+        const reason = error.message.replace("DEPENDENCY:", "");
+        return actionFail("DEPENDENCY", `삭제할 수 없습니다: ${reason}`);
+      }
     }
     return actionFail("INTERNAL_ERROR", "용기 그룹 삭제에 실패했습니다");
+  }
+}
+
+// ★ 신규: 의존성 사전 확인 액션 (UI에서 삭제 전 호출)
+export async function checkContainerGroupDependencyAction(
+  id: string
+): Promise<ActionResult<{ hasDependency: boolean; details: string[] }>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "READ");
+    const result = await containerService.checkContainerGroupDependency(id);
+    return actionOk(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "의존성 확인에 실패했습니다");
   }
 }
 
@@ -198,6 +221,11 @@ export async function deleteContainerSlotAction(
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
       if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+      // ★ 의존성 에러 처리
+      if (error.message.startsWith("DEPENDENCY:")) {
+        const reason = error.message.replace("DEPENDENCY:", "");
+        return actionFail("DEPENDENCY", `삭제할 수 없습니다: ${reason}`);
+      }
     }
     return actionFail("INTERNAL_ERROR", "슬롯 삭제에 실패했습니다");
   }

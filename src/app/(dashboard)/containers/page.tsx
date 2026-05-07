@@ -24,6 +24,7 @@ import {
   addContainerSlotAction,
   updateContainerSlotAction,
   deleteContainerSlotAction,
+  checkContainerGroupDependencyAction,
 } from "@/features/container/actions/container.action";
 import {
   Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight,
@@ -68,8 +69,16 @@ export default function ContainersPage() {
   const [editingSlotVolume, setEditingSlotVolume] = useState("");
   const [slotUpdating, setSlotUpdating] = useState(false);
 
-  // 삭제 확인
-  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string; groupId?: string } | null>(null);
+  // 삭제 확인 
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: string;
+    id: string;
+    name: string;
+    groupId?: string;
+    dependencyMessage?: string;
+  } | null>(null);
+  const [checkingDependency, setCheckingDependency] = useState(false);
+  
 
   // ── 목록 조회 ──
   const fetchData = useCallback(async (page = 1) => {
@@ -212,6 +221,30 @@ export default function ContainersPage() {
     }
   };
 
+
+  // ★ 신규: 그룹 삭제 전 의존성 확인
+  const handleRequestDeleteGroup = async (item: GroupRow) => {
+    setCheckingDependency(true);
+    try {
+      const result = await checkContainerGroupDependencyAction(item.id);
+      if (result.success && result.data.hasDependency) {
+        setDeleteTarget({
+          type: "group",
+          id: item.id,
+          name: item.name,
+          dependencyMessage: result.data.details.join(", "),
+        });
+      } else {
+        setDeleteTarget({ type: "group", id: item.id, name: item.name });
+      }
+    } catch {
+      setDeleteTarget({ type: "group", id: item.id, name: item.name });
+    } finally {
+      setCheckingDependency(false);
+    }
+  };
+  
+
   // ── 삭제 확인 ──
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -224,7 +257,12 @@ export default function ContainersPage() {
           if (expandedGroupId === id) setExpandedGroupId(null);
           fetchData(pagination.page);
         } else {
-          toast.error(result.error?.message ?? "용기 그룹 삭제에 실패했습니다");
+          // ★ 의존성 에러 시 구체적 메시지 표시
+          if (result.error?.code === "DEPENDENCY") {
+            toast.error(result.error.message);
+          } else {
+            toast.error(result.error?.message ?? "용기 그룹 삭제에 실패했습니다");
+          }
         }
       } else if (type === "slot") {
         const result = await deleteContainerSlotAction(id);
@@ -232,7 +270,11 @@ export default function ContainersPage() {
           toast.success("슬롯이 삭제되었습니다");
           if (groupId) await refreshGroup(groupId);
         } else {
-          toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+          if (result.error?.code === "DEPENDENCY") {
+            toast.error(result.error.message);
+          } else {
+            toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+          }
         }
       }
     } catch (err) {
@@ -411,7 +453,7 @@ export default function ContainersPage() {
                           <Button
                             variant="ghost" size="icon" className="h-7 w-7"
                             title="그룹 삭제"
-                            onClick={() => setDeleteTarget({ type: "group", id: item.id, name: item.name })}
+                            onClick={() => handleRequestDeleteGroup(item)}
                           >
                             <Trash2 className="h-3.5 w-3.5 text-red-500" />
                           </Button>
@@ -603,17 +645,38 @@ export default function ContainersPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>삭제 확인</AlertDialogTitle>
+            <AlertDialogTitle>
+              {deleteTarget?.dependencyMessage ? "삭제 불가" : "삭제 확인"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              &apos;{deleteTarget?.name}&apos;을(를) 삭제하시겠습니까?
-              {deleteTarget?.type === "group" && " 하위 슬롯도 함께 삭제됩니다."}
+              {deleteTarget?.dependencyMessage ? (
+                <>
+                  <span className="font-semibold">&apos;{deleteTarget.name}&apos;</span>은(는) 다른 데이터에서 사용 중이므로 삭제할 수 없습니다.
+                  <br />
+                  <span className="mt-2 block text-sm text-red-600">
+                    사용처: {deleteTarget.dependencyMessage}
+                  </span>
+                  <span className="mt-1 block text-xs text-gray-500">
+                    해당 데이터를 먼저 제거한 후 다시 시도해 주세요.
+                  </span>
+                </>
+              ) : (
+                <>
+                  &apos;{deleteTarget?.name}&apos;을(를) 삭제하시겠습니까?
+                  {deleteTarget?.type === "group" && " 하위 슬롯도 함께 삭제됩니다."}
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
-              삭제
-            </AlertDialogAction>
+            <AlertDialogCancel>
+              {deleteTarget?.dependencyMessage ? "확인" : "취소"}
+            </AlertDialogCancel>
+            {!deleteTarget?.dependencyMessage && (
+              <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+                삭제
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

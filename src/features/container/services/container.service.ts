@@ -35,6 +35,83 @@ async function getNextSlotIndex(containerGroupId: string): Promise<number> {
 }
 
 // ════════════════════════════════════════
+// 의존성 체크 (신규)
+// ════════════════════════════════════════
+
+export type DependencyInfo = {
+  hasDependency: boolean;
+  details: string[];
+};
+
+/**
+ * ContainerGroup 삭제 전 의존성 확인
+ * - MealTemplate에서 참조 중인지
+ * - RecipeBOMSlot에서 참조 중인지
+ */
+export async function checkContainerGroupDependency(
+  containerGroupId: string
+): Promise<DependencyInfo> {
+  const details: string[] = [];
+
+  // 1. MealTemplate 참조 확인
+  const mealTemplateCount = await prisma.mealTemplate.count({
+    where: { containerGroupId },
+  });
+  if (mealTemplateCount > 0) {
+    details.push(`식단 템플릿 ${mealTemplateCount}건에서 사용 중`);
+  }
+
+  // 2. RecipeBOMSlot 참조 확인
+  const recipeBomSlotCount = await prisma.recipeBOMSlot.count({
+    where: { containerGroupId },
+  });
+  if (recipeBomSlotCount > 0) {
+    details.push(`레시피 BOM 슬롯 ${recipeBomSlotCount}건에서 사용 중`);
+  }
+
+  return {
+    hasDependency: details.length > 0,
+    details,
+  };
+}
+
+/**
+ * ContainerSlot 삭제 전 의존성 확인
+ * - RecipeBOMSlot에서 동일 containerGroupId + slotIndex 참조 중인지
+ */
+export async function checkContainerSlotDependency(
+  slotId: string
+): Promise<DependencyInfo> {
+  const details: string[] = [];
+
+  // 슬롯 정보 조회
+  const slot = await prisma.containerSlot.findUnique({
+    where: { id: slotId },
+    select: { containerGroupId: true, slotIndex: true },
+  });
+
+  if (!slot) {
+    return { hasDependency: false, details: [] };
+  }
+
+  // RecipeBOMSlot에서 동일 containerGroupId + slotIndex 참조 확인
+  const recipeBomSlotCount = await prisma.recipeBOMSlot.count({
+    where: {
+      containerGroupId: slot.containerGroupId,
+      slotIndex: slot.slotIndex,
+    },
+  });
+  if (recipeBomSlotCount > 0) {
+    details.push(`레시피 BOM 슬롯 ${recipeBomSlotCount}건에서 사용 중`);
+  }
+
+  return {
+    hasDependency: details.length > 0,
+    details,
+  };
+}
+
+// ════════════════════════════════════════
 // ContainerGroup
 // ════════════════════════════════════════
 
@@ -127,6 +204,13 @@ export async function deleteContainerGroup(companyId: string, id: string) {
     where: { id, companyId, deletedAt: null },
   });
   if (!group) throw new Error("NOT_FOUND");
+
+  // ★ 의존성 체크 추가
+  const dependency = await checkContainerGroupDependency(id);
+  if (dependency.hasDependency) {
+    throw new Error(`DEPENDENCY:${dependency.details.join(", ")}`);
+  }
+
   return prisma.containerGroup.update({
     where: { id },
     data: { deletedAt: new Date() },
@@ -137,7 +221,6 @@ export async function deleteContainerGroup(companyId: string, id: string) {
 // ContainerSlot
 // ════════════════════════════════════════
 
-// ★ 변경: slotIndex 자동 채번 (입력값 무시, 서버에서 결정)
 export async function addContainerSlot(
   containerGroupId: string,
   input: CreateContainerSlotInput
@@ -164,6 +247,12 @@ export async function updateContainerSlot(
 }
 
 export async function deleteContainerSlot(id: string) {
+  // ★ 의존성 체크 추가
+  const dependency = await checkContainerSlotDependency(id);
+  if (dependency.hasDependency) {
+    throw new Error(`DEPENDENCY:${dependency.details.join(", ")}`);
+  }
+
   return prisma.containerSlot.delete({ where: { id } });
 }
 
