@@ -59,6 +59,39 @@ export async function getUnitOptionsAction(
   }
 }
 
+// ── 특정 자재/부자재에 등록된 단위 목록 조회 (단위환산 Select용) ──
+export async function getUnitOptionsForConversionAction(
+  itemType: string,
+  unitCategory?: string
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "material", "READ");
+
+    const result = await unitMasterService.getUnitOptionsByItemType(
+      session.companyId,
+      itemType as ItemType
+    );
+
+    // unitCategory가 지정된 경우 해당 분류만 필터링
+    if (unitCategory) {
+      const filtered = (result as Array<{ unitCategory: string }>).filter(
+        (u) => u.unitCategory === unitCategory
+      );
+      return actionOk(filtered);
+    }
+
+    return actionOk(result);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED") return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "단위 옵션 조회에 실패했습니다");
+  }
+}
+
 // ── 생성 ──
 export async function createUnitMasterAction(
   rawInput: Record<string, unknown>

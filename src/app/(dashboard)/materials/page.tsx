@@ -10,7 +10,6 @@ import { MaterialForm } from "@/features/material/components/material-form";
 import { MaterialDetailDialog } from "@/features/material/components/material-detail-panel";
 import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
 import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
-import { UnitMasterList } from "@/features/unit-master/components/unit-master-list";
 import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
 import type { MaterialRow } from "@/features/material/components/material-list";
 
@@ -61,13 +60,15 @@ export default function MaterialsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">자재 관리</h1>
-        <p className="text-sm text-gray-500">식자재 마스터, 단위 관리, 단위 환산 규칙을 관리합니다</p>
+        <p className="text-sm text-gray-500">
+          식자재 마스터 및 단위 환산 규칙을 관리합니다.
+          단위는 <a href="/units" className="text-blue-600 underline hover:text-blue-800">단위 관리</a>에서 등록합니다.
+        </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="materials">자재 목록</TabsTrigger>
-          <TabsTrigger value="units">단위 관리</TabsTrigger>
           <TabsTrigger value="conversions">단위 환산</TabsTrigger>
         </TabsList>
         <TabsContent value="materials" className="mt-4">
@@ -77,15 +78,11 @@ export default function MaterialsPage() {
             onSelect={(material) => setSelectedMaterial(material)}
           />
         </TabsContent>
-        <TabsContent value="units" className="mt-4">
-          <UnitMasterList itemType="MATERIAL" />
-        </TabsContent>
         <TabsContent value="conversions" className="mt-4">
           {renderConversionTab()}
         </TabsContent>
       </Tabs>
 
-      {/* 자재 등록 Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -99,7 +96,6 @@ export default function MaterialsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 자재 상세 Dialog */}
       {selectedMaterial && (
         <MaterialDetailDialog
           material={selectedMaterial}

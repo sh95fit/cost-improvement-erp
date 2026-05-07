@@ -3,16 +3,11 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { SubsidiaryList } from "@/features/material/components/subsidiary-list";
 import { SubsidiaryForm } from "@/features/material/components/subsidiary-form";
 import { SubsidiaryDetailDialog } from "@/features/material/components/subsidiary-detail-panel";
-import { UnitMasterList } from "@/features/unit-master/components/unit-master-list";
 import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
 import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
 import type { SubsidiaryRow } from "@/features/material/components/subsidiary-list";
@@ -26,7 +21,6 @@ export default function SubsidiariesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState("list");
 
-  // 단위 환산 뷰 상태
   const [conversionView, setConversionView] = useState<ConversionView>("list");
   const [editingConversion, setEditingConversion] = useState<UnitConversionRow | null>(null);
   const [conversionRefreshKey, setConversionRefreshKey] = useState(0);
@@ -85,18 +79,17 @@ export default function SubsidiariesPage() {
       <div>
         <h1 className="text-2xl font-bold">부자재 관리</h1>
         <p className="text-sm text-gray-500">
-          부자재 마스터 데이터를 관리합니다
+          부자재 마스터 및 단위 환산 규칙을 관리합니다.
+          단위는 <a href="/units" className="text-blue-600 underline hover:text-blue-800">단위 관리</a>에서 등록합니다.
         </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="list">부자재 목록</TabsTrigger>
-          <TabsTrigger value="units">단위 관리</TabsTrigger>
           <TabsTrigger value="conversion">단위 환산</TabsTrigger>
         </TabsList>
 
-        {/* 부자재 목록 탭 */}
         <TabsContent value="list" className="mt-4">
           <SubsidiaryList
             key={refreshKey}
@@ -106,25 +99,16 @@ export default function SubsidiariesPage() {
           />
         </TabsContent>
 
-        {/* 단위 관리 탭 */}
-        <TabsContent value="units" className="mt-4">
-          <UnitMasterList itemType="SUBSIDIARY" />
-        </TabsContent>
-
-        {/* 단위 환산 탭 */}
         <TabsContent value="conversion" className="mt-4">
           {renderConversionView()}
         </TabsContent>
       </Tabs>
 
-      {/* 부자재 등록 Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>부자재 등록</DialogTitle>
-            <DialogDescription>
-              새 부자재를 등록합니다. 코드는 자동 채번됩니다.
-            </DialogDescription>
+            <DialogDescription>새 부자재를 등록합니다. 코드는 자동 채번됩니다.</DialogDescription>
           </DialogHeader>
           <SubsidiaryForm
             onCancel={() => setShowCreateDialog(false)}
@@ -136,14 +120,11 @@ export default function SubsidiariesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 부자재 상세 Dialog */}
       {selectedSubsidiary && (
         <SubsidiaryDetailDialog
           subsidiary={selectedSubsidiary}
           open={!!selectedSubsidiary}
-          onOpenChange={(open) => {
-            if (!open) setSelectedSubsidiary(null);
-          }}
+          onOpenChange={(open) => { if (!open) setSelectedSubsidiary(null); }}
           onUpdated={handleRefresh}
         />
       )}

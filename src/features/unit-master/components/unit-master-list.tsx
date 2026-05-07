@@ -60,7 +60,6 @@ export function UnitMasterList({ itemType }: Props) {
 
   // 등록 Dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("COUNT");
   const [newSortOrder, setNewSortOrder] = useState("0");
@@ -69,6 +68,7 @@ export function UnitMasterList({ itemType }: Props) {
   // 수정 Dialog
   const [editTarget, setEditTarget] = useState<UnitMasterRow | null>(null);
   const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("");
   const [editSortOrder, setEditSortOrder] = useState("0");
   const [updating, setUpdating] = useState(false);
 
@@ -90,22 +90,26 @@ export function UnitMasterList({ itemType }: Props) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── 약어 → 코드 변환 (소문자 보존, 공백 제거) ──
+  const toCode = (name: string) => name.trim().replace(/\s+/g, "");
+
   // ── 등록 ──
   const handleCreate = async () => {
-    if (!newCode.trim() || !newName.trim()) return;
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const code = toCode(trimmed);
     setCreating(true);
     try {
       const result = await createUnitMasterAction({
         itemType,
         unitCategory: newCategory,
-        code: newCode.trim(),
-        name: newName.trim(),
+        code,
+        name: trimmed,
         sortOrder: Number(newSortOrder) || 0,
       });
       if (result.success) {
-        toast.success(`단위 "${newCode.trim()}"가 등록되었습니다`);
+        toast.success(`단위 "${code}"가 등록되었습니다`);
         setShowCreate(false);
-        setNewCode("");
         setNewName("");
         setNewSortOrder("0");
         fetchData();
@@ -123,6 +127,7 @@ export function UnitMasterList({ itemType }: Props) {
   const openEdit = (item: UnitMasterRow) => {
     setEditTarget(item);
     setEditName(item.name);
+    setEditCategory(item.unitCategory);
     setEditSortOrder(String(item.sortOrder));
   };
 
@@ -132,6 +137,7 @@ export function UnitMasterList({ itemType }: Props) {
     try {
       const result = await updateUnitMasterAction(editTarget.id, {
         name: editName.trim(),
+        unitCategory: editCategory,
         sortOrder: Number(editSortOrder) || 0,
       });
       if (result.success) {
@@ -207,9 +213,9 @@ export function UnitMasterList({ itemType }: Props) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[120px]">코드</TableHead>
+                    <TableHead className="w-[120px]">코드 (약어)</TableHead>
                     <TableHead>표시명</TableHead>
-                    <TableHead className="w-[80px] text-center">순서</TableHead>
+                    <TableHead className="w-[80px] text-center">정렬</TableHead>
                     <TableHead className="w-[80px] text-center">구분</TableHead>
                     <TableHead className="w-[80px] text-right">관리</TableHead>
                   </TableRow>
@@ -256,7 +262,8 @@ export function UnitMasterList({ itemType }: Props) {
           <DialogHeader>
             <DialogTitle>단위 추가</DialogTitle>
             <DialogDescription>
-              {itemType === "MATERIAL" ? "자재" : "부자재"}용 단위를 추가합니다
+              {itemType === "MATERIAL" ? "자재" : "부자재"}용 단위를 추가합니다.
+              약어를 입력하면 코드로 자동 반영됩니다.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -272,23 +279,29 @@ export function UnitMasterList({ itemType }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="unitCode">단위 코드 *</Label>
-                <Input id="unitCode" placeholder="예: kg, EA" value={newCode} onChange={(e) => setNewCode(e.target.value)} maxLength={20} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="unitName">표시명 *</Label>
-                <Input id="unitName" placeholder="예: kg (킬로그램)" value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={50} />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="unitName">단위 약어 (= 코드 + 표시명) *</Label>
+              <Input
+                id="unitName"
+                placeholder="예: kg, EA, 개, 봉, 팩"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                maxLength={20}
+              />
+              {newName.trim() && (
+                <p className="text-xs text-gray-500">
+                  코드: <span className="font-mono font-medium text-blue-600">{toCode(newName)}</span> / 표시명: <span className="font-medium">{newName.trim()}</span>
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="unitSort">정렬 순서</Label>
               <Input id="unitSort" type="number" min={0} value={newSortOrder} onChange={(e) => setNewSortOrder(e.target.value)} />
+              <p className="text-xs text-gray-500">Select Box에서 표시되는 순서입니다. 숫자가 작을수록 먼저 표시됩니다.</p>
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowCreate(false)}>취소</Button>
-              <Button onClick={handleCreate} disabled={creating || !newCode.trim() || !newName.trim()}>
+              <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
                 {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 등록
               </Button>
@@ -303,14 +316,26 @@ export function UnitMasterList({ itemType }: Props) {
           <DialogHeader>
             <DialogTitle>단위 수정</DialogTitle>
             <DialogDescription>
-              {editTarget?.code} 단위의 표시명과 정렬 순서를 수정합니다
+              {editTarget?.code} 단위의 분류, 표시명, 정렬 순서를 수정합니다
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>단위 코드</Label>
               <Input value={editTarget?.code ?? ""} disabled />
-              <p className="text-xs text-gray-500">코드는 수정할 수 없습니다</p>
+              <p className="text-xs text-gray-500">코드(약어)는 등록 후 변경할 수 없습니다</p>
+            </div>
+            <div className="space-y-2">
+              <Label>단위 분류 *</Label>
+              <Select value={editCategory} onValueChange={setEditCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="WEIGHT">중량</SelectItem>
+                  <SelectItem value="VOLUME">용량</SelectItem>
+                  <SelectItem value="COUNT">수량</SelectItem>
+                  <SelectItem value="LENGTH">길이</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="editName">표시명 *</Label>
@@ -319,6 +344,7 @@ export function UnitMasterList({ itemType }: Props) {
             <div className="space-y-2">
               <Label htmlFor="editSort">정렬 순서</Label>
               <Input id="editSort" type="number" min={0} value={editSortOrder} onChange={(e) => setEditSortOrder(e.target.value)} />
+              <p className="text-xs text-gray-500">Select Box에서 표시되는 순서입니다</p>
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setEditTarget(null)}>취소</Button>

@@ -14,6 +14,10 @@ export const createUnitMasterSchema = z.object({
 
 export const updateUnitMasterSchema = z.object({
   name: z.string().min(1).max(50).optional(),
+  unitCategory: z
+    .enum(unitCategoryValues)
+    .transform((v) => v as UnitCategory)
+    .optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
