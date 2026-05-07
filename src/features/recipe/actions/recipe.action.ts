@@ -389,12 +389,17 @@ export async function updateRecipeBOMBaseWeightAction(
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "UPDATE");
     const input = updateRecipeBOMBaseWeightSchema.parse(rawInput);
+
+    // ★ Phase 6-b: before 스냅샷 기록
+    const before = await recipeBomService.buildRecipeBOMSnapshot(session.companyId, id);
+
     const bom = await recipeBomService.updateRecipeBOMBaseWeight(session.companyId, id, input);
     await createAuditLog({
       session,
       action: "UPDATE",
       entityType: "RecipeBOM",
       entityId: bom.id,
+      before: before as unknown as Record<string, unknown>,
       after: { baseWeightG: bom.baseWeightG } as unknown as Record<string, unknown>,
     });
     return actionOk(bom);

@@ -1458,8 +1458,8 @@ export function RecipeDetailDialog({
 
                   {isExpanded && (
                     <div className="border-t px-4 py-4 space-y-4">
-                      {/* ★ Phase 6: DRAFT일 때 baseWeightG 인라인 편집 */}
-                      {bom.status === "DRAFT" && (
+                      {/* ★ Phase 6: ARCHIVED일 때 baseWeightG 인라인 편집 */}
+                      {bom.status !== "ARCHIVED" && (
                         <div className="flex items-center gap-3 pb-2 border-b">
                           <Label className="text-xs whitespace-nowrap">기준 중량(g):</Label>
                           <Input
@@ -1542,7 +1542,7 @@ export function RecipeDetailDialog({
                                   >
                                     {weightSum}g / {slot.totalWeightG}g
                                   </span>
-                                  {slot.note && bom.status !== "DRAFT" && (
+                                  {slot.note && (
                                     <span className="text-xs text-gray-400">
                                       ({slot.note})
                                     </span>
@@ -1550,7 +1550,7 @@ export function RecipeDetailDialog({
                                 </div>
                                 <div className="flex items-center gap-1">
                                   {/* ★ Phase 6: 슬롯 인라인 편집 저장 버튼 */}
-                                  {isEditingSlotFields && bom.status === "DRAFT" && (
+                                  {isEditingSlotFields && bom.status !== "ARCHIVED" && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1584,8 +1584,8 @@ export function RecipeDetailDialog({
                                 </div>
                               </div>
 
-                              {/* ★ Phase 6: DRAFT 슬롯 인라인 편집 (totalWeightG, note) */}
-                              {bom.status === "DRAFT" && (
+                              {/* ★ Phase 6-b: DRAFT+ACTIVE 슬롯 인라인 편집 (totalWeightG, note) */}
+                              {bom.status !== "ARCHIVED" && (
                                 <div className="flex items-center gap-3 text-xs">
                                   <Label className="whitespace-nowrap text-gray-500">총 중량(g):</Label>
                                   <Input
@@ -1650,7 +1650,7 @@ export function RecipeDetailDialog({
                                         <TableHead className="text-xs text-right">
                                           중량(g)
                                         </TableHead>
-                                        {bom.status === "DRAFT" && (
+                                        {bom.status !== "ARCHIVED" && (
                                           <TableHead className="w-[80px] text-xs">
                                             작업
                                           </TableHead>
@@ -1684,7 +1684,7 @@ export function RecipeDetailDialog({
                                                 "-"}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                              {bom.status === "DRAFT" ? (
+                                              {bom.status !== "ARCHIVED" ? (
                                                 <Input
                                                   type="number"
                                                   min={0}
@@ -1725,7 +1725,7 @@ export function RecipeDetailDialog({
                                                 </span>
                                               )}
                                             </TableCell>
-                                            {bom.status === "DRAFT" && (
+                                            {bom.status !== "ARCHIVED" && (
                                               <TableCell>
                                                 <div className="flex items-center gap-1">
                                                   {isEditingWeight && (
@@ -1780,8 +1780,8 @@ export function RecipeDetailDialog({
                                 </div>
                               )}
 
-                              {/* ★ Phase 6: 슬롯별 재료 추가 버튼 */}
-                              {bom.status === "DRAFT" && (
+                              {/* ★ Phase 6-b: 슬롯별 재료 추가 버튼 (DRAFT+ACTIVE) */}
+                              {bom.status !== "ARCHIVED" && (
                                 <>
                                   {addingItemSlotId === slot.id ? (
                                     <div className="rounded border border-dashed border-blue-300 bg-blue-50/30 p-2 space-y-2">
