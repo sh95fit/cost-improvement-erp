@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-06 (전체 일정 재산정 — 68모델 전수 대조)
+> 마지막 갱신: 2026-05-07 (Phase 3 완료 — 단위 관리 중앙화)
 
 ---
 
@@ -20,9 +20,9 @@
 
 ---
 
-## 📋 Prisma 스키마 모델 커버리지 (68모델)
+## 📋 Prisma 스키마 모델 커버리지 (68모델 + UnitMaster)
 
-> 아래 표는 schema.prisma v4의 68개 모델이 어느 Sprint의 어느 Phase에서 구현되는지를 추적한다.
+> 아래 표는 schema.prisma v4의 모델이 어느 Sprint의 어느 Phase에서 구현되는지를 추적한다.
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -51,49 +51,50 @@
 | 23 | BOM | 구현완료 | — | ✅ |
 | 24 | BOMItem | 구현완료 | — | ✅ |
 | 25 | UnitConversion | 구현완료 | — | ✅ |
-| 26 | MealTemplate | S2 | P1-2 | ⬜ |
-| 27 | MealTemplateSlot | S2 | P1-2 | ⬜ |
-| 28 | MealTemplateAccessory | S2 | P1-2 | ⬜ |
-| 29 | MealPlanGroup | S2 | P3-5 | ⬜ |
-| 30 | MealPlan | S2 | P3-5 | ⬜ |
-| 31 | MealPlanSlot | S2 | P6-7 | ⬜ |
-| 32 | MealCount | S2 | P8 | ⬜ |
-| 33 | MealPlanAccessory | S2 | P8 | ⬜ |
-| 34 | Lineup | S6 | P5 | ⬜ |
-| 35 | LineupLocationMap | S6 | P5 | ⬜ |
-| 36 | AutoGenLog | S8 | P7 | ⬜ |
-| 37 | MaterialRequirement | S2 | P9 | ⬜ |
-| 38 | PurchaseOrder | S3 | P1-4 | ⬜ |
-| 39 | PurchaseOrderItem | S3 | P1-4 | ⬜ |
-| 40 | ReceivingNote | S3 | P5-8 | ⬜ |
-| 41 | ReceivingNoteItem | S3 | P5-8 | ⬜ |
-| 42 | InventoryLot | S4 | P1-2 | ⬜ |
-| 43 | InventoryTransaction | S4 | P1-2 | ⬜ |
-| 44 | InventoryReservation | S4 | P3 | ⬜ |
-| 45 | InventoryTransfer | S4 | P4-5 | ⬜ |
-| 46 | InventoryTransferItem | S4 | P4-5 | ⬜ |
-| 47 | StockTake | S4 | P6-7 | ⬜ |
-| 48 | StockTakeItem | S4 | P6-7 | ⬜ |
-| 49 | ShippingOrder | S4 | P8-9 | ⬜ |
-| 50 | ShippingOrderItem | S4 | P8-9 | ⬜ |
-| 51 | ConsumptionItem | S4 | P10-11 | ⬜ |
-| 52 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
-| 53 | CookingPlan | S4 | P12-13 | ⬜ |
-| 54 | CookingPlanItem | S4 | P12-13 | ⬜ |
-| 55 | CookingPlanSlot | S4 | P12-13 | ⬜ |
-| 56 | CostSnapshot | S5 | P1-2 | ⬜ |
-| 57 | CostSnapshotItem | S5 | P1-2 | ⬜ |
-| 58 | CostCalculation | S5 | P3-4 | ⬜ |
-| 59 | CostCalculationItem | S5 | P3-4 | ⬜ |
-| 60 | OverheadCost | S5 | P5-6 | ⬜ |
-| 61 | MonthEndSnapshot | S5 | P7-8 | ⬜ |
-| 62 | MonthEndAdjustment | S5 | P7-8 | ⬜ |
-| 63 | MonthEndAdjustmentItem | S5 | P7-8 | ⬜ |
-| 64 | NotificationTagDef | S5 | P9-10 | ⬜ |
-| 65 | NotificationRule | S5 | P9-10 | ⬜ |
-| 66 | NotificationTemplate | S5 | P9-10 | ⬜ |
-| 67 | NotificationLog | S5 | P9-10 | ⬜ |
-| 68 | AuditLog | S8 | P3-4 | ⬜ |
+| 26 | UnitMaster | 구현완료 | S1-P3 | ✅ |
+| 27 | MealTemplate | S2 | P1-2 | ⬜ |
+| 28 | MealTemplateSlot | S2 | P1-2 | ⬜ |
+| 29 | MealTemplateAccessory | S2 | P1-2 | ⬜ |
+| 30 | MealPlanGroup | S2 | P3-5 | ⬜ |
+| 31 | MealPlan | S2 | P3-5 | ⬜ |
+| 32 | MealPlanSlot | S2 | P6-7 | ⬜ |
+| 33 | MealCount | S2 | P8 | ⬜ |
+| 34 | MealPlanAccessory | S2 | P8 | ⬜ |
+| 35 | Lineup | S6 | P5 | ⬜ |
+| 36 | LineupLocationMap | S6 | P5 | ⬜ |
+| 37 | AutoGenLog | S8 | P7 | ⬜ |
+| 38 | MaterialRequirement | S2 | P9 | ⬜ |
+| 39 | PurchaseOrder | S3 | P1-4 | ⬜ |
+| 40 | PurchaseOrderItem | S3 | P1-4 | ⬜ |
+| 41 | ReceivingNote | S3 | P5-8 | ⬜ |
+| 42 | ReceivingNoteItem | S3 | P5-8 | ⬜ |
+| 43 | InventoryLot | S4 | P1-2 | ⬜ |
+| 44 | InventoryTransaction | S4 | P1-2 | ⬜ |
+| 45 | InventoryReservation | S4 | P3 | ⬜ |
+| 46 | InventoryTransfer | S4 | P4-5 | ⬜ |
+| 47 | InventoryTransferItem | S4 | P4-5 | ⬜ |
+| 48 | StockTake | S4 | P6-7 | ⬜ |
+| 49 | StockTakeItem | S4 | P6-7 | ⬜ |
+| 50 | ShippingOrder | S4 | P8-9 | ⬜ |
+| 51 | ShippingOrderItem | S4 | P8-9 | ⬜ |
+| 52 | ConsumptionItem | S4 | P10-11 | ⬜ |
+| 53 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
+| 54 | CookingPlan | S4 | P12-13 | ⬜ |
+| 55 | CookingPlanItem | S4 | P12-13 | ⬜ |
+| 56 | CookingPlanSlot | S4 | P12-13 | ⬜ |
+| 57 | CostSnapshot | S5 | P1-2 | ⬜ |
+| 58 | CostSnapshotItem | S5 | P1-2 | ⬜ |
+| 59 | CostCalculation | S5 | P3-4 | ⬜ |
+| 60 | CostCalculationItem | S5 | P3-4 | ⬜ |
+| 61 | OverheadCost | S5 | P5-6 | ⬜ |
+| 62 | MonthEndSnapshot | S5 | P7-8 | ⬜ |
+| 63 | MonthEndAdjustment | S5 | P7-8 | ⬜ |
+| 64 | MonthEndAdjustmentItem | S5 | P7-8 | ⬜ |
+| 65 | NotificationTagDef | S5 | P9-10 | ⬜ |
+| 66 | NotificationRule | S5 | P9-10 | ⬜ |
+| 67 | NotificationTemplate | S5 | P9-10 | ⬜ |
+| 68 | NotificationLog | S5 | P9-10 | ⬜ |
+| 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ---
 
@@ -121,24 +122,64 @@
   - [x] BOM 확정 (ACTIVE) 후 → 편집 UI 모두 사라지는 것 재현 확인
   - [x] 용기 관리 페이지 CRUD → toast 확인
 - **발견된 이슈** (7건):
-  1. 🔴 **단위 자유입력** — UnitCategory 기반 Select Box로 변경 필요
+  1. 🔴 **단위 자유입력** — UnitCategory 기반 Select Box로 변경 필요 → ✅ Phase 3에서 해소
   2. 🔴 **용기 삭제 의존성 미검증** — FK 체크 없음 → 의존성 확인 + UI 경고 필요
   3. 🟡 **재료 추가 모달 즉시 닫힘** — 연속 추가 모드 + "완료" 버튼 필요
-  4. 🟡 **Select Box 불편** — cmdk 기반 combobox 전환 필요
+  4. 🟡 **Select Box 불편** — cmdk 기반 combobox 전환 필요 → ✅ Phase 3에서 부분 해소 (DB 기반 Select 전환)
   5. 🔴 **BOM 등록 후 수정 불가** — 복제+편집 기능 구현 필요
   6. 🟡 **슬롯 이름 미표시** — ContainerSlot 실제 라벨 표시 필요
   7. 🟢 **레시피 기본정보에 용기/슬롯 요약 없음** — 배식 구성 섹션 추가 필요
 
-### Phase 3 — Unit Select Box 변환 ⬜
-- **예정일**: 2026-05-06
-- **예상 시간**: 2.5h
-- **작업 범위**:
-  - [ ] `UNIT_OPTIONS` 상수 정의 (UnitCategory별 단위 목록)
-  - [ ] `material-form.tsx` 단위 입력을 Select Box로 변경
-  - [ ] 기존 자유 텍스트 데이터 마이그레이션 검토
+### Phase 3 — 단위 관리 중앙화 (Unit Select Box → DB 기반 완전 전환) ✅
+- **날짜**: 2026-05-06 ~ 2026-05-07
+- **예상 시간**: 2.5h → **실제 시간: ~8h** (3단계에 걸쳐 진행)
+- **커밋 이력**:
+  - `2c14eb9` (05-06) — Phase 3 초기: `UNIT_OPTIONS` 상수 분리, material-form 2단계 Select Box
+  - `b565f25` (05-07) — MaterialType 정리 (RAW/OTHER), 자재·부자재 UI를 Dialog 모달로 통일
+  - `43b95ae` (05-07) — UnitMaster 모델+서비스+액션+UI, DB 기반 단위 Select, 시드 30개
+  - `5d777aa` (05-07) — 단위 관리 독립 페이지(/units), 단위환산 DB Select 전환, unitCategory 수정 지원
+- **변경 파일** (총 18개, 마지막 커밋 기준 8개):
+  - `src/app/(dashboard)/units/page.tsx` — 신규: 단위 관리 독립 페이지
+  - `src/app/(dashboard)/materials/page.tsx` — "단위 관리" 탭 제거, 2탭 구조
+  - `src/app/(dashboard)/subsidiaries/page.tsx` — "단위 관리" 탭 제거, 2탭 구조
+  - `src/components/layout/sidebar.tsx` — "단위 관리" 메뉴 추가 (Ruler 아이콘)
+  - `src/features/unit-master/schemas/unit-master.schema.ts` — updateSchema에 unitCategory 추가
+  - `src/features/unit-master/actions/unit-master.action.ts` — `getUnitOptionsForConversionAction` 추가
+  - `src/features/unit-master/components/unit-master-list.tsx` — 약어→코드 자동 반영, 수정 시 unitCategory 변경, sortOrder 설명
+  - `src/features/unit-conversion/components/unit-conversion-form.tsx` — fromUnit/toUnit 자유입력→DB Select 전환
+- **완료 항목**:
+  - [x] `/units` 단독 단위 관리 페이지 생성 (자재/부자재 탭)
+  - [x] 사이드바에 "단위 관리" 메뉴 추가
+  - [x] 자재/부자재 페이지에서 "단위 관리" 탭 제거 (중앙화)
+  - [x] UnitMaster Prisma 모델 + migration + 시드 30개 (자재 20 + 부자재 10)
+  - [x] UnitMaster 서비스 (CRUD, 사용중 삭제 방지, 시스템 단위 보호)
+  - [x] UnitMaster 액션 (목록 조회, Select 옵션 조회, 생성, 수정, 삭제)
+  - [x] UnitMaster UI (카테고리별 그룹 테이블, 등록/수정/삭제 다이얼로그)
+  - [x] 단위 등록: 약어 입력 = 코드 자동 반영 (별도 코드 필드 제거)
+  - [x] 단위 수정: unitCategory(중량/용량/수량/길이) 변경 가능
+  - [x] sortOrder 용도 명시 (Select Box 표시 순서)
+  - [x] 자재 등록/수정 Form: DB 기반 단위 Select (getUnitOptionsAction)
+  - [x] 부자재 등록/수정 Form: DB 기반 단위 Select
+  - [x] 단위환산 Form: fromUnit/toUnit 자유입력 → DB 등록 단위 기반 Select 전환
+  - [x] 단위환산: unitCategory별 필터링으로 등록 단위 범위 제한
+  - [x] 미등록 분류 선택 시 "단위 관리에서 등록하기" 안내 링크 표시
+  - [x] MaterialType enum 정리 (SEASONING/PROCESSED 제거 → RAW/OTHER만)
+  - [x] 자재·부자재 UI Dialog 모달 통일 (Sheet→Dialog)
+  - [x] TypeScript 오류 0건 확인 (`npx tsc --noEmit`)
+  - [x] 동작 테스트 완료 (UI 전 항목 정상)
+- **해소된 이슈**:
+  - Issue #1 (단위 자유입력) → DB 중앙 관리로 완전 해소
+  - Issue #4 (Select Box 사용성) → 중앙 단위 관리 + 단위환산 Select 전환으로 부분 해소
+- **아키텍처 결정**:
+  - 단위 코드 = 약어 그대로 사용 (kg, EA, 개 등). 순번 자동채번(UNIT-001) 불필요
+  - 약어 입력 시 공백 제거 후 코드로 자동 반영
+  - 단위 관리는 `/units` 독립 페이지에서 중앙 관리, 타 페이지에서는 참조만
+  - `sortOrder`는 Select Box 표시 순서 (숫자 작을수록 먼저)
+  - `isSystem` 플래그로 시드 기본 단위 삭제 방지
+  - 단위환산 fromUnit/toUnit은 해당 itemType의 UnitMaster에서만 선택 가능
 
 ### Phase 4 — Container 삭제 의존성 검증 + UI 경고 ⬜
-- **예정일**: 2026-05-06 ~ 2026-05-07
+- **예정일**: 2026-05-08
 - **예상 시간**: 2h
 - **작업 범위**:
   - [ ] `container.service.ts`에 삭제 전 RecipeBOMSlot 의존성 확인 로직 추가
@@ -146,7 +187,7 @@
   - [ ] `containers/page.tsx`에서 의존성 경고 Alert 표시
 
 ### Phase 5 — duplicateRecipeBOM 서비스 + 액션 구현 ⬜
-- **예정일**: 2026-05-07
+- **예정일**: 2026-05-08
 - **예상 시간**: 2h
 - **작업 범위**:
   - [ ] `recipe-bom.service.ts`에 `duplicateRecipeBOM` 추가 (트랜잭션으로 슬롯·아이템 전체 복사)
@@ -154,7 +195,7 @@
   - [ ] `recipe-bom.service.test.ts`에 복제 테스트 추가
 
 ### Phase 6 — BOM UI 완전 보강 ⬜
-- **예정일**: 2026-05-07 ~ 2026-05-08
+- **예정일**: 2026-05-08 ~ 2026-05-09
 - **예상 시간**: 6h
 - **작업 범위**:
   - [ ] ACTIVE BOM "보관" 버튼, 모든 상태 BOM에 "복제해서 새 버전" 버튼
@@ -166,106 +207,107 @@
   - [ ] 재료 추가 연속 모드 + combobox 전환 (이슈 #3, #4)
 
 ### Phase 7 — container.service.test.ts 작성 ⬜
-- **예정일**: 2026-05-08
+- **예정일**: 2026-05-09
 - **예상 시간**: 1.5h
 - **작업 범위**: 그룹 CRUD, 슬롯 CRUD, 페이지네이션, soft-delete, 의존성 삭제 차단 테스트
 
 ### Phase 8 — Toast 확대: material + subsidiary (6개 컴포넌트) ⬜
-- **예정일**: 2026-05-08 ~ 2026-05-09
+- **예정일**: 2026-05-09 ~ 2026-05-10
 - **예상 시간**: 3h
 - **대상**: material-list, material-form, material-detail-panel, subsidiary-list, subsidiary-form, subsidiary-detail-panel
 
 ### Phase 9 — Toast 확대: supplier (4개 컴포넌트) ⬜
-- **예정일**: 2026-05-09
+- **예정일**: 2026-05-10
 - **예상 시간**: 2h
 - **대상**: supplier-list, supplier-form, supplier-item-list, supplier-item-form
 
 ### Phase 10 — Toast 확대: recipe + semi-product + unit-conversion (7개 컴포넌트) ⬜
-- **예정일**: 2026-05-09 ~ 2026-05-10
+- **예정일**: 2026-05-10 ~ 2026-05-11
 - **예상 시간**: 2.5h
 
 ### Phase 11 — CONVENTIONS.md 전수 점검 ⬜
-- **예정일**: 2026-05-10
+- **예정일**: 2026-05-11
 - **예상 시간**: 3h
 - **점검**: any 타입, console.log 잔여, deletedAt 조건, 트랜잭션, assertPermission, createAuditLog, 테스트 존재
 
 ### Phase 12 — recipe.action.ts 서비스 계층 분리 ⬜
-- **예정일**: 2026-05-10 ~ 2026-05-11
+- **예정일**: 2026-05-11 ~ 2026-05-12
 - **예상 시간**: 4h
 - **작업**: recipe.action.ts (39KB) → 비즈니스 로직을 service 레이어로 분리
 
 ### Phase 13 — Error Boundary + 타입 강화 ⬜
-- **예정일**: 2026-05-11
+- **예정일**: 2026-05-12
 - **예상 시간**: 2h
 - **작업**: `error.tsx` 신규, loadAllPages 제네릭 타입 강화
 
 ### Phase 14 — Sprint 1 최종 QA ⬜
-- **예정일**: 2026-05-11
+- **예정일**: 2026-05-12
 - **예상 시간**: 2h
 - **검증**: 이슈 #1~#7 전체 해소 확인, 17개 컴포넌트 toast, 전체 테스트 PASS
 
 ---
 
-## 🏗️ Sprint 2: 식단 템플릿 + 식단 계획 (5/12 ~ 5/22, ~48h)
+## 🏗️ Sprint 2: 식단 템플릿 + 식단 계획 (5/13 ~ 5/22, ~48h)
 
 > ⚠️ MealTemplate, MealCount, MealPlanAccessory 누락 반영으로 Phase 11개, 공수 39h→48h
+> ⚠️ 일정 조정: Sprint 1 Phase 3 확장(+5.5h)으로 Sprint 2 시작일 5/12→5/13
 
 ### Phase 1 — MealTemplate Zod 스키마 + 서비스 ⬜
-- **예정일**: 2026-05-12
+- **예정일**: 2026-05-13
 - **예상 시간**: 4h
 - **대상 모델**: MealTemplate, MealTemplateSlot, MealTemplateAccessory
 - **작업**: `src/features/meal-template/schemas/meal-template.schema.ts`, `meal-template.service.ts` 작성
 
 ### Phase 2 — MealTemplate 액션 + UI ⬜
-- **예정일**: 2026-05-12 ~ 2026-05-13
+- **예정일**: 2026-05-13 ~ 2026-05-14
 - **예상 시간**: 5h
 - **작업**: `meal-template.action.ts`, `meal-template-list.tsx`, `meal-template-form.tsx`, `/meal-templates/page.tsx`
 
 ### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ⬜
-- **예정일**: 2026-05-13 ~ 2026-05-14
+- **예정일**: 2026-05-14 ~ 2026-05-15
 - **예상 시간**: 6h
 - **대상 모델**: MealPlanGroup, MealPlan, MealPlanSlot
 - **작업**: `meal-plan.schema.ts`, `meal-plan.service.ts` (그룹 CRUD, 식단 생성·복사, 슬롯 배정)
 
 ### Phase 4 — MealPlan 액션 ⬜
-- **예정일**: 2026-05-14 ~ 2026-05-15
+- **예정일**: 2026-05-15 ~ 2026-05-16
 - **예상 시간**: 4h
 - **작업**: `meal-plan.action.ts` (입력 검증, 권한, 감사 로그)
 
 ### Phase 5 — 식단 그룹 UI ⬜
-- **예정일**: 2026-05-15
+- **예정일**: 2026-05-16
 - **예상 시간**: 4h
 - **작업**: `meal-plan-group-list.tsx`, `meal-plan-group-form.tsx`
 
 ### Phase 6 — 식단 캘린더 뷰 ⬜
-- **예정일**: 2026-05-15 ~ 2026-05-16
+- **예정일**: 2026-05-16 ~ 2026-05-17
 - **예상 시간**: 6h
 - **작업**: `meal-plan-calendar.tsx` (주간/월간 캘린더, 드래그/클릭 슬롯 배정)
 
 ### Phase 7 — 슬롯 상세 에디터 ⬜
-- **예정일**: 2026-05-16 ~ 2026-05-17
+- **예정일**: 2026-05-17 ~ 2026-05-18
 - **예상 시간**: 4h
 - **작업**: `meal-plan-slot-editor.tsx` (레시피 선택, RecipeBOM 선택, 인원수 입력)
 
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
-- **예정일**: 2026-05-17 ~ 2026-05-18
+- **예정일**: 2026-05-18 ~ 2026-05-19
 - **예상 시간**: 4h
 - **대상 모델**: MealCount, MealPlanAccessory
 - **작업**: 예상/확정 식수 입력, 부자재(악세서리) 매핑 UI
 
 ### Phase 9 — 소요량 자동 산출 서비스 ⬜
-- **예정일**: 2026-05-18 ~ 2026-05-19
+- **예정일**: 2026-05-19 ~ 2026-05-20
 - **예상 시간**: 5h
 - **대상 모델**: MaterialRequirement
 - **작업**: `material-requirement.service.ts` (BOM→재료 전개, 인원수 반영, 자동 산출)
 
 ### Phase 10 — 테스트 작성 ⬜
-- **예정일**: 2026-05-19 ~ 2026-05-20
+- **예정일**: 2026-05-20 ~ 2026-05-21
 - **예상 시간**: 4h
 - **작업**: `meal-template.service.test.ts`, `meal-plan.service.test.ts`, `material-requirement.service.test.ts`
 
 ### Phase 11 — 페이지 통합 + Sprint 2 QA ⬜
-- **예정일**: 2026-05-20 ~ 2026-05-22
+- **예정일**: 2026-05-21 ~ 2026-05-22
 - **예상 시간**: 4h (QA 1일 여유 포함)
 - **작업**: `/meal-plans/page.tsx` 통합, toast 적용, E2E 검증, PROGRESS.md 갱신
 
@@ -488,8 +530,8 @@
 
 | Sprint | 기간 | 주요 내용 | Phase 수 | 예상 공수 | 상태 |
 |--------|------|-----------|----------|-----------|------|
-| Sprint 1 | 5/4 ~ 5/11 | 안정화 + 품질 기반 | 14 | ~37.5h | 🟡 진행 중 (2/14) |
-| Sprint 2 | 5/12 ~ 5/22 | 식단 템플릿 + 식단 계획 | 11 | ~48h | ⬜ 대기 |
+| Sprint 1 | 5/4 ~ 5/12 | 안정화 + 품질 기반 | 14 | ~37.5h | 🟡 진행 중 (3/14) |
+| Sprint 2 | 5/13 ~ 5/22 | 식단 템플릿 + 식단 계획 | 11 | ~48h | ⬜ 대기 |
 | Sprint 3 | 5/23 ~ 5/31 | 발주 + 입고 | 9 | ~32h | ⬜ 대기 |
 | Sprint 4 | 6/1 ~ 6/15 | 재고 + 이동 + 실사 + 출고 + 소비 + 조리 | 15 | ~62h | ⬜ 대기 |
 | Sprint 5 | 6/16 ~ 6/28 | 원가 + 간접비 + 월말 + 알림 | 12 | ~52h | ⬜ 대기 |
@@ -500,20 +542,27 @@
 
 ---
 
+## 📋 Sprint 1 이슈 추적
+
+| # | 이슈 | 심각도 | 상태 | 해소 Phase |
+|---|------|--------|------|-----------|
+| 1 | 단위 자유입력 → DB Select 전환 필요 | 🔴 | ✅ 해소 | Phase 3 |
+| 2 | 용기 삭제 의존성 미검증 | 🔴 | ⬜ 미해소 | Phase 4 예정 |
+| 3 | 재료 추가 모달 즉시 닫힘 | 🟡 | ⬜ 미해소 | Phase 6 예정 |
+| 4 | Select Box 사용성 | 🟡 | 🟡 부분 해소 | Phase 3 (DB Select), Phase 6 (combobox) |
+| 5 | BOM 등록 후 수정 불가 | 🔴 | ⬜ 미해소 | Phase 5-6 예정 |
+| 6 | 슬롯 이름 미표시 | 🟡 | ⬜ 미해소 | Phase 6 예정 |
+| 7 | 레시피 기본정보 용기/슬롯 요약 없음 | 🟢 | ⬜ 미해소 | Phase 6 예정 |
+
+---
+
 ## 🔄 변경 이력
 
 | 날짜 | 변경 내용 | 사유 |
 |------|-----------|------|
 | 2026-05-04 | 최초 작성 | Sprint 1 Phase 1 완료 시점 |
 | 2026-05-04 | Sprint 1에 Phase 3~4 추가 (BOM 편집 보강) | BOM 등록 후 수정 불가 이슈 발견 |
-| 2026-05-04 | 작업 프로세스 6단계 규칙 추가 | 깃 배포→레포 검증→프로세스 검증→테스트→보완→다음 단계 |
-| 2026-05-06 | Phase 2 완료, 이슈 7건 등록 | E2E 검증에서 7건 이슈 발견 |
-| 2026-05-06 | Sprint 1 Phase 수 12→14, 공수 28.5h→37.5h | 이슈 대응 Phase 추가 |
-| 2026-05-06 | **전체 일정 전면 재산정** | Prisma 68모델 전수 대조, 12개 핵심 도메인 누락 발견 |
-| 2026-05-06 | Sprint 2 MealTemplate/MealCount/Accessory 추가 | 기존 Sprint 2에 누락 |
-| 2026-05-06 | Sprint 4 InventoryTransfer/StockTake/CookingPlan 통합 | 기존 Sprint 4에 누락 |
-| 2026-05-06 | Sprint 5 OverheadCost/CostCalculation/알림 관리 UI 추가 | 기존 Sprint 5에 누락 |
-| 2026-05-06 | Sprint 6 신규 (조직 관리) | Company/Location/ProductionLine/Lineup 전체 누락 |
-| 2026-05-06 | Sprint 7 신규 (권한+사용자+초대) | PermissionSet/User/Invitation UI+프로세스 전체 누락 |
-| 2026-05-06 | Sprint 8 (기존 Sprint 6 확장) | 대시보드+감사+AutoGenLog 확장 |
-| 2026-05-06 | 총 Phase 58→89, 공수 214.5h→349.5h, 기간 6/26→7/25 | 누락 범위 보강 |
+| 2026-05-04 | 작업 프로세스 6단계 규칙 추가 | 검증 누락 방지 |
+| 2026-05-06 | Phase 2 완료, 이슈 7건 등록, Sprint 1 일정 +2일 확장 | E2E 검증 결과 반영 |
+| 2026-05-06 | 전체 일정 재산정 — 68모델 전수 대조, Sprint 6-8 신규 | 누락 모델 발견 |
+| 2026-05-07 | Phase 3 완료 — 단위 관리 중앙화 | 4커밋에 걸친 대규모 작업 (상수 Select → DB 기반 UnitMaster 중앙 관리). `/units` 독립 페이지 신설, 사이드바 메뉴 추가, 자재/부자재 페이지 탭 축소, 단위환산 Form DB Select 전환, unitCategory 수정 지원, 약어=코드 자동 반영. 이슈 #1 완전 해소, #4 부분 해소. 모델 커버리지에 UnitMaster 추가. Sprint 1 일정 +1일 (5/11→5/12), Sprint 2 시작일 5/12→5/13 조정 |
