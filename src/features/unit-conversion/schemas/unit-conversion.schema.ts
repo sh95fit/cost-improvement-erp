@@ -5,6 +5,7 @@ const unitCategoryValues = Object.values(UnitCategory) as [string, ...string[]];
 
 export const createUnitConversionSchema = z.object({
   materialMasterId: z.string().nullable().default(null),
+  subsidiaryMasterId: z.string().nullable().default(null),
   fromUnit: z.string().min(1, "변환 전 단위는 필수입니다").max(20),
   toUnit: z.string().min(1, "변환 후 단위는 필수입니다").max(20),
   factor: z.number().positive("환산 계수는 0보다 커야 합니다"),
@@ -28,7 +29,8 @@ export const unitConversionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   materialId: z.string().optional(),
-  scope: z.enum(["all", "global", "material"]).default("all"),
+  subsidiaryId: z.string().optional(),
+  scope: z.enum(["all", "global", "material", "subsidiary"]).default("all"),
 });
 
 export type CreateUnitConversionInput = z.output<typeof createUnitConversionSchema>;

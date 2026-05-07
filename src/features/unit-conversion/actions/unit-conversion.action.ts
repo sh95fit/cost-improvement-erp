@@ -54,6 +54,7 @@ export async function createUnitConversionAction(
     const duplicate = await conversionService.findDuplicateConversion(
       session.companyId,
       input.materialMasterId,
+      input.subsidiaryMasterId,
       input.fromUnit,
       input.toUnit
     );

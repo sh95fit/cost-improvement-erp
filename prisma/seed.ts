@@ -446,6 +446,50 @@ async function main() {
   }
   console.log("✅ BOMItems: 2개");
 
+  // ---- 15-2. UnitMasters ----
+  const unitMasterData = [
+    // 자재용 (MATERIAL)
+    { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "g", name: "g (그램)", sortOrder: 0 },
+    { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "kg", name: "kg (킬로그램)", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "mg", name: "mg (밀리그램)", sortOrder: 2 },
+    { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "근", name: "근 (600g)", sortOrder: 3 },
+    { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "관", name: "관 (3.75kg)", sortOrder: 4 },
+    { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "ml", name: "ml (밀리리터)", sortOrder: 0 },
+    { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "L", name: "L (리터)", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "cc", name: "cc", sortOrder: 2 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "개", name: "개", sortOrder: 0 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "봉", name: "봉", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "팩", name: "팩", sortOrder: 2 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "박스", name: "박스", sortOrder: 3 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "캔", name: "캔", sortOrder: 4 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "병", name: "병", sortOrder: 5 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 6 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "판", name: "판", sortOrder: 7 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "EA", name: "EA", sortOrder: 8 },
+    { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "cm", name: "cm (센티미터)", sortOrder: 0 },
+    { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "m", name: "m (미터)", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "mm", name: "mm (밀리미터)", sortOrder: 2 },
+    // 부자재용 (SUBSIDIARY)
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "개", name: "개", sortOrder: 0 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "EA", name: "EA", sortOrder: 1 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "세트", name: "세트", sortOrder: 2 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 3 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "박스", name: "박스", sortOrder: 4 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "팩", name: "팩", sortOrder: 5 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "묶음", name: "묶음", sortOrder: 6 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "롤", name: "롤", sortOrder: 7 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "LENGTH" as const, code: "m", name: "m (미터)", sortOrder: 0 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "LENGTH" as const, code: "cm", name: "cm (센티미터)", sortOrder: 1 },
+  ];
+  for (const um of unitMasterData) {
+    await prisma.unitMaster.upsert({
+      where: { companyId_itemType_code: { companyId: company.id, itemType: um.itemType, code: um.code } },
+      update: {},
+      create: { companyId: company.id, ...um, isSystem: true },
+    });
+  }
+  console.log(`✅ UnitMasters: ${unitMasterData.length}개 생성 (자재 20 + 부자재 10)`);
+
   // ---- 16. UnitConversions ----
   const unitConversions = [
     { materialCode: null, fromUnit: "kg", toUnit: "g", factor: 1000, unitCategory: "WEIGHT" as const },

@@ -43,6 +43,7 @@ import {
   Globe,
   Package,
 } from "lucide-react";
+import { toast } from "sonner";
 
 type MaterialInfo = { id: string; name: string; code: string; unit: string };
 
@@ -53,14 +54,18 @@ export type UnitConversionRow = {
   factor: number;
   unitCategory: string;
   materialMasterId: string | null;
+  subsidiaryMasterId: string | null;
   materialMaster: MaterialInfo | null;
+  subsidiaryMaster: MaterialInfo | null;
 };
 
 type Props = {
   materialId?: string;
+  subsidiaryId?: string;
   onNew: () => void;
   onEdit: (item: UnitConversionRow) => void;
   compact?: boolean;
+  defaultScope?: "all" | "global" | "material" | "subsidiary";
 };
 
 const UNIT_CATEGORY_LABELS: Record<string, string> = {
@@ -70,7 +75,14 @@ const UNIT_CATEGORY_LABELS: Record<string, string> = {
   LENGTH: "길이",
 };
 
-export function UnitConversionList({ materialId, onNew, onEdit, compact = false }: Props) {
+export function UnitConversionList({
+  materialId,
+  subsidiaryId,
+  onNew,
+  onEdit,
+  compact = false,
+  defaultScope,
+}: Props) {
   const [items, setItems] = useState<UnitConversionRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -79,7 +91,9 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
     totalPages: 0,
   });
   const [search, setSearch] = useState("");
-  const [scope, setScope] = useState<"all" | "global" | "material">("all");
+  const [scope, setScope] = useState<"all" | "global" | "material" | "subsidiary">(
+    defaultScope ?? "all"
+  );
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UnitConversionRow | null>(null);
 
@@ -92,7 +106,8 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
           limit: 20,
           search: search || undefined,
           materialId: materialId || undefined,
-          scope: materialId ? undefined : scope,
+          subsidiaryId: subsidiaryId || undefined,
+          scope: materialId || subsidiaryId ? undefined : scope,
         });
         if (result.success) {
           const data = result.data as {
@@ -106,7 +121,7 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
         setLoading(false);
       }
     },
-    [search, materialId, scope]
+    [search, materialId, subsidiaryId, scope]
   );
 
   useEffect(() => {
@@ -121,7 +136,10 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
     if (!deleteTarget) return;
     const result = await deleteUnitConversionAction(deleteTarget.id);
     if (result.success) {
+      toast.success("단위 환산이 삭제되었습니다");
       fetchData(pagination.page);
+    } else {
+      toast.error(result.error?.message ?? "삭제에 실패했습니다");
     }
     setDeleteTarget(null);
   };
@@ -130,7 +148,45 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
     if (item.materialMaster) {
       return `${item.materialMaster.name}: 1 ${item.fromUnit} = ${item.factor} ${item.toUnit}`;
     }
+    if (item.subsidiaryMaster) {
+      return `${item.subsidiaryMaster.name}: 1 ${item.fromUnit} = ${item.factor} ${item.toUnit}`;
+    }
     return `1 ${item.fromUnit} = ${item.factor} ${item.toUnit}`;
+  };
+
+  const getScopeBadge = (item: UnitConversionRow) => {
+    if (item.materialMaster) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+          <Package className="h-3 w-3" />
+          자재별
+        </span>
+      );
+    }
+    if (item.subsidiaryMaster) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+          <Package className="h-3 w-3" />
+          부자재별
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+        <Globe className="h-3 w-3" />
+        글로벌
+      </span>
+    );
+  };
+
+  const getTargetName = (item: UnitConversionRow) => {
+    if (item.materialMaster) {
+      return `${item.materialMaster.code} - ${item.materialMaster.name}`;
+    }
+    if (item.subsidiaryMaster) {
+      return `${item.subsidiaryMaster.code} - ${item.subsidiaryMaster.name}`;
+    }
+    return "-";
   };
 
   return (
@@ -142,14 +198,14 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
             <div className="relative max-w-sm flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
-                placeholder="자재명, 단위로 검색"
+                placeholder="자재명, 부자재명, 단위로 검색"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="pl-10"
               />
             </div>
-            {!materialId && (
+            {!materialId && !subsidiaryId && (
               <Select value={scope} onValueChange={(v) => setScope(v as typeof scope)}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue />
@@ -158,6 +214,7 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="global">글로벌</SelectItem>
                   <SelectItem value="material">자재별</SelectItem>
+                  <SelectItem value="subsidiary">부자재별</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -175,7 +232,7 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
           <TableHeader>
             <TableRow>
               <TableHead>구분</TableHead>
-              {!compact && <TableHead>자재</TableHead>}
+              {!compact && <TableHead>대상</TableHead>}
               <TableHead>변환 전</TableHead>
               <TableHead className="w-[40px] text-center" />
               <TableHead>변환 후</TableHead>
@@ -206,24 +263,10 @@ export function UnitConversionList({ materialId, onNew, onEdit, compact = false 
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell>
-                    {item.materialMaster ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                        <Package className="h-3 w-3" />
-                        자재별
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
-                        <Globe className="h-3 w-3" />
-                        글로벌
-                      </span>
-                    )}
-                  </TableCell>
+                  <TableCell>{getScopeBadge(item)}</TableCell>
                   {!compact && (
                     <TableCell className="font-medium">
-                      {item.materialMaster
-                        ? `${item.materialMaster.code} - ${item.materialMaster.name}`
-                        : "-"}
+                      {getTargetName(item)}
                     </TableCell>
                   )}
                   <TableCell>{item.fromUnit}</TableCell>

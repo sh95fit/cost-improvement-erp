@@ -292,6 +292,7 @@ model Company {
   consumptionItems   ConsumptionItem[]
   costCalculations   CostCalculation[]
   overheadCosts      OverheadCost[]
+  unitMasters        UnitMaster[]
 
   @@map("companies")
 }
@@ -479,13 +480,14 @@ model SubsidiaryMaster {
   name      String
   code      String
   unit      String
+  unitCategory UnitCategory @default(COUNT) @map("unit_category")
   stockGrade          StockGrade @default(C) @map("stock_grade")
   stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
   defaultSupplierItemId String?  @unique @map("default_supplier_item_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
-
+ 
   company       Company @relation(fields: [companyId], references: [id])
   defaultSupplierItem   SupplierItem? @relation("DefaultSubsidiarySupplierItem", fields: [defaultSupplierItemId], references: [id], onDelete: SetNull)
   supplierItems SupplierItem[]
@@ -493,6 +495,7 @@ model SubsidiaryMaster {
   purchaseOrderItems  PurchaseOrderItem[]
   inventoryLots       InventoryLot[]
   shippingOrderItems  ShippingOrderItem[]
+  unitConversions    UnitConversion[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -792,22 +795,44 @@ model BOMItem {
 // ★ 삭제: ServingSet, ServingSetItem 모델 제거
 
 model UnitConversion {
-  id               String       @id @default(cuid())
-  companyId        String       @map("company_id")
-  materialMasterId String?      @map("material_master_id")
-  fromUnit         String       @map("from_unit")
-  toUnit           String       @map("to_unit")
-  factor           Float
-  unitCategory     UnitCategory @map("unit_category")
-  createdAt        DateTime     @default(now()) @map("created_at")
+  id                 String       @id @default(cuid())
+  companyId          String       @map("company_id")
+  materialMasterId   String?      @map("material_master_id")
+  subsidiaryMasterId String?      @map("subsidiary_master_id")
+  fromUnit           String       @map("from_unit")
+  toUnit             String       @map("to_unit")
+  factor             Float
+  unitCategory       UnitCategory @map("unit_category")
+  createdAt          DateTime     @default(now()) @map("created_at")
 
-  company        Company         @relation(fields: [companyId], references: [id])
-  materialMaster MaterialMaster? @relation(fields: [materialMasterId], references: [id])
+  company          Company          @relation(fields: [companyId], references: [id])
+  materialMaster   MaterialMaster?  @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
 
-  @@unique([companyId, materialMasterId, fromUnit, toUnit])
+  @@unique([companyId, materialMasterId, subsidiaryMasterId, fromUnit, toUnit])
   @@index([companyId])
   @@index([materialMasterId])
+  @@index([subsidiaryMasterId])
   @@map("unit_conversions")
+}
+
+model UnitMaster {
+  id           String       @id @default(cuid())
+  companyId    String       @map("company_id")
+  itemType     ItemType     @map("item_type")
+  unitCategory UnitCategory @map("unit_category")
+  code         String
+  name         String
+  isSystem     Boolean      @default(false) @map("is_system")
+  sortOrder    Int          @default(0) @map("sort_order")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, itemType, code])
+  @@index([companyId, itemType, unitCategory])
+  @@map("unit_masters")
 }
 
 // ---- 6. 식단 템플릿 ----

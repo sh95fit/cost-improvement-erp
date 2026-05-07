@@ -10,7 +10,7 @@ export async function getUnitConversions(
   companyId: string,
   query: UnitConversionListQuery
 ) {
-  const { page, limit, search, materialId, scope } = query;
+  const { page, limit, search, materialId, subsidiaryId, scope } = query;
   const skip = (page - 1) * limit;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,13 +19,23 @@ export async function getUnitConversions(
   // 스코프 필터
   if (scope === "global") {
     where.materialMasterId = null;
+    where.subsidiaryMasterId = null;
   } else if (scope === "material") {
     where.materialMasterId = { not: null };
+    where.subsidiaryMasterId = null;
+  } else if (scope === "subsidiary") {
+    where.subsidiaryMasterId = { not: null };
+    where.materialMasterId = null;
   }
 
-  // 특정 자재 필터
+  // 특정 자재/부자재 필터
   if (materialId) {
     where.materialMasterId = materialId;
+    where.subsidiaryMasterId = null;
+  }
+  if (subsidiaryId) {
+    where.subsidiaryMasterId = subsidiaryId;
+    where.materialMasterId = null;
   }
 
   // 검색
@@ -34,6 +44,7 @@ export async function getUnitConversions(
       { fromUnit: { contains: search, mode: "insensitive" } },
       { toUnit: { contains: search, mode: "insensitive" } },
       { materialMaster: { name: { contains: search, mode: "insensitive" } } },
+      { subsidiaryMaster: { name: { contains: search, mode: "insensitive" } } },
     ];
   }
 
@@ -42,6 +53,7 @@ export async function getUnitConversions(
       where,
       include: {
         materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+        subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
       },
       orderBy: [
         { materialMasterId: { sort: "asc", nulls: "first" } },
@@ -70,6 +82,7 @@ export async function getUnitConversionById(id: string) {
     where: { id },
     include: {
       materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+      subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
     },
   });
 }
@@ -78,6 +91,7 @@ export async function getUnitConversionById(id: string) {
 export async function findDuplicateConversion(
   companyId: string,
   materialMasterId: string | null,
+  subsidiaryMasterId: string | null,
   fromUnit: string,
   toUnit: string
 ) {
@@ -85,6 +99,7 @@ export async function findDuplicateConversion(
     where: {
       companyId,
       materialMasterId,
+      subsidiaryMasterId,
       fromUnit,
       toUnit,
     },
@@ -100,6 +115,7 @@ export async function createUnitConversion(
     data: {
       companyId,
       materialMasterId: input.materialMasterId,
+      subsidiaryMasterId: input.subsidiaryMasterId,
       fromUnit: input.fromUnit,
       toUnit: input.toUnit,
       factor: input.factor,

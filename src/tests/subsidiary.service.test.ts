@@ -90,6 +90,7 @@ describe("subsidiary.service", () => {
       const result = await createSubsidiary("company-1", {
         name: "젓가락",
         unit: "개",
+        unitCategory: "COUNT",
       });
 
       expect(result.code).toBe("SUB-001");
@@ -106,6 +107,7 @@ describe("subsidiary.service", () => {
       await createSubsidiary("company-1", {
         name: "물티슈",
         unit: "팩",
+        unitCategory: "COUNT",
       });
 
       const createArg = mockPrisma.subsidiaryMaster.create.mock.calls[0][0].data;

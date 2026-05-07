@@ -10,6 +10,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { SubsidiaryForm } from "./subsidiary-form";
+import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
+import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
 import {
   getSupplierItemsBySubsidiaryAction,
 } from "@/features/supplier/actions/supplier.action";
@@ -17,9 +19,17 @@ import {
   setSubsidiaryDefaultSupplierItemAction,
 } from "../actions/material.action";
 import { Pencil, Loader2, Star } from "lucide-react";
+import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
+import type { UnitCategory } from "@prisma/client";
 import { toast } from "sonner";
 
+import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
 import type { SubsidiaryRow } from "./subsidiary-list";
+
+type ConversionView =
+  | { mode: "list" }
+  | { mode: "new" }
+  | { mode: "edit"; item: UnitConversionRow };
 
 type SupplierItemRow = {
   id: string;
@@ -49,6 +59,8 @@ const formatCurrency = (value: number) =>
 
 export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false);
+  const [conversionView, setConversionView] = useState<ConversionView>({ mode: "list" });
+
   const [supplierItems, setSupplierItems] = useState<SupplierItemRow[]>([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [defaultItemId, setDefaultItemId] = useState<string | null>(subsidiary.defaultSupplierItemId);
@@ -85,7 +97,7 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
     if (isEditing) {
       return (
         <SubsidiaryForm
-          item={{ id: subsidiary.id, name: subsidiary.name, code: subsidiary.code, unit: subsidiary.unit, stockGrade: subsidiary.stockGrade }}
+          item={{ id: subsidiary.id, name: subsidiary.name, code: subsidiary.code, unit: subsidiary.unit, unitCategory: subsidiary.unitCategory, stockGrade: subsidiary.stockGrade }}
           onCancel={() => setIsEditing(false)}
           onSaved={() => { setIsEditing(false); onUpdated(); }}
         />
@@ -101,7 +113,10 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div><p className="text-gray-500">부자재 코드</p><p className="font-mono font-medium">{subsidiary.code}</p></div>
           <div><p className="text-gray-500">부자재명</p><p className="font-medium">{subsidiary.name}</p></div>
-          <div><p className="text-gray-500">단위</p><p>{subsidiary.unit}</p></div>
+          <div>
+            <p className="text-gray-500">단위</p>
+            <p>{UNIT_CATEGORY_LABELS[subsidiary.unitCategory as UnitCategory] ?? subsidiary.unitCategory} / {subsidiary.unit}</p>
+          </div>
           <div>
             <p className="text-gray-500">재고 등급</p>
             <p><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${subsidiary.stockGrade === "A" ? "bg-red-50 text-red-700" : subsidiary.stockGrade === "B" ? "bg-yellow-50 text-yellow-700" : "bg-green-50 text-green-700"}`}>{GRADE_LABELS[subsidiary.stockGrade] ?? subsidiary.stockGrade}</span></p>
@@ -116,6 +131,12 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
         </div>
       </div>
     );
+  };
+
+  const renderConversionTab = () => {
+    if (conversionView.mode === "new") return <UnitConversionForm defaultSubsidiaryId={subsidiary.id} onBack={() => setConversionView({ mode: "list" })} onSaved={() => setConversionView({ mode: "list" })} compact subsidiaryMode />;
+    if (conversionView.mode === "edit") return <UnitConversionForm item={conversionView.item} onBack={() => setConversionView({ mode: "list" })} onSaved={() => setConversionView({ mode: "list" })} compact subsidiaryMode />;
+    return <UnitConversionList subsidiaryId={subsidiary.id} onNew={() => setConversionView({ mode: "new" })} onEdit={(item) => setConversionView({ mode: "edit", item })} compact />;
   };
 
   const renderSuppliersTab = () => {
@@ -166,9 +187,11 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
         <Tabs defaultValue="info">
           <TabsList className="w-full">
             <TabsTrigger value="info" className="flex-1">기본정보</TabsTrigger>
+            <TabsTrigger value="conversions" className="flex-1">단위 환산</TabsTrigger>
             <TabsTrigger value="suppliers" className="flex-1">공급 품목 ({supplierItems.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="info" className="mt-4">{renderInfoTab()}</TabsContent>
+          <TabsContent value="conversions" className="mt-4">{renderConversionTab()}</TabsContent>
           <TabsContent value="suppliers" className="mt-4">{renderSuppliersTab()}</TabsContent>
         </Tabs>
       </DialogContent>

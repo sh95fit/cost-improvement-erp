@@ -50,6 +50,7 @@ export const createSubsidiarySchema = z.object({
     .string()
     .min(1, "단위는 필수입니다")
     .max(20, "단위는 20자 이내여야 합니다"),
+  unitCategory: z.enum(unitCategoryValues).transform((v) => v as UnitCategory),
   stockGrade: z
     .enum(stockGradeValues)
     .transform((v) => v as StockGrade)

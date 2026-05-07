@@ -25,6 +25,8 @@ import {
   getSubsidiariesAction,
   deleteSubsidiaryAction,
 } from "../actions/material.action";
+import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
+import type { UnitCategory } from "@prisma/client";
 import {
   Search,
   Plus,
@@ -32,12 +34,14 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export type SubsidiaryRow = {
   id: string;
   name: string;
   code: string;
   unit: string;
+  unitCategory: string;
   stockGrade: string;
   defaultSupplierItemId: string | null;
   defaultSupplierItem: {
@@ -54,6 +58,7 @@ export type SubsidiaryRow = {
 type Props = {
   onNew: () => void;
   onSelect: (item: SubsidiaryRow) => void;
+  refreshKey?: number;
 };
 
 const GRADE_LABELS: Record<string, string> = {
@@ -71,7 +76,7 @@ const GRADE_STYLES: Record<string, string> = {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
 
-export function SubsidiaryList({ onNew, onSelect }: Props) {
+export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
   const [items, setItems] = useState<SubsidiaryRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -106,7 +111,7 @@ export function SubsidiaryList({ onNew, onSelect }: Props) {
         setLoading(false);
       }
     },
-    [search]
+    [search, refreshKey]
   );
 
   useEffect(() => {
@@ -121,7 +126,10 @@ export function SubsidiaryList({ onNew, onSelect }: Props) {
     if (!deleteTarget) return;
     const result = await deleteSubsidiaryAction(deleteTarget.id);
     if (result.success) {
+      toast.success("부자재가 삭제되었습니다");
       fetchData(pagination.page);
+    } else {
+      toast.error(result.error?.message ?? "삭제에 실패했습니다");
     }
     setDeleteTarget(null);
   };
@@ -153,6 +161,7 @@ export function SubsidiaryList({ onNew, onSelect }: Props) {
             <TableRow>
               <TableHead>코드</TableHead>
               <TableHead>부자재명</TableHead>
+              <TableHead>단위 분류</TableHead>
               <TableHead>단위</TableHead>
               <TableHead className="text-center">재고 등급</TableHead>
               <TableHead>기본 공급업체</TableHead>
@@ -163,13 +172,13 @@ export function SubsidiaryList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                   등록된 부자재가 없습니다
                 </TableCell>
               </TableRow>
@@ -182,6 +191,11 @@ export function SubsidiaryList({ onNew, onSelect }: Props) {
                 >
                   <TableCell className="font-mono text-sm">{item.code}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell>
+                    <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {UNIT_CATEGORY_LABELS[item.unitCategory as keyof typeof UNIT_CATEGORY_LABELS] ?? item.unitCategory as string}
+                    </span>
+                  </TableCell>
                   <TableCell>{item.unit}</TableCell>
                   <TableCell className="text-center">
                     <span

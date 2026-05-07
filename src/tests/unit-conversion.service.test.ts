@@ -90,12 +90,13 @@ describe("unit-conversion.service", () => {
     it("should check for global duplicate", async () => {
       mockPrisma.unitConversion.findFirst.mockResolvedValue(null);
 
-      await findDuplicateConversion("company-1", null, "kg", "g");
+      await findDuplicateConversion("company-1", null, null, "kg", "g");
 
       const whereArg = mockPrisma.unitConversion.findFirst.mock.calls[0][0].where;
       expect(whereArg).toEqual({
         companyId: "company-1",
         materialMasterId: null,
+        subsidiaryMasterId: null,
         fromUnit: "kg",
         toUnit: "g",
       });
@@ -104,11 +105,12 @@ describe("unit-conversion.service", () => {
     it("should check for material-specific duplicate", async () => {
       mockPrisma.unitConversion.findFirst.mockResolvedValue({ id: "uc-1" });
 
-      const result = await findDuplicateConversion("company-1", "mat-1", "팩", "개");
+      const result = await findDuplicateConversion("company-1", "mat-1", null, "팩", "개");
 
       expect(result).toEqual({ id: "uc-1" });
       const whereArg = mockPrisma.unitConversion.findFirst.mock.calls[0][0].where;
       expect(whereArg.materialMasterId).toBe("mat-1");
+      expect(whereArg.subsidiaryMasterId).toBeNull();
     });
   });
 
@@ -120,6 +122,7 @@ describe("unit-conversion.service", () => {
 
       const result = await createUnitConversion("company-1", {
         materialMasterId: null,
+        subsidiaryMasterId: null,
         fromUnit: "kg",
         toUnit: "g",
         factor: 1000,
