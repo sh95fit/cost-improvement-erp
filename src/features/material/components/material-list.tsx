@@ -39,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { toast } from "sonner";
 
 type MaterialRow = {
   id: string;
@@ -70,9 +71,6 @@ type Props = {
 
 const MATERIAL_TYPE_LABELS: Record<string, string> = {
   RAW: "원자재",
-  SEASONING: "양념류",
-  PROCESSED: "가공식품",
-  SEMI: "반제품",
   OTHER: "기타",
 };
 
@@ -141,7 +139,10 @@ export function MaterialList({ onNew, onSelect }: Props) {
     if (!deleteTarget) return;
     const result = await deleteMaterialAction(deleteTarget.id);
     if (result.success) {
+      toast.success("자재가 삭제되었습니다");
       fetchMaterials(pagination.page);
+    } else {
+      toast.error("자재 삭제에 실패했습니다");
     }
     setDeleteTarget(null);
   };
@@ -167,9 +168,6 @@ export function MaterialList({ onNew, onSelect }: Props) {
           <SelectContent>
             <SelectItem value="all">전체</SelectItem>
             <SelectItem value="RAW">원자재</SelectItem>
-            <SelectItem value="SEASONING">양념류</SelectItem>
-            <SelectItem value="PROCESSED">가공식품</SelectItem>
-            <SelectItem value="SEMI">반제품</SelectItem>
             <SelectItem value="OTHER">기타</SelectItem>
           </SelectContent>
         </Select>
@@ -338,4 +336,3 @@ export function MaterialList({ onNew, onSelect }: Props) {
     </div>
   );
 }
-

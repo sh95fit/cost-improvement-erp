@@ -42,8 +42,6 @@ enum PermissionAction {
 
 enum MaterialType {
   RAW
-  PROCESSED
-  SEASONING
   OTHER
   @@map("material_type")
 }

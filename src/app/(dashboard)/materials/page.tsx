@@ -3,22 +3,15 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { MaterialList } from "@/features/material/components/material-list";
 import { MaterialForm } from "@/features/material/components/material-form";
-import { MaterialDetailPanel } from "@/features/material/components/material-detail-panel";
+import { MaterialDetailDialog } from "@/features/material/components/material-detail-panel";
 import { UnitConversionList } from "@/features/unit-conversion/components/unit-conversion-list";
 import { UnitConversionForm } from "@/features/unit-conversion/components/unit-conversion-form";
 import type { UnitConversionRow } from "@/features/unit-conversion/components/unit-conversion-list";
 import type { MaterialRow } from "@/features/material/components/material-list";
-
-type MaterialView =
-  | { mode: "list" }
-  | { mode: "new" };
 
 type ConversionView =
   | { mode: "list" }
@@ -26,7 +19,7 @@ type ConversionView =
   | { mode: "edit"; item: UnitConversionRow };
 
 export default function MaterialsPage() {
-  const [materialView, setMaterialView] = useState<MaterialView>({ mode: "list" });
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [conversionView, setConversionView] = useState<ConversionView>({ mode: "list" });
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialRow | null>(null);
   const [activeTab, setActiveTab] = useState("materials");
@@ -37,27 +30,6 @@ export default function MaterialsPage() {
     setRefreshKey((k) => k + 1);
   };
 
-  // ── 자재 탭 콘텐츠 ──
-  const renderMaterialTab = () => {
-    if (materialView.mode === "new") {
-      return (
-        <MaterialForm
-          onBack={() => setMaterialView({ mode: "list" })}
-          onSaved={() => setMaterialView({ mode: "list" })}
-        />
-      );
-    }
-
-    return (
-      <MaterialList
-        key={refreshKey}
-        onNew={() => setMaterialView({ mode: "new" })}
-        onSelect={(material) => setSelectedMaterial(material)}
-      />
-    );
-  };
-
-  // ── 단위 환산 탭 콘텐츠 ──
   const renderConversionTab = () => {
     if (conversionView.mode === "new") {
       return (
@@ -67,7 +39,6 @@ export default function MaterialsPage() {
         />
       );
     }
-
     if (conversionView.mode === "edit") {
       return (
         <UnitConversionForm
@@ -77,7 +48,6 @@ export default function MaterialsPage() {
         />
       );
     }
-
     return (
       <UnitConversionList
         onNew={() => setConversionView({ mode: "new" })}
@@ -90,9 +60,7 @@ export default function MaterialsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">자재 관리</h1>
-        <p className="text-sm text-gray-500">
-          식자재 마스터, 단위 환산 규칙을 관리합니다
-        </p>
+        <p className="text-sm text-gray-500">식자재 마스터, 단위 환산 규칙을 관리합니다</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -101,33 +69,40 @@ export default function MaterialsPage() {
           <TabsTrigger value="conversions">단위 환산</TabsTrigger>
         </TabsList>
         <TabsContent value="materials" className="mt-4">
-          {renderMaterialTab()}
+          <MaterialList
+            key={refreshKey}
+            onNew={() => setShowCreateDialog(true)}
+            onSelect={(material) => setSelectedMaterial(material)}
+          />
         </TabsContent>
         <TabsContent value="conversions" className="mt-4">
           {renderConversionTab()}
         </TabsContent>
       </Tabs>
 
-      {/* 자재 상세 패널 (Sheet) */}
-      <Sheet
-        open={!!selectedMaterial}
-        onOpenChange={(open) => {
-          if (!open) setSelectedMaterial(null);
-        }}
-      >
-        <SheetContent side="right" className="w-full p-0 sm:max-w-2xl" aria-describedby={undefined}>
-          <SheetHeader className="sr-only">
-            <SheetTitle>{selectedMaterial?.name ?? "자재 상세"}</SheetTitle>
-          </SheetHeader>
-          {selectedMaterial && (
-            <MaterialDetailPanel
-              material={selectedMaterial}
-              onClose={() => setSelectedMaterial(null)}
-              onUpdated={handleMaterialUpdated}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* 자재 등록 Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>자재 등록</DialogTitle>
+            <DialogDescription>새로운 자재를 등록합니다</DialogDescription>
+          </DialogHeader>
+          <MaterialForm
+            onCancel={() => setShowCreateDialog(false)}
+            onSaved={() => { setShowCreateDialog(false); setRefreshKey((k) => k + 1); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* 자재 상세 Dialog */}
+      {selectedMaterial && (
+        <MaterialDetailDialog
+          material={selectedMaterial}
+          open={!!selectedMaterial}
+          onOpenChange={(open) => { if (!open) setSelectedMaterial(null); }}
+          onUpdated={handleMaterialUpdated}
+        />
+      )}
     </div>
   );
 }

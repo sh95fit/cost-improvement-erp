@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -22,13 +15,14 @@ import {
   createMaterialAction,
   updateMaterialAction,
 } from "../actions/material.action";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { Save, Loader2 } from "lucide-react";
 import {
   UNIT_OPTIONS,
   UNIT_CATEGORY_LABELS,
   getUnitOptionsByCategory,
 } from "@/lib/constants/unit-options";
 import type { UnitCategory } from "@prisma/client";
+import { toast } from "sonner";
 
 type Props = {
   material?: {
@@ -43,12 +37,11 @@ type Props = {
     minStock?: number | null;
     maxStock?: number | null;
   } | null;
-  onBack: () => void;
   onSaved: () => void;
-  compact?: boolean;
+  onCancel: () => void;
 };
 
-export function MaterialForm({ material, onBack, onSaved, compact = false }: Props) {
+export function MaterialForm({ material, onSaved, onCancel }: Props) {
   const isEdit = !!material;
 
   const [name, setName] = useState(material?.name ?? "");
@@ -74,7 +67,6 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 카테고리 변경 시: 현재 unit이 새 카테고리 옵션에 없으면 첫 번째 값으로 초기화
   useEffect(() => {
     const options = getUnitOptionsByCategory(unitCategory as UnitCategory);
     const exists = options.some((opt) => opt.value === unit);
@@ -113,6 +105,7 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
         : await createMaterialAction(input);
 
       if (result.success) {
+        toast.success(isEdit ? "자재가 수정되었습니다" : "자재가 등록되었습니다");
         onSaved();
       } else {
         setError(result.error.message);
@@ -124,7 +117,7 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
     }
   };
 
-  const formContent = (
+  return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
         <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
@@ -132,14 +125,11 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
         </div>
       )}
 
-      {/* 수정 모드: 코드 표시 */}
       {isEdit && (
         <div className="space-y-2">
           <Label>자재 코드</Label>
           <Input value={material!.code} disabled />
-          <p className="text-xs text-gray-500">
-            코드는 자동 생성되며 수정할 수 없습니다
-          </p>
+          <p className="text-xs text-gray-500">코드는 자동 생성되며 수정할 수 없습니다</p>
         </div>
       )}
 
@@ -165,9 +155,6 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="RAW">원자재</SelectItem>
-                <SelectItem value="SEASONING">양념류</SelectItem>
-                <SelectItem value="PROCESSED">가공식품</SelectItem>
-                <SelectItem value="SEMI">반제품</SelectItem>
                 <SelectItem value="OTHER">기타</SelectItem>
               </SelectContent>
             </Select>
@@ -175,7 +162,7 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
         </div>
       </div>
 
-      {/* 단위 / 분류 — Select Box 변환 (Phase 3) */}
+      {/* 단위 / 분류 */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-gray-700">단위 / 분류</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -231,81 +218,29 @@ export function MaterialForm({ material, onBack, onSaved, compact = false }: Pro
           </div>
           <div className="space-y-2">
             <Label htmlFor="shelfLifeDays">유통기한 (일)</Label>
-            <Input
-              id="shelfLifeDays"
-              type="number"
-              min={0}
-              placeholder="예: 7"
-              value={shelfLifeDays}
-              onChange={(e) => setShelfLifeDays(e.target.value)}
-            />
+            <Input id="shelfLifeDays" type="number" min={0} placeholder="예: 7" value={shelfLifeDays} onChange={(e) => setShelfLifeDays(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="minStock">최소 재고량</Label>
-            <Input
-              id="minStock"
-              type="number"
-              min={0}
-              step="any"
-              placeholder="예: 10"
-              value={minStock}
-              onChange={(e) => setMinStock(e.target.value)}
-            />
+            <Input id="minStock" type="number" min={0} step="any" placeholder="예: 10" value={minStock} onChange={(e) => setMinStock(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="maxStock">최대 재고량</Label>
-            <Input
-              id="maxStock"
-              type="number"
-              min={0}
-              step="any"
-              placeholder="예: 100"
-              value={maxStock}
-              onChange={(e) => setMaxStock(e.target.value)}
-            />
+            <Input id="maxStock" type="number" min={0} step="any" placeholder="예: 100" value={maxStock} onChange={(e) => setMaxStock(e.target.value)} />
           </div>
         </div>
       </div>
 
       {/* 버튼 */}
       <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" onClick={onBack}>
+        <Button type="button" variant="outline" onClick={onCancel}>
           취소
         </Button>
         <Button type="submit" disabled={loading}>
-          {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           {isEdit ? "수정" : "등록"}
         </Button>
       </div>
     </form>
-  );
-
-  if (compact) {
-    return formContent;
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <CardTitle>{isEdit ? "자재 수정" : "자재 등록"}</CardTitle>
-            <CardDescription>
-              {isEdit
-                ? `${material!.code} - ${material!.name} 정보를 수정합니다`
-                : "새로운 자재를 등록합니다"}
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>{formContent}</CardContent>
-    </Card>
   );
 }

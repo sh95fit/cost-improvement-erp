@@ -186,17 +186,18 @@ async function main() {
     { name: "쌀", code: "MAT-001", materialType: "RAW" as const, unit: "kg", unitCategory: "WEIGHT" as const },
     { name: "닭가슴살", code: "MAT-002", materialType: "RAW" as const, unit: "kg", unitCategory: "WEIGHT" as const },
     { name: "양파", code: "MAT-003", materialType: "RAW" as const, unit: "kg", unitCategory: "WEIGHT" as const },
-    { name: "간장", code: "MAT-004", materialType: "SEASONING" as const, unit: "L", unitCategory: "VOLUME" as const },
-    { name: "참기름", code: "MAT-005", materialType: "SEASONING" as const, unit: "L", unitCategory: "VOLUME" as const },
-    { name: "냉동만두", code: "MAT-006", materialType: "PROCESSED" as const, unit: "kg", unitCategory: "WEIGHT" as const },
+    { name: "간장", code: "MAT-004", materialType: "RAW" as const, unit: "L", unitCategory: "VOLUME" as const },
+    { name: "참기름", code: "MAT-005", materialType: "RAW" as const, unit: "L", unitCategory: "VOLUME" as const },
+    { name: "냉동만두", code: "MAT-006", materialType: "RAW" as const, unit: "kg", unitCategory: "WEIGHT" as const },
   ];
+  
 
   const materialRecords: Record<string, string> = {};
   for (const mat of materials) {
     const record = await prisma.materialMaster.upsert({
       where: { companyId_code: { companyId: company.id, code: mat.code } },
       update: {},
-      create: { companyId: company.id, ...mat, shelfLifeDays: mat.materialType === "RAW" ? 7 : 180 },
+      create: { companyId: company.id, ...mat, shelfLifeDays: 7 },
     });
     materialRecords[mat.code] = record.id;
   }
