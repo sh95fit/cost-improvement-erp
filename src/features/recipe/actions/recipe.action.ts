@@ -593,6 +593,43 @@ export async function deleteRecipeBOMSlotItemAction(
   }
 }
 
+// ── RecipeBOM 복제 ──
+export async function duplicateRecipeBOMAction(
+  sourceBomId: string
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "CREATE");
+
+    const newBom = await recipeBomService.duplicateRecipeBOM(
+      session.companyId,
+      sourceBomId
+    );
+
+    await createAuditLog({
+      session,
+      action: "CREATE",
+      entityType: "RecipeBOM",
+      entityId: newBom?.id ?? "",
+      after: { duplicatedFrom: sourceBomId, version: newBom?.version } as unknown as Record<string, unknown>,
+    });
+
+    return actionOk(newBom);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED")
+        return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
+      if (error.message === "COMPANY_NOT_ASSIGNED")
+        return actionFail("COMPANY_NOT_ASSIGNED", "회사가 지정되지 않았습니다");
+      if (error.message === "FORBIDDEN")
+        return actionFail("FORBIDDEN", "권한이 없습니다");
+      if (error.message === "NOT_FOUND")
+        return actionFail("NOT_FOUND", "원본 BOM을 찾을 수 없습니다");
+    }
+    return actionFail("INTERNAL_ERROR", "BOM 복제에 실패했습니다");
+  }
+}
+
 // ════════════════════════════════════════
 // SemiProduct Actions
 // ════════════════════════════════════════

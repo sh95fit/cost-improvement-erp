@@ -339,3 +339,90 @@ export async function deleteRecipeBOMSlotItem(id: string) {
     where: { id },
   });
 }
+
+// ════════════════════════════════════════
+// RecipeBOM 복제 (신규)
+// ════════════════════════════════════════
+
+/**
+ * 기존 RecipeBOM을 복제하여 새 DRAFT 버전을 생성한다.
+ * - 슬롯(RecipeBOMSlot) 전체 복사
+ * - 슬롯 아이템(RecipeBOMSlotItem) 전체 복사
+ * - 새 버전 번호 자동 채번
+ * - 상태: DRAFT, activatedAt: null
+ */
+export async function duplicateRecipeBOM(
+  companyId: string,
+  sourceBomId: string
+) {
+  // 1. 원본 BOM 전체 조회
+  const source = await getRecipeBOMById(companyId, sourceBomId);
+
+  // 2. 다음 버전 번호
+  const nextVersion = await getNextRecipeBOMVersion(companyId, source.recipe.id);
+
+  // 3. 트랜잭션으로 복제
+  return withTransaction(async (tx) => {
+    // 3-1. RecipeBOM 생성
+    const newBom = await tx.recipeBOM.create({
+      data: {
+        companyId,
+        recipeId: source.recipe.id,
+        version: nextVersion,
+        status: "DRAFT",
+        baseWeightG: source.baseWeightG,
+        activatedAt: null,
+      },
+    });
+
+    // 3-2. 각 슬롯 복사
+    for (const slot of source.slots) {
+      const newSlot = await tx.recipeBOMSlot.create({
+        data: {
+          recipeBomId: newBom.id,
+          containerGroupId: slot.containerGroupId,
+          slotIndex: slot.slotIndex,
+          totalWeightG: slot.totalWeightG,
+          note: slot.note,
+          sortOrder: slot.sortOrder,
+        },
+      });
+
+      // 3-3. 각 슬롯의 아이템 복사
+      if (slot.items.length > 0) {
+        await tx.recipeBOMSlotItem.createMany({
+          data: slot.items.map((item) => ({
+            recipeBomSlotId: newSlot.id,
+            ingredientType: item.ingredientType,
+            materialMasterId: item.materialMasterId,
+            semiProductId: item.semiProductId,
+            weightG: item.weightG,
+            unit: item.unit,
+            sortOrder: item.sortOrder,
+          })),
+        });
+      }
+    }
+
+    // 4. 생성된 BOM을 include하여 반환
+    return tx.recipeBOM.findUnique({
+      where: { id: newBom.id },
+      include: {
+        recipe: { select: { id: true, name: true, code: true } },
+        slots: {
+          include: {
+            containerGroup: { select: { id: true, name: true, code: true } },
+            items: {
+              include: {
+                materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+                semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+              },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    });
+  });
+}
