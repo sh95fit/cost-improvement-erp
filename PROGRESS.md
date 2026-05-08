@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-07 (Phase 5 완료 — RecipeBOM 복제 서비스)
+> 마지막 갱신: 2026-05-08 (Phase 9 완료 — supplier toast 확대)
 
 ---
 
@@ -267,20 +267,47 @@
   - subsidiary-form.tsx: toast import ✅, 등록/수정 성공 toast.success ✅
   - subsidiary-detail-panel.tsx: toast import ✅, 기본 공급업체 설정/해제 toast.success ✅
 
-### Phase 9 — Toast 확대: supplier (4개 컴포넌트) ⬜
-- **예정일**: 2026-05-08
-- **예상 시간**: 1h
-- **대상**: supplier-list, supplier-form, supplier-item-list, supplier-item-form
-- **작업**:
-  - [ ] 4개 파일에 `import { toast } from "sonner"` 추가
-  - [ ] 삭제 성공/실패 toast (supplier-list, supplier-item-list)
-  - [ ] 등록/수정 성공/실패 toast (supplier-form, supplier-item-form)
-  - [ ] fetch 실패 toast (supplier-list, supplier-item-list)
-  - [ ] supplier-item-form 한글 깨진 문자열 복원
+### Phase 9 — Toast 확대: supplier (4개 컴포넌트) ✅
+- **날짜**: 2026-05-08
+- **커밋**: `98e438e`
+- **변경 파일**: 5개
+  - `src/features/supplier/components/supplier-list.tsx` — toast import + 삭제 성공/실패 + fetch 실패 toast
+  - `src/features/supplier/components/supplier-form.tsx` — toast import + 등록/수정 성공/실패 toast
+  - `src/features/supplier/components/supplier-item-list.tsx` — toast import + 삭제 성공/실패 + fetch 실패 toast
+  - `src/features/supplier/components/supplier-item-form.tsx` — toast import + 등록/수정 성공/실패 toast + 한글 깨짐 복원
+  - `PROGRESS.md` — Phase 6~8 완료 반영
+- **완료 항목**:
+  - [x] supplier-list: 삭제 성공 toast.success, 삭제 실패 toast.error, fetch 실패 toast.error
+  - [x] supplier-form: 등록/수정 성공 toast.success (분기 메시지), 실패 toast.error
+  - [x] supplier-item-list: 삭제 성공 toast.success, 삭제 실패 toast.error, fetch 실패 toast.error
+  - [x] supplier-item-form: 등록/수정 성공 toast.success (분기 메시지), 실패 toast.error, 한글 복원
+  - [x] TypeScript 오류 0건, 기존 135 테스트 PASS 유지
 
-### Phase 10 — Toast 확대: recipe + semi-product + unit-conversion (7개 컴포넌트) ⬜
-- **예정일**: 2026-05-10 ~ 2026-05-11
-- **예상 시간**: 2.5h
+### Phase 10 — Toast 확대: recipe + semi-product (5개 컴포넌트) ⬜
+- **예정일**: 2026-05-08
+- **예상 시간**: 2h
+- **대상 파일**: 5개 + PROGRESS.md
+  - `src/features/recipe/components/recipe-list.tsx`
+  - `src/features/recipe/components/recipe-form.tsx`
+  - `src/features/recipe/components/semi-product-list.tsx`
+  - `src/features/recipe/components/semi-product-form.tsx`
+  - `src/features/recipe/components/semi-product-detail-dialog.tsx`
+- **레포 검증 결과** (Phase 9 검증 시 확인):
+  - recipe-detail-dialog.tsx: 이미 toast 적용 완료 ✅ → 제외
+  - unit-conversion-list.tsx: 이미 toast 적용 완료 ✅ → 제외
+  - unit-conversion-form.tsx: 이미 toast 적용 완료 ✅ → 제외
+  - unit-master-list.tsx: 이미 toast 적용 완료 ✅ → 제외
+  - containers/page.tsx: 이미 toast 적용 완료 ✅ → 제외
+  - **미적용 5개 파일만 작업 대상으로 확정**
+- **작업**:
+  - [ ] recipe-list.tsx: `import { toast } from "sonner"` + 삭제 성공 `toast.success("레시피가 삭제되었습니다")`, 삭제 실패 `toast.error(...)`, fetch 실패 `toast.error("목록을 불러오는데 실패했습니다")`
+  - [ ] recipe-form.tsx: toast import + 등록 성공 `toast.success("레시피가 등록되었습니다")`, 수정 성공 `toast.success("레시피가 수정되었습니다")`, 실패 `toast.error(...)`
+  - [ ] semi-product-list.tsx: toast import + 삭제 성공 `toast.success("반제품이 삭제되었습니다")`, 삭제 실패 `toast.error(...)`, fetch 실패 `toast.error("목록을 불러오는데 실패했습니다")`
+  - [ ] semi-product-form.tsx: toast import + 등록 성공 `toast.success("반제품이 등록되었습니다")`, 수정 성공 `toast.success("반제품이 수정되었습니다")`, 실패 `toast.error(...)`
+  - [ ] semi-product-detail-dialog.tsx: toast import + BOM 생성/상태변경/삭제 성공·실패 toast, 아이템 추가/수량수정/삭제 성공·실패 toast (기존 `setErrorMessage` 패턴은 인라인 에러로 유지하되 toast 병행)
+  - [ ] PROGRESS.md Phase 10 ✅ 마킹
+- **패턴**: supplier 4개 파일과 동일 (success → toast.success, error → toast.error)
+- **검증**: `npx tsc --noEmit` + `npx vitest run` (135+ tests PASS)
 
 ### Phase 11 — CONVENTIONS.md 전수 점검 ⬜
 - **예정일**: 2026-05-11
