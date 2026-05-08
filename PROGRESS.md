@@ -286,7 +286,6 @@
 ### Phase 10 — Toast 확대: recipe + semi-product (5개 컴포넌트) ✅
 - **날짜**: 2026-05-08
 - **커밋**: `1109e4f` (코드), `b0c3f99` (docs)
-- **예상 시간**: 2h
 - **대상 파일**: 5개 + PROGRESS.md
   - `src/features/recipe/components/recipe-list.tsx`
   - `src/features/recipe/components/recipe-form.tsx`
