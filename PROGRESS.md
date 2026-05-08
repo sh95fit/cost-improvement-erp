@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-08 (Phase 9 완료 — supplier toast 확대)
+> 마지막 갱신: 2026-05-08 (Phase 10 완료 — recipe·semi-product toast 확대)
 
 ---
 
@@ -283,8 +283,9 @@
   - [x] supplier-item-form: 등록/수정 성공 toast.success (분기 메시지), 실패 toast.error, 한글 복원
   - [x] TypeScript 오류 0건, 기존 135 테스트 PASS 유지
 
-### Phase 10 — Toast 확대: recipe + semi-product (5개 컴포넌트) ⬜
-- **예정일**: 2026-05-08
+### Phase 10 — Toast 확대: recipe + semi-product (5개 컴포넌트) ✅
+- **날짜**: 2026-05-08
+- **커밋**: `1109e4f` (코드), `b0c3f99` (docs)
 - **예상 시간**: 2h
 - **대상 파일**: 5개 + PROGRESS.md
   - `src/features/recipe/components/recipe-list.tsx`
