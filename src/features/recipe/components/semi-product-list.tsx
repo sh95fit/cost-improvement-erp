@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getSemiProductsAction, deleteSemiProductAction } from "../actions/recipe.action";
 import { Search, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 export type SemiProductRow = {
   id: string;
@@ -68,7 +69,11 @@ export function SemiProductList({ onNew, onSelect }: Props) {
           };
           setItems(data.items);
           setPagination(data.pagination);
+        } else {
+          toast.error("목록을 불러오는데 실패했습니다");
         }
+      } catch {
+        toast.error("목록을 불러오는데 실패했습니다");
       } finally {
         setLoading(false);
       }
@@ -86,9 +91,16 @@ export function SemiProductList({ onNew, onSelect }: Props) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const result = await deleteSemiProductAction(deleteTarget.id);
-    if (result.success) {
-      fetchData(pagination.page);
+    try {
+      const result = await deleteSemiProductAction(deleteTarget.id);
+      if (result.success) {
+        toast.success("반제품이 삭제되었습니다");
+        fetchData(pagination.page);
+      } else {
+        toast.error(result.error?.message || "삭제에 실패했습니다");
+      }
+    } catch {
+      toast.error("삭제 중 오류가 발생했습니다");
     }
     setDeleteTarget(null);
   };

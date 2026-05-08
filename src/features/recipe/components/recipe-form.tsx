@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { createRecipeAction, updateRecipeAction } from "../actions/recipe.action";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 type Props = {
   recipe?: { id: string; code: string; name: string; description: string | null } | null;
@@ -46,11 +47,14 @@ export function RecipeForm({ recipe, onBack, onSaved, compact = false }: Props) 
         : await createRecipeAction(input);
 
       if (result.success) {
+        toast.success(isEdit ? "레시피가 수정되었습니다" : "레시피가 등록되었습니다");
         onSaved();
       } else {
+        toast.error(result.error.message || "저장에 실패했습니다");
         setError(result.error.message);
       }
     } catch {
+      toast.error("요청 처리 중 오류가 발생했습니다");
       setError("요청 처리 중 오류가 발생했습니다");
     } finally {
       setLoading(false);
