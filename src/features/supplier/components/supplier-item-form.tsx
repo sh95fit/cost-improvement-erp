@@ -25,6 +25,7 @@ import {
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import { getSubsidiariesAction } from "@/features/material/actions/material.action";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 type MaterialOption = { id: string; name: string; code: string };
 type SubsidiaryOption = { id: string; name: string; code: string };
@@ -134,8 +135,10 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
         };
         const result = await updateSupplierItemAction(item!.id, input);
         if (result.success) {
+          toast.success("공급 품목이 수정되었습니다");
           onSaved();
         } else {
+          toast.error(result.error.message || "저장에 실패했습니다");
           setError(result.error.message);
         }
       } else {
@@ -154,12 +157,15 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
         };
         const result = await createSupplierItemAction(supplierId, input);
         if (result.success) {
+          toast.success("공급 품목이 등록되었습니다");
           onSaved();
         } else {
+          toast.error(result.error.message || "저장에 실패했습니다");
           setError(result.error.message);
         }
       }
     } catch {
+      toast.error("요청 처리 중 오류가 발생했습니다");
       setError("요청 처리 중 오류가 발생했습니다");
     } finally {
       setLoading(false);
@@ -174,7 +180,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <CardTitle>{isEdit ? "공급 품목 수정" : "공급 품목 등록"}</CardTitle>
+            <CardTitle>{isEdit ? "품목 수정" : "품목 등록"}</CardTitle>
             <CardDescription>
               {isEdit
                 ? "공급 품목 정보를 수정합니다"
@@ -191,9 +197,9 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
             </div>
           )}
 
-          {/* 품목 선택 */}
+          {/* 품목 유형 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">품목 선택</h3>
+            <h3 className="text-sm font-semibold text-gray-700">품목 유형</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>품목 유형 *</Label>
@@ -227,7 +233,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                     disabled={isEdit}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="식자재를 선택하세요" />
+                      <SelectValue placeholder="식자재 선택" />
                     </SelectTrigger>
                     <SelectContent>
                       {materials.map((m) => (
@@ -244,7 +250,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                     disabled={isEdit}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="부자재를 선택하세요" />
+                      <SelectValue placeholder="부자재 선택" />
                     </SelectTrigger>
                     <SelectContent>
                       {subsidiaries.map((s) => (
@@ -267,41 +273,41 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                 <Label htmlFor="productName">제품명 *</Label>
                 <Input
                   id="productName"
-                  placeholder="예: 고향냉동만두, 백설냉동만두"
+                  placeholder="예: 국산 닭가슴살, 일회용 장갑"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   required
                   maxLength={100}
                 />
                 <p className="text-xs text-gray-500">
-                  공급업체에서 납품하는 실제 제품명
+                  공급업체에서 사용하는 제품명을 입력하세요
                 </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="spec">규격</Label>
                 <Input
                   id="spec"
-                  placeholder="예: 1.4kg, 500ml, 20개입"
+                  placeholder="예: 1.4kg, 500ml, 20매"
                   value={spec}
                   onChange={(e) => setSpec(e.target.value)}
                   maxLength={50}
                 />
                 <p className="text-xs text-gray-500">
-                  용량, 중량, 포장단위 등
+                  중량, 용량, 수량 등 규격 정보
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 공급 정보 */}
+          {/* 공급 조건 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">공급 정보</h3>
+            <h3 className="text-sm font-semibold text-gray-700">공급 조건</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="supplyUnit">공급 단위 *</Label>
                 <Input
                   id="supplyUnit"
-                  placeholder="예: 박스, 포대, 봉"
+                  placeholder="예: 박스, 봉, 팩"
                   value={supplyUnit}
                   onChange={(e) => setSupplyUnit(e.target.value)}
                   required
@@ -320,7 +326,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                   required
                 />
                 <p className="text-xs text-gray-500">
-                  1 공급단위 = 몇 기본단위
+                  1 공급단위 = 기본단위 수량
                 </p>
               </div>
               <div className="space-y-2">
@@ -335,7 +341,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                   onChange={(e) => setCurrentPrice(e.target.value)}
                   required
                 />
-                <p className="text-xs text-gray-500">공급단위 기준 가격</p>
+                <p className="text-xs text-gray-500">공급 단위당 가격</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="leadTimeDays">리드타임 (일)</Label>

@@ -209,32 +209,74 @@
   - [x] TypeScript 오류 0건 확인
 - **부분 해소된 이슈**: Issue #5 (BOM 등록 후 수정 불가) → 서비스/액션 계층 완료. UI 연동은 Phase 6에서 진행
 
-### Phase 6 — BOM UI 완전 보강 ⬜
-- **예정일**: 2026-05-08 ~ 2026-05-09
-- **예상 시간**: 6h
-- **작업 범위**:
-  - [ ] ACTIVE BOM "보관" 버튼, 모든 상태 BOM에 "복제해서 새 버전" 버튼 (duplicateRecipeBOMAction 연동)
-  - [ ] DRAFT BOM baseWeightG 인라인 편집
-  - [ ] 슬롯 인라인 편집 (totalWeightG, note)
-  - [ ] 슬롯별 "재료 추가" 버튼
-  - [ ] 슬롯 이름에 ContainerSlot 실제 라벨 표시 (이슈 #6)
-  - [ ] 레시피 기본정보 탭에 "배식 구성" 섹션 추가 (이슈 #7)
-  - [ ] 재료 추가 연속 모드 + combobox 전환 (이슈 #3, #4)
+### Phase 6 — BOM UI 완전 보강 ✅
+- **날짜**: 2026-05-07
+- **커밋**: `768aa71` (Phase 6), `aaa76cc` (Phase 6-b 보완)
+- **변경 파일**: 2개 커밋 합산
+  - `src/app/(dashboard)/recipes/page.tsx` → 내부 `recipe-detail-dialog.tsx` — BOM 복제/보관 버튼, baseWeightG·슬롯 인라인 편집, 슬롯별 재료 추가, ContainerSlot 라벨 표시, 배식 구성 섹션, 연속추가 모드 + Combobox 전환
+  - `src/features/recipe/actions/recipe.action.ts` — `updateRecipeBOMBaseWeightAction`에 `buildRecipeBOMSnapshot` 호출 추가 (before 스냅샷 감사 로그)
+- **완료 항목**:
+  - [x] ACTIVE BOM "보관" 버튼 (`updateRecipeBOMStatusAction` 연동)
+  - [x] 모든 상태 BOM에 "복제해서 새 버전" 버튼 (`duplicateRecipeBOMAction` 연동)
+  - [x] DRAFT BOM baseWeightG 인라인 편집
+  - [x] 슬롯 인라인 편집 (totalWeightG, note)
+  - [x] 슬롯별 "재료 추가" 버튼
+  - [x] 슬롯 이름에 ContainerSlot 실제 라벨 표시 (이슈 #6 해소)
+  - [x] 레시피 기본정보 탭에 "배식 구성" 섹션 추가 (이슈 #7 해소)
+  - [x] 재료 추가 연속 모드 + combobox 전환 (이슈 #3, #4 해소)
+  - [x] ACTIVE BOM 중량/메모 편집 허용 + before 스냅샷 감사 로그 (Phase 6-b)
+  - [x] TypeScript 오류 0건 확인
+- **BOM 편집 정책 요약**:
+  - ACTIVE BOM — 중량/메모 편집 가능, 스냅샷 감사 로그 기록
+  - DRAFT BOM — 중량/메모 편집 + 슬롯 추가/삭제 가능
+  - ARCHIVED BOM — 읽기 전용
+  - 버전 관리: 복제 → DRAFT 편집 → ACTIVE 확정
+- **해소된 이슈**:
+  - Issue #3 (재료 추가 모달 즉시 닫힘) → ✅ 연속 추가 모드로 해소
+  - Issue #4 (Select Box 불편) → ✅ Combobox 전환으로 해소
+  - Issue #5 (BOM 등록 후 수정 불가) → ✅ 복제+편집 UI 완성으로 완전 해소
+  - Issue #6 (슬롯 이름 미표시) → ✅ ContainerSlot 라벨 표시로 해소
+  - Issue #7 (배식 구성 요약 없음) → ✅ 배식 구성 섹션 추가로 해소
 
-### Phase 7 — container.service.test.ts 작성 ⬜
-- **예정일**: 2026-05-09
-- **예상 시간**: 1.5h
-- **작업 범위**: 그룹 CRUD, 슬롯 CRUD, 페이지네이션, soft-delete, 의존성 삭제 차단 테스트
+### Phase 7 — container.service.test.ts 작성 ✅
+- **날짜**: 2026-05-08
+- **커밋**: `e14490a`
+- **변경 파일**: 3개
+  - `package.json` — `"test": "vitest run"`, `"test:watch": "vitest"` 스크립트 추가
+  - `src/tests/mocks/prisma.ts` — `containerSlot`, `containerAccessory`, `mealTemplate` 모델 mock 추가
+  - `src/tests/container.service.test.ts` — 신규 파일, 30개 테스트 케이스
+- **완료 항목**:
+  - [x] package.json에 test 스크립트 추가
+  - [x] 공통 Prisma mock에 누락 모델 3개 추가
+  - [x] ContainerGroup CRUD 테스트 (getContainerGroups pagination·search, getById, create auto-code, update, delete soft-delete + NOT_FOUND)
+  - [x] ContainerGroup 삭제 의존성 차단 테스트 (MealTemplate, RecipeBOMSlot, 복합 의존)
+  - [x] ContainerSlot CRUD 테스트 (add auto-index, null volumeMl, update, delete + dependency check)
+  - [x] checkContainerGroupDependency / checkContainerSlotDependency 테스트
+  - [x] ContainerAccessory add/update/delete 테스트
+  - [x] 전체 9개 테스트 파일, 135개 테스트 PASS 확인
+- **테스트 실행 결과**: 9 files | 135 tests | 0 failed
 
-### Phase 8 — Toast 확대: material + subsidiary (6개 컴포넌트) ⬜
-- **예정일**: 2026-05-09 ~ 2026-05-10
-- **예상 시간**: 3h
-- **대상**: material-list, material-form, material-detail-panel, subsidiary-list, subsidiary-form, subsidiary-detail-panel
+### Phase 8 — Toast 확대: material + subsidiary (6개 컴포넌트) ✅ (스킵)
+- **날짜**: 2026-05-08
+- **상태**: 검증 결과 6개 파일 모두 이미 toast import 및 toast.success/error 적용 완료 → 별도 작업 불필요
+- **검증 내역**:
+  - material-list.tsx: toast import ✅, 삭제 성공 toast.success ✅, 삭제 실패 toast.error ✅
+  - material-form.tsx: toast import ✅, 등록/수정 성공 toast.success ✅
+  - material-detail-panel.tsx: toast import ✅, 기본 공급업체 설정/해제 toast.success ✅
+  - subsidiary-list.tsx: toast import ✅, 삭제 성공 toast.success ✅, 삭제 실패 toast.error ✅
+  - subsidiary-form.tsx: toast import ✅, 등록/수정 성공 toast.success ✅
+  - subsidiary-detail-panel.tsx: toast import ✅, 기본 공급업체 설정/해제 toast.success ✅
 
 ### Phase 9 — Toast 확대: supplier (4개 컴포넌트) ⬜
-- **예정일**: 2026-05-10
-- **예상 시간**: 2h
+- **예정일**: 2026-05-08
+- **예상 시간**: 1h
 - **대상**: supplier-list, supplier-form, supplier-item-list, supplier-item-form
+- **작업**:
+  - [ ] 4개 파일에 `import { toast } from "sonner"` 추가
+  - [ ] 삭제 성공/실패 toast (supplier-list, supplier-item-list)
+  - [ ] 등록/수정 성공/실패 toast (supplier-form, supplier-item-form)
+  - [ ] fetch 실패 toast (supplier-list, supplier-item-list)
+  - [ ] supplier-item-form 한글 깨진 문자열 복원
 
 ### Phase 10 — Toast 확대: recipe + semi-product + unit-conversion (7개 컴포넌트) ⬜
 - **예정일**: 2026-05-10 ~ 2026-05-11

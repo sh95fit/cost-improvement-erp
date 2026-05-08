@@ -24,6 +24,7 @@ import {
 import { getSuppliersAction, deleteSupplierAction } from "../actions/supplier.action";
 import type { Supplier } from "@prisma/client";
 import { Search, Plus, Trash2, Pencil, ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { toast } from "sonner";
 
 type SupplierWithCount = Supplier & { _count: { supplierItems: number } };
 
@@ -59,7 +60,11 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
       if (result.success) {
         setItems(result.data.items);
         setPagination(result.data.pagination);
+      } else {
+        toast.error("목록을 불러오는데 실패했습니다");
       }
+    } catch {
+      toast.error("목록을 불러오는데 실패했습니다");
     } finally {
       setLoading(false);
     }
@@ -82,7 +87,10 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
 
     const result = await deleteSupplierAction(deleteTarget.id);
     if (result.success) {
+      toast.success("공급업체가 삭제되었습니다");
       fetchSuppliers(pagination.page);
+    } else {
+      toast.error(result.error.message || "삭제에 실패했습니다");
     }
     setDeleteTarget(null);
   };

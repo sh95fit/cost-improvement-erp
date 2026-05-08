@@ -42,6 +42,7 @@ import {
   Loader2,
   Package,
 } from "lucide-react";
+import { toast } from "sonner";
 
 type SupplierItemRow = {
   id: string;
@@ -102,9 +103,11 @@ export function SupplierItemList({
       const result = await getSupplierItemsAction(supplier.id);
       if (result.success) {
         setItems(result.data as unknown as SupplierItemRow[]);
+      } else {
+        toast.error("품목 목록을 불러오는데 실패했습니다");
       }
     } catch {
-      /* empty */
+      toast.error("품목 목록을 불러오는데 실패했습니다");
     } finally {
       setLoading(false);
     }
@@ -118,8 +121,12 @@ export function SupplierItemList({
     if (!deleteTarget) return;
     const result = await deleteSupplierItemAction(deleteTarget.id);
     if (result.success) {
+      toast.success("공급 품목이 삭제되었습니다");
       setDeleteTarget(null);
       fetchItems();
+    } else {
+      toast.error(result.error.message || "삭제에 실패했습니다");
+      setDeleteTarget(null);
     }
   };
 

@@ -18,6 +18,7 @@ import {
 } from "../actions/supplier.action";
 import type { Supplier } from "@prisma/client";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 type Props = {
   supplier?: Supplier | null;
@@ -63,11 +64,14 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
         : await createSupplierAction(input);
 
       if (result.success) {
+        toast.success(isEdit ? "공급업체 정보가 수정되었습니다" : "공급업체가 등록되었습니다");
         onSaved();
       } else {
+        toast.error(result.error.message || "저장에 실패했습니다");
         setError(result.error.message);
       }
     } catch {
+      toast.error("요청 처리 중 오류가 발생했습니다");
       setError("요청 처리 중 오류가 발생했습니다");
     } finally {
       setLoading(false);
