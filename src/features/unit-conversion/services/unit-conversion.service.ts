@@ -1,4 +1,6 @@
+// src/features/unit-conversion/services/unit-conversion.service.ts
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import type {
   CreateUnitConversionInput,
   UpdateUnitConversionInput,
@@ -13,8 +15,7 @@ export async function getUnitConversions(
   const { page, limit, search, materialId, subsidiaryId, scope } = query;
   const skip = (page - 1) * limit;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { companyId };
+  const where: Prisma.UnitConversionWhereInput = { companyId };
 
   // 스코프 필터
   if (scope === "global") {
