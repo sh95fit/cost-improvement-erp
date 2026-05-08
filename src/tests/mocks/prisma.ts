@@ -23,14 +23,17 @@ export const mockPrisma = {
   supplierItem: createModelMock(),
   supplierItemPriceHistory: createModelMock(),
   recipe: createModelMock(),
-  recipeIngredient: createModelMock(),      
-  recipeBOM: createModelMock(),             
-  recipeBOMSlot: createModelMock(),        
-  recipeBOMSlotItem: createModelMock(),      
+  recipeIngredient: createModelMock(),
+  recipeBOM: createModelMock(),
+  recipeBOMSlot: createModelMock(),
+  recipeBOMSlotItem: createModelMock(),
   semiProduct: createModelMock(),
   bOM: createModelMock(),
   bOMItem: createModelMock(),
   containerGroup: createModelMock(),
+  containerSlot: createModelMock(),         // ★ Phase 7 추가
+  containerAccessory: createModelMock(),    // ★ Phase 7 추가
+  mealTemplate: createModelMock(),          // ★ Phase 7 추가
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 };
 
