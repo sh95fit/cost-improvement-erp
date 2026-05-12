@@ -350,10 +350,34 @@
 - **TypeScript errors**: 0 (기존 3건 → 0건)
 - **Tests**: 11 files | **158 tests** PASS (기존 135 → +23)
 
-### Phase 12 — recipe.action.ts 서비스 계층 분리 ⬜
-- **예정일**: 2026-05-11 ~ 2026-05-12
-- **예상 시간**: 4h
-- **작업**: recipe.action.ts (39KB) → 비즈니스 로직을 service 레이어로 분리
+### Phase 12 — recipe.action.ts 4파일 분리 + handleActionError 공통 헬퍼 ✅
+- **날짜**: 2026-05-12
+- **커밋**: `f82ec4f6`
+- **예상 시간**: 4h → **실제 시간: ~2h**
+- **변경 파일**: 14개 (신규 5 + 수정 9)
+  - `src/lib/action-helpers.ts` — **신규**: handleActionError 공통 헬퍼 (인증/권한/도메인/Prisma/DEPENDENCY 에러 일괄 매핑)
+  - `src/features/recipe/actions/recipe.action.ts` — **축소**: 39KB→7.3KB, Recipe CRUD 5 + Ingredient CRUD 4 = 9개 함수
+  - `src/features/recipe/actions/recipe-bom.action.ts` — **신규**: RecipeBOM 7 + Slot 3 + SlotItem 3 + 복제 1 = 14개 함수
+  - `src/features/recipe/actions/semi-product.action.ts` — **신규**: SemiProduct CRUD 5개 함수
+  - `src/features/recipe/actions/bom.action.ts` — **신규**: BOM 6 + BOMItem 3 + replaceBOMItems 1 = 10개 함수
+  - `src/features/recipe/components/recipe-detail-dialog.tsx` — import 경로 3파일 분산
+  - `src/features/recipe/components/semi-product-list.tsx` — import 경로 semi-product.action으로 변경
+  - `src/features/recipe/components/semi-product-form.tsx` — import 경로 semi-product.action으로 변경
+  - `src/features/recipe/components/semi-product-detail-dialog.tsx` — import 경로 semi-product.action + bom.action으로 변경
+  - `src/features/material/actions/material.action.ts` — handleActionError 적용
+  - `src/features/supplier/actions/supplier.action.ts` — handleActionError 적용
+  - `src/features/container/actions/container.action.ts` — handleActionError 적용
+  - `src/features/unit-master/actions/unit-master.action.ts` — handleActionError 적용
+  - `src/features/unit-conversion/actions/unit-conversion.action.ts` — handleActionError 적용
+- **완료 항목**:
+  - [x] recipe.action.ts (39KB/35함수) → 4개 파일 (7.3+11.7+4.5+7.6KB / 38함수)로 도메인별 분리
+  - [x] handleActionError 공통 헬퍼로 전 도메인 action (81개) catch 블록 통일 (평균 5줄→1줄)
+  - [x] 6개 컴포넌트 import 경로 정확히 수정 (recipe-list, recipe-form은 변경 불필요)
+  - [x] 기존 테스트 158건 영향 없음 (action 시그니처 변경 없음)
+  - [x] TypeScript 오류 0건
+- **아키텍처 결정**:
+  - 도메인 에러는 handleActionError의 domainErrors 파라미터로 전달 (공통 에러와 분리)
+  - supplier action의 try 블록 내 actionFail 직접 사용은 기능적으로 정상이므로 현 Phase에서 유지
 
 ### Phase 13 — Error Boundary + 타입 강화 ⬜
 - **예정일**: 2026-05-12
