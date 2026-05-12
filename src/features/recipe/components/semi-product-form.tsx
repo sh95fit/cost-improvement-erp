@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { createSemiProductAction, updateSemiProductAction } from "../actions/recipe.action";
+import { createSemiProductAction, updateSemiProductAction } from "../actions/semi-product.action";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 

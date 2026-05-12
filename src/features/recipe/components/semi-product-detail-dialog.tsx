@@ -37,15 +37,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SemiProductForm } from "./semi-product-form";
+import { getSemiProductByIdAction } from "../actions/semi-product.action";
 import {
-  getSemiProductByIdAction,
   createBOMWithAutoVersionAction,
   updateBOMStatusAction,
   deleteBOMAction,
   addBOMItemAction,
   updateBOMItemAction,
   deleteBOMItemAction,
-} from "../actions/recipe.action";
+} from "../actions/bom.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import {
   Pencil,

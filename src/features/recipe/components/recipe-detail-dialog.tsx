@@ -56,6 +56,8 @@ import {
   getRecipeByIdAction,
   addIngredientAction,
   deleteIngredientAction,
+} from "../actions/recipe.action";
+import {
   createRecipeBOMWithAutoVersionAction,
   updateRecipeBOMStatusAction,
   updateRecipeBOMBaseWeightAction,
@@ -67,8 +69,8 @@ import {
   addRecipeBOMSlotItemAction,
   updateRecipeBOMSlotItemAction,
   deleteRecipeBOMSlotItemAction,
-  getSemiProductsAction,
-} from "../actions/recipe.action";
+} from "../actions/recipe-bom.action";
+import { getSemiProductsAction } from "../actions/semi-product.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import {
   getContainerGroupsAction,

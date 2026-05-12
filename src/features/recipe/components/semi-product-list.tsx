@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { getSemiProductsAction, deleteSemiProductAction } from "../actions/recipe.action";
+import { getSemiProductsAction, deleteSemiProductAction } from "../actions/semi-product.action";
 import { Search, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
