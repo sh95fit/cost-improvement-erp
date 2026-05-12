@@ -381,7 +381,7 @@
 
 ### Phase 13 — Error Boundary + 타입 강화 + Phase 12 보완 ✅
 - **날짜**: 2026-05-12
-- **커밋**: `(커밋 후 해시 기입)`
+- **커밋**: `59f12070`
 - **예상 시간**: 2h → **실제 시간: ~1.5h**
 - **변경 파일**: 6개 (신규 3 + 수정 3)
   - `src/app/global-error.tsx` — **신규**: 루트 레이아웃 에러 바운더리 (html/body 포함, logger 기록, digest 표시)
@@ -404,7 +404,7 @@
 
 ### Phase 14 — Sprint 1 최종 QA ✅
 - **날짜**: 2026-05-12
-- **커밋**: `(커밋 후 해시 기입)`
+- **커밋**: `c07fa1e4`
 - **예상 시간**: 2h → **실제 시간: ~1.5h**
 - **변경 파일**: 3개 (수정 3)
   - `src/features/container/actions/container.action.ts` — actionFail 직접 호출 12건 → handleActionError 패턴 전면 통일, actionFail import 제거
