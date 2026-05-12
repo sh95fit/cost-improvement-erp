@@ -94,6 +94,9 @@ import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
 import { cn } from "@/lib/utils";
 import type { RecipeRow } from "./recipe-list";
+import { loadAllPages } from "@/lib/action-helpers";
+import type { PaginatedFetcher } from "@/lib/action-helpers";
+
 
 // ── 타입 정의 ──
 
@@ -189,42 +192,6 @@ function formatDate(dateStr: string | null | undefined): string {
     month: "2-digit",
     day: "2-digit",
   });
-}
-
-// ★ 다중 페이지 전체 로딩 헬퍼 (스키마 max(100) 준수)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadAllPages<T>(
-  fetcher: (query: Record<string, unknown>) => Promise<any>,
-  sortBy: string
-): Promise<{ items: T[]; error?: string }> {
-  try {
-    const first = await fetcher({
-      page: 1,
-      limit: 100,
-      sortBy,
-      sortOrder: "asc",
-    });
-    if (!first.success) {
-      return { items: [], error: first.error?.message ?? "조회 실패" };
-    }
-
-    const allItems: T[] = [...first.data.items];
-    const totalPages: number = first.data.pagination.totalPages;
-
-    if (totalPages > 1) {
-      const remaining = await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, i) =>
-          fetcher({ page: i + 2, limit: 100, sortBy, sortOrder: "asc" })
-        )
-      );
-      for (const res of remaining) {
-        if (res.success) allItems.push(...res.data.items);
-      }
-    }
-    return { items: allItems };
-  } catch (err) {
-    return { items: [], error: String(err) };
-  }
 }
 
 // ── Combobox 컴포넌트 (이슈 #4) ──
@@ -455,9 +422,18 @@ export function RecipeDetailDialog({
     setOptionsLoading(true);
     try {
       const [matResult, spResult, cgResult] = await Promise.all([
-        loadAllPages<Record<string, unknown>>(getMaterialsAction, "name"),
-        loadAllPages<Record<string, unknown>>(getSemiProductsAction, "name"),
-        loadAllPages<Record<string, unknown>>(getContainerGroupsAction, "name"),
+        loadAllPages<OptionItem>(
+          getMaterialsAction as PaginatedFetcher<OptionItem>,
+          "name"
+        ),
+        loadAllPages<OptionItem>(
+          getSemiProductsAction as PaginatedFetcher<OptionItem>,
+          "name"
+        ),
+        loadAllPages<{ id: string; name: string; code: string }>(
+          getContainerGroupsAction as PaginatedFetcher<{ id: string; name: string; code: string }>,
+          "name"
+        ),
       ]);
 
       if (matResult.error) {

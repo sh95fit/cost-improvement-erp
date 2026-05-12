@@ -4,7 +4,7 @@
 import { requireCompanySession } from "@/lib/auth/session";
 import { assertPermission } from "@/lib/auth/permissions";
 import { createAuditLog } from "@/lib/utils/audit";
-import { actionOk, actionFail } from "@/lib/result";
+import { actionOk } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
 import { handleActionError } from "@/lib/action-helpers";
 import {
@@ -132,7 +132,7 @@ export async function getSupplierItemsAction(
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "READ");
     const supplier = await supplierService.getSupplierById(session.companyId, supplierId);
-    if (!supplier) return actionFail("NOT_FOUND", "업체를 찾을 수 없습니다");
+    if (!supplier) return handleActionError(new Error("NOT_FOUND"), "공급 품목 조회에 실패했습니다", { NOT_FOUND: "업체를 찾을 수 없습니다" });
     const items = await supplierItemService.getSupplierItems(supplierId);
     return actionOk(items);
   } catch (error) {
@@ -148,7 +148,7 @@ export async function createSupplierItemAction(
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "CREATE");
     const supplier = await supplierService.getSupplierById(session.companyId, supplierId);
-    if (!supplier) return actionFail("NOT_FOUND", "업체를 찾을 수 없습니다");
+    if (!supplier) return handleActionError(new Error("NOT_FOUND"), "공급 품목 생성에 실패했습니다", { NOT_FOUND: "업체를 찾을 수 없습니다" });
     const input = createSupplierItemSchema.parse(rawInput);
     const duplicate = await supplierItemService.findDuplicateSupplierItem(
       supplierId,
@@ -157,7 +157,7 @@ export async function createSupplierItemAction(
       input.materialMasterId,
       input.subsidiaryMasterId
     );
-    if (duplicate) return actionFail("DUPLICATE_ITEM", "동일한 제품명의 공급 품목이 이미 등록되어 있습니다");
+    if (duplicate) return handleActionError(new Error("DUPLICATE_ITEM"), "공급 품목 생성에 실패했습니다", { DUPLICATE_ITEM: "동일한 제품명의 공급 품목이 이미 등록되어 있습니다" });
     const item = await supplierItemService.createSupplierItem(supplierId, input);
     await createAuditLog({
       session,
@@ -181,7 +181,7 @@ export async function updateSupplierItemAction(
     assertPermission(session, "supplier", "UPDATE");
     const input = updateSupplierItemSchema.parse(rawInput);
     const existing = await supplierItemService.getSupplierItemById(id);
-    if (!existing) return actionFail("NOT_FOUND", "공급 품목을 찾을 수 없습니다");
+    if (!existing) return handleActionError(new Error("NOT_FOUND"), "공급 품목 수정에 실패했습니다", { NOT_FOUND: "공급 품목을 찾을 수 없습니다" });
     const before = existing as unknown as Record<string, unknown>;
     const item = await supplierItemService.updateSupplierItem(id, input);
     await createAuditLog({
@@ -205,7 +205,7 @@ export async function deleteSupplierItemAction(
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "DELETE");
     const existing = await supplierItemService.getSupplierItemById(id);
-    if (!existing) return actionFail("NOT_FOUND", "공급 품목을 찾을 수 없습니다");
+    if (!existing) return handleActionError(new Error("NOT_FOUND"), "공급 품목 삭제에 실패했습니다", { NOT_FOUND: "공급 품목을 찾을 수 없습니다" });
     await supplierItemService.deleteSupplierItem(id);
     await createAuditLog({
       session,

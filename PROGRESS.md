@@ -379,10 +379,28 @@
   - 도메인 에러는 handleActionError의 domainErrors 파라미터로 전달 (공통 에러와 분리)
   - supplier action의 try 블록 내 actionFail 직접 사용은 기능적으로 정상이므로 현 Phase에서 유지
 
-### Phase 13 — Error Boundary + 타입 강화 ⬜
-- **예정일**: 2026-05-12
-- **예상 시간**: 2h
-- **작업**: `error.tsx` 신규, loadAllPages 제네릭 타입 강화
+### Phase 13 — Error Boundary + 타입 강화 + Phase 12 보완 ✅
+- **날짜**: 2026-05-12
+- **커밋**: `(커밋 후 해시 기입)`
+- **예상 시간**: 2h → **실제 시간: ~1.5h**
+- **변경 파일**: 6개 (신규 3 + 수정 3)
+  - `src/app/global-error.tsx` — **신규**: 루트 레이아웃 에러 바운더리 (html/body 포함, logger 기록, digest 표시)
+  - `src/app/(dashboard)/error.tsx` — **신규**: 대시보드 에러 바운더리 (AlertTriangle 아이콘, 다시 시도/홈 이동 버튼)
+  - `src/lib/action-helpers.ts` — **수정**: PaginatedActionResult, PaginatedFetcher 타입 + loadAllPages 공통 헬퍼 추가
+  - `src/features/recipe/components/recipe-detail-dialog.tsx` — **수정**: 인라인 loadAllPages 삭제 → 공통 헬퍼 import, any 타입 제거
+  - `src/features/supplier/actions/supplier.action.ts` — **수정** (Phase 12 보완): SupplierItem 4개 함수 actionFail 직접 호출 → handleActionError 패턴 통일, actionFail import 제거
+  - `PROGRESS.md` — Phase 13 ✅ 마킹
+- **완료 항목**:
+  - [x] global-error.tsx: 루트 레이아웃 에러 → 한글 UI + digest 코드 + 다시 시도 버튼
+  - [x] (dashboard)/error.tsx: 대시보드 에러 → AlertTriangle + 다시 시도/홈 이동
+  - [x] loadAllPages any 타입 제거 → PaginatedFetcher<T> 제네릭으로 완전 타입 안전
+  - [x] loadAllPages 인라인 → src/lib/action-helpers.ts 공통 헬퍼로 이동
+  - [x] supplier.action.ts actionFail 직접 사용 4건 → handleActionError 패턴 통일
+  - [x] 전 프로젝트 any 타입: 0건 (eslint-disable 라인 제거)
+  - [x] TypeScript 오류 0건
+  - [x] 기존 158 테스트 영향 없음
+- **CONVENTIONS 검증**:
+  - ① any 금지 → recipe-detail-dialog의 마지막 eslint-disable-next-line 제거로 **0건 달성**
 
 ### Phase 14 — Sprint 1 최종 QA ⬜
 - **예정일**: 2026-05-12

@@ -1,6 +1,6 @@
 // src/lib/action-helpers.ts
 import { actionFail } from "@/lib/result";
-import type { ActionFailure } from "@/lib/result";
+import type { ActionFailure, ActionResult } from "@/lib/result";
 
 /**
  * 공통 인증/권한 에러 → ActionFailure 매핑
@@ -70,4 +70,61 @@ export function handleActionError(
   }
 
   return actionFail("INTERNAL_ERROR", fallbackMsg);
+}
+
+// ── loadAllPages 타입 강화용 ──
+
+/** Action이 반환하는 페이지네이션 응답의 공통 형태 */
+export type PaginatedActionResult<T> = ActionResult<{
+  items: T[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}>;
+
+/**
+ * loadAllPages의 fetcher 파라미터 타입.
+ * any를 제거하고 ActionResult 기반 타입을 사용한다.
+ */
+export type PaginatedFetcher<T> = (
+  query: Record<string, unknown>
+) => Promise<PaginatedActionResult<T>>;
+
+/**
+ * 다중 페이지 전체 로딩 공통 헬퍼.
+ * recipe-detail-dialog.tsx 등에서 사용하던 인라인 함수를 공통화한다.
+ *
+ * @example
+ * const { items, error } = await loadAllPages(getMaterialsAction, "name");
+ */
+export async function loadAllPages<T>(
+  fetcher: PaginatedFetcher<T>,
+  sortBy: string
+): Promise<{ items: T[]; error?: string }> {
+  try {
+    const first = await fetcher({
+      page: 1,
+      limit: 100,
+      sortBy,
+      sortOrder: "asc",
+    });
+    if (!first.success) {
+      return { items: [], error: first.error?.message ?? "조회 실패" };
+    }
+
+    const allItems: T[] = [...first.data.items];
+    const totalPages: number = first.data.pagination.totalPages;
+
+    if (totalPages > 1) {
+      const remaining = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          fetcher({ page: i + 2, limit: 100, sortBy, sortOrder: "asc" })
+        )
+      );
+      for (const res of remaining) {
+        if (res.success) allItems.push(...res.data.items);
+      }
+    }
+    return { items: allItems };
+  } catch (err) {
+    return { items: [], error: String(err) };
+  }
 }
