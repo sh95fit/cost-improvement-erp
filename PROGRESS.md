@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-08 (Phase 10 완료 — recipe·semi-product toast 확대)
+> 마지막 갱신: 2026-05-08 (Phase 11 완료 — CONVENTIONS 전수 점검, any 제거, 누락 테스트 추가)
 
 ---
 
@@ -313,10 +313,42 @@
 - **Tests**: 135건 PASS
 
 
-### Phase 11 — CONVENTIONS.md 전수 점검 ⬜
-- **예정일**: 2026-05-11
-- **예상 시간**: 3h
-- **점검**: any 타입, console.log 잔여, deletedAt 조건, 트랜잭션, assertPermission, createAuditLog, 테스트 존재
+### Phase 11 — CONVENTIONS.md 전수 점검 ✅
+- **날짜**: 2026-05-08
+- **커밋**: `90bfee6` (테스트 추가), `770ff4a` (any 제거 포함)
+- **예상 시간**: 3h → **실제 시간: ~1.5h**
+- **변경 파일**: 4개
+  - `src/tests/mocks/prisma.ts` — `supplier`, `unitMaster` 모델 mock 추가 + `prismaMock` alias export
+  - `src/tests/supplier.service.test.ts` — **신규**: 12 tests (getSuppliers pagination·search, getSupplierById, createSupplier 코드채번, updateSupplier, deleteSupplier soft-delete)
+  - `src/tests/unit-master.service.test.ts` — **신규**: 11 tests (getUnitMasters pagination·filter, getUnitMasterById, createUnitMaster, updateUnitMaster, deleteUnitMaster NOT_FOUND/SYSTEM/IN_USE, getUnitOptionsByItemType)
+  - `src/features/unit-conversion/services/unit-conversion.service.ts` — `const where: any` → `const where: Prisma.UnitConversionWhereInput` (any 타입 제거)
+- **CONVENTIONS 12개 규칙 점검 결과**:
+  - [x] ① `any` 타입 금지 — 1건 위반 → `Prisma.UnitConversionWhereInput`으로 수정 완료, **0건**
+  - [x] ② 클라이언트 직접 DB 접근 금지 — PASS (전 컴포넌트 server action 경유)
+  - [x] ③ 환경변수 하드코딩 금지 — PASS (`process.env.*` 사용, 하드코딩 0건)
+  - [x] ④ `console.log` 금지 — PASS (`logger.ts` 중앙화, 직접 console 호출 0건)
+  - [x] ⑤ `NextResponse.json()` 금지 — PASS (`ok()`/`fail()` 헬퍼 사용)
+  - [x] ⑥ `deletedAt: null` 누락 금지 — PASS (soft-delete extension 10개 모델 자동 적용)
+  - [x] ⑦ 다중 쓰기 시 트랜잭션 — PASS (`duplicateRecipeBOM` 등 `$transaction` 사용)
+  - [x] ⑧ 권한 체크 필수 — PASS (모든 action에 `assertPermission`)
+  - [x] ⑨ 감사 로그 필수 — PASS (CREATE/UPDATE/DELETE action에 `createAuditLog`)
+  - [x] ⑩ 테스트 없이 머지 금지 — 2건 위반 → `supplier.service.test.ts`, `unit-master.service.test.ts` 신규 작성 완료, **11서비스:11테스트 1:1 매핑**
+  - [x] ⑪ PROGRESS.md 갱신 필수 — 본 커밋으로 완료
+  - [x] ⑫ 6단계 프로세스 준수 — PASS
+- **서비스 ↔ 테스트 매핑** (규칙 ⑩ 완전 충족):
+  - material.service → material.service.test ✅
+  - subsidiary.service → subsidiary.service.test ✅
+  - supplier.service → supplier.service.test ✅ **신규**
+  - supplier-item.service → supplier-item.service.test ✅
+  - unit-master.service → unit-master.service.test ✅ **신규**
+  - unit-conversion.service → unit-conversion.service.test ✅
+  - recipe.service → recipe.service.test ✅
+  - recipe-bom.service → recipe-bom.service.test ✅
+  - bom.service → bom.service.test ✅
+  - semi-product.service → semi-product.service.test ✅
+  - container.service → container.service.test ✅
+- **TypeScript errors**: 0 (기존 3건 → 0건)
+- **Tests**: 11 files | **158 tests** PASS (기존 135 → +23)
 
 ### Phase 12 — recipe.action.ts 서비스 계층 분리 ⬜
 - **예정일**: 2026-05-11 ~ 2026-05-12
