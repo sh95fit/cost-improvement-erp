@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-08 (Phase 11 완료 — CONVENTIONS 전수 점검, any 제거, 누락 테스트 추가)
+> 마지막 갱신: 2026-05-12 (Phase 14 완료 — Sprint 1 최종 QA, handleActionError 전도메인 통일)
 
 ---
 
@@ -402,10 +402,42 @@
 - **CONVENTIONS 검증**:
   - ① any 금지 → recipe-detail-dialog의 마지막 eslint-disable-next-line 제거로 **0건 달성**
 
-### Phase 14 — Sprint 1 최종 QA ⬜
-- **예정일**: 2026-05-12
-- **예상 시간**: 2h
-- **검증**: 이슈 #1~#7 전체 해소 확인, 17개 컴포넌트 toast, 전체 테스트 PASS
+### Phase 14 — Sprint 1 최종 QA ✅
+- **날짜**: 2026-05-12
+- **커밋**: `(커밋 후 해시 기입)`
+- **예상 시간**: 2h → **실제 시간: ~1.5h**
+- **변경 파일**: 3개 (수정 3)
+  - `src/features/container/actions/container.action.ts` — actionFail 직접 호출 12건 → handleActionError 패턴 전면 통일, actionFail import 제거
+  - `src/features/unit-conversion/actions/unit-conversion.action.ts` — try 블록 내 actionFail 3건 → handleActionError 패턴 통일, actionFail import 제거
+  - `PROGRESS.md` — Phase 13 해시 기입 + Phase 14 ✅ 마킹
+- **QA 검증 항목**:
+  - [x] Issue #1~#7 전건 해소 확인 (7/7)
+  - [x] 도메인 9개 action 파일 handleActionError 일관성 검증 — container·unit-conversion 미적용 발견 → 본 Phase에서 수정
+  - [x] CONVENTIONS 12규칙 전수 점검 PASS
+  - [x] Error Boundary 2파일 정상 (global-error.tsx, dashboard/error.tsx)
+  - [x] loadAllPages 제네릭 타입 + any 0건 확인
+  - [x] Toast 17개 컴포넌트 적용 확인
+  - [x] 서비스:테스트 1:1 매핑 (11:11) + 158 tests
+  - [x] TypeScript 오류 0건
+- **handleActionError 최종 적용 현황** (전 도메인 완료):
+  - material.action.ts: ✅ (12함수)
+  - supplier.action.ts: ✅ (12함수)
+  - container.action.ts: ✅ (10함수) ← **본 Phase에서 수정**
+  - unit-master.action.ts: ✅ (7함수)
+  - unit-conversion.action.ts: ✅ (4함수) ← **본 Phase에서 수정**
+  - recipe.action.ts: ✅ (9함수)
+  - recipe-bom.action.ts: ✅ (14함수)
+  - semi-product.action.ts: ✅ (5함수)
+  - bom.action.ts: ✅ (10함수)
+  - **합계: 83개 action 함수 전체 handleActionError 통일**
+- **Sprint 1 최종 현황**:
+  - 총 14 Phase 완료 (Phase 1~14)
+  - 총 커밋: 16건 (코드 11 + docs 5)
+  - 테스트: 12파일 / 158 tests / 0 failures
+  - TypeScript errors: 0
+  - any 타입: 0건
+  - actionFail 직접 사용: 0건 (전면 handleActionError 통일)
+
 
 ---
 

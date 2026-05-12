@@ -1,10 +1,12 @@
+// src/features/container/actions/container.action.ts
 "use server";
 
 import { requireCompanySession } from "@/lib/auth/session";
 import { assertPermission } from "@/lib/auth/permissions";
 import { createAuditLog } from "@/lib/utils/audit";
-import { actionOk, actionFail } from "@/lib/result";
+import { actionOk } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
+import { handleActionError } from "@/lib/action-helpers";
 import {
   containerGroupListQuerySchema,
   createContainerGroupSchema,
@@ -35,11 +37,7 @@ export async function getContainerGroupsAction(
     const result = await containerService.getContainerGroups(session.companyId, query);
     return actionOk(result);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "용기 그룹 조회에 실패했습니다");
+    return handleActionError(error, "용기 그룹 조회에 실패했습니다");
   }
 }
 
@@ -52,12 +50,9 @@ export async function getContainerGroupByIdAction(
     const group = await containerService.getContainerGroupById(session.companyId, id);
     return actionOk(group);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-      if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "용기 그룹을 찾을 수 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "용기 그룹 조회에 실패했습니다");
+    return handleActionError(error, "용기 그룹 조회에 실패했습니다", {
+      NOT_FOUND: "용기 그룹을 찾을 수 없습니다",
+    });
   }
 }
 
@@ -78,11 +73,7 @@ export async function createContainerGroupAction(
     });
     return actionOk(group);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "용기 그룹 생성에 실패했습니다");
+    return handleActionError(error, "용기 그룹 생성에 실패했습니다");
   }
 }
 
@@ -104,12 +95,9 @@ export async function updateContainerGroupAction(
     });
     return actionOk(group);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-      if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "용기 그룹을 찾을 수 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "용기 그룹 수정에 실패했습니다");
+    return handleActionError(error, "용기 그룹 수정에 실패했습니다", {
+      NOT_FOUND: "용기 그룹을 찾을 수 없습니다",
+    });
   }
 }
 
@@ -128,21 +116,13 @@ export async function deleteContainerGroupAction(
     });
     return actionOk({ id });
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-      if (error.message === "NOT_FOUND") return actionFail("NOT_FOUND", "용기 그룹을 찾을 수 없습니다");
-      // ★ 의존성 에러 처리
-      if (error.message.startsWith("DEPENDENCY:")) {
-        const reason = error.message.replace("DEPENDENCY:", "");
-        return actionFail("DEPENDENCY", `삭제할 수 없습니다: ${reason}`);
-      }
-    }
-    return actionFail("INTERNAL_ERROR", "용기 그룹 삭제에 실패했습니다");
+    return handleActionError(error, "용기 그룹 삭제에 실패했습니다", {
+      NOT_FOUND: "용기 그룹을 찾을 수 없습니다",
+    });
   }
 }
 
-// ★ 신규: 의존성 사전 확인 액션 (UI에서 삭제 전 호출)
+// ★ 의존성 사전 확인 액션 (UI에서 삭제 전 호출)
 export async function checkContainerGroupDependencyAction(
   id: string
 ): Promise<ActionResult<{ hasDependency: boolean; details: string[] }>> {
@@ -152,11 +132,7 @@ export async function checkContainerGroupDependencyAction(
     const result = await containerService.checkContainerGroupDependency(id);
     return actionOk(result);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "의존성 확인에 실패했습니다");
+    return handleActionError(error, "의존성 확인에 실패했습니다");
   }
 }
 
@@ -182,11 +158,7 @@ export async function addContainerSlotAction(
     });
     return actionOk(slot);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "슬롯 추가에 실패했습니다");
+    return handleActionError(error, "슬롯 추가에 실패했습니다");
   }
 }
 
@@ -201,11 +173,7 @@ export async function updateContainerSlotAction(
     const slot = await containerService.updateContainerSlot(id, input);
     return actionOk(slot);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "슬롯 수정에 실패했습니다");
+    return handleActionError(error, "슬롯 수정에 실패했습니다");
   }
 }
 
@@ -218,16 +186,7 @@ export async function deleteContainerSlotAction(
     await containerService.deleteContainerSlot(id);
     return actionOk({ id });
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-      // ★ 의존성 에러 처리
-      if (error.message.startsWith("DEPENDENCY:")) {
-        const reason = error.message.replace("DEPENDENCY:", "");
-        return actionFail("DEPENDENCY", `삭제할 수 없습니다: ${reason}`);
-      }
-    }
-    return actionFail("INTERNAL_ERROR", "슬롯 삭제에 실패했습니다");
+    return handleActionError(error, "슬롯 삭제에 실패했습니다");
   }
 }
 
@@ -246,11 +205,22 @@ export async function addContainerAccessoryAction(
     const acc = await containerService.addContainerAccessory(containerGroupId, input);
     return actionOk(acc);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "부속품 추가에 실패했습니다");
+    return handleActionError(error, "부속품 추가에 실패했습니다");
+  }
+}
+
+export async function updateContainerAccessoryAction(
+  id: string,
+  rawInput: Record<string, unknown>
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "UPDATE");
+    const input = updateContainerAccessorySchema.parse(rawInput);
+    const acc = await containerService.updateContainerAccessory(id, input);
+    return actionOk(acc);
+  } catch (error) {
+    return handleActionError(error, "부속품 수정에 실패했습니다");
   }
 }
 
@@ -263,10 +233,6 @@ export async function deleteContainerAccessoryAction(
     await containerService.deleteContainerAccessory(id);
     return actionOk({ id });
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") return actionFail("UNAUTHORIZED", "로그인이 필요합니다");
-      if (error.message === "FORBIDDEN") return actionFail("FORBIDDEN", "권한이 없습니다");
-    }
-    return actionFail("INTERNAL_ERROR", "부속품 삭제에 실패했습니다");
+    return handleActionError(error, "부속품 삭제에 실패했습니다");
   }
 }

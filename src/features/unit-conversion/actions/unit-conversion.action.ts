@@ -4,7 +4,7 @@
 import { requireCompanySession } from "@/lib/auth/session";
 import { assertPermission } from "@/lib/auth/permissions";
 import { createAuditLog } from "@/lib/utils/audit";
-import { actionOk, actionFail } from "@/lib/result";
+import { actionOk } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
 import { handleActionError } from "@/lib/action-helpers";
 import {
@@ -42,7 +42,13 @@ export async function createUnitConversionAction(
       input.fromUnit,
       input.toUnit
     );
-    if (duplicate) return actionFail("DUPLICATE_CONVERSION", "이미 등록된 단위 환산입니다");
+    if (duplicate) {
+      return handleActionError(
+        new Error("DUPLICATE_CONVERSION"),
+        "단위 환산 생성에 실패했습니다",
+        { DUPLICATE_CONVERSION: "이미 등록된 단위 환산입니다" }
+      );
+    }
     const conversion = await conversionService.createUnitConversion(session.companyId, input);
     await createAuditLog({
       session,
@@ -66,7 +72,13 @@ export async function updateUnitConversionAction(
     assertPermission(session, "material", "UPDATE");
     const input = updateUnitConversionSchema.parse(rawInput);
     const existing = await conversionService.getUnitConversionById(id);
-    if (!existing) return actionFail("NOT_FOUND", "단위 환산을 찾을 수 없습니다");
+    if (!existing) {
+      return handleActionError(
+        new Error("NOT_FOUND"),
+        "단위 환산 수정에 실패했습니다",
+        { NOT_FOUND: "단위 환산을 찾을 수 없습니다" }
+      );
+    }
     const before = existing as unknown as Record<string, unknown>;
     const conversion = await conversionService.updateUnitConversion(id, input);
     await createAuditLog({
@@ -90,7 +102,13 @@ export async function deleteUnitConversionAction(
     const session = await requireCompanySession();
     assertPermission(session, "material", "DELETE");
     const existing = await conversionService.getUnitConversionById(id);
-    if (!existing) return actionFail("NOT_FOUND", "단위 환산을 찾을 수 없습니다");
+    if (!existing) {
+      return handleActionError(
+        new Error("NOT_FOUND"),
+        "단위 환산 삭제에 실패했습니다",
+        { NOT_FOUND: "단위 환산을 찾을 수 없습니다" }
+      );
+    }
     await conversionService.deleteUnitConversion(id);
     await createAuditLog({
       session,
