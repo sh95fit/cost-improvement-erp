@@ -18,6 +18,7 @@ import {
   Building2,
   PackageOpen,
   Ruler,
+  LayoutTemplate,  // ★ 추가
 } from "lucide-react";
 
 const navigation = [
@@ -27,6 +28,7 @@ const navigation = [
   { name: "단위 관리", href: "/units", icon: Ruler },
   { name: "공급업체 관리", href: "/suppliers", icon: Building2 },
   { name: "용기 관리", href: "/containers", icon: PackageOpen },
+  { name: "식단 템플릿", href: "/meal-templates", icon: LayoutTemplate },  // ★ 추가
   { name: "레시피 관리", href: "/recipes", icon: UtensilsCrossed },
   { name: "발주 관리", href: "/purchasing", icon: ShoppingCart },
   { name: "입고 관리", href: "/receiving", icon: ClipboardCheck },

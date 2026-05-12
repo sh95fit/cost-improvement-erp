@@ -1,0 +1,807 @@
+// src/app/(dashboard)/meal-templates/page.tsx
+"use client";
+
+import { useState, useEffect, useCallback, Fragment } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  getMealTemplatesAction,
+  getMealTemplateByIdAction,
+  createMealTemplateAction,
+  updateMealTemplateAction,
+  deleteMealTemplateAction,
+  addMealTemplateSlotAction,
+  updateMealTemplateSlotAction,
+  deleteMealTemplateSlotAction,
+  addMealTemplateAccessoryAction,
+  updateMealTemplateAccessoryAction,
+  deleteMealTemplateAccessoryAction,
+} from "@/features/meal-template/actions/meal-template.action";
+import { getContainerGroupsAction } from "@/features/container/actions/container.action";
+import {
+  Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight,
+  Loader2, ChevronDown, ChevronUp, Save, X, Package,
+} from "lucide-react";
+import { toast } from "sonner";
+import { logger } from "@/lib/utils/logger";
+import { loadAllPages } from "@/lib/action-helpers";
+
+// ── 타입 ──
+type SlotRow = { id: string; slotIndex: number; label: string; isRequired: boolean };
+type AccessoryRow = { id: string; name: string; isRequired: boolean };
+type ContainerGroupOption = { id: string; name: string; code: string };
+type TemplateRow = {
+  id: string;
+  name: string;
+  containerGroupId: string;
+  containerGroup: ContainerGroupOption;
+  slots: SlotRow[];
+  accessories: AccessoryRow[];
+  _count: { slots: number; accessories: number };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export default function MealTemplatesPage() {
+  // ── 목록 상태 ──
+  const [items, setItems] = useState<TemplateRow[]>([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ── 용기 그룹 옵션 ──
+  const [containerGroupOptions, setContainerGroupOptions] = useState<ContainerGroupOption[]>([]);
+
+  // ── 템플릿 생성/수정 ──
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formContainerGroupId, setFormContainerGroupId] = useState("");
+  const [formSaving, setFormSaving] = useState(false);
+
+  // ── 아코디언 (상세보기) ──
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // ── 슬롯 추가 ──
+  const [addSlotTemplateId, setAddSlotTemplateId] = useState<string | null>(null);
+  const [newSlotLabel, setNewSlotLabel] = useState("");
+  const [newSlotRequired, setNewSlotRequired] = useState(true);
+  const [slotSaving, setSlotSaving] = useState(false);
+
+  // ── 슬롯 수정 ──
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  const [editingSlotLabel, setEditingSlotLabel] = useState("");
+  const [editingSlotRequired, setEditingSlotRequired] = useState(true);
+  const [slotUpdating, setSlotUpdating] = useState(false);
+
+  // ── 악세서리 추가 ──
+  const [addAccTemplateId, setAddAccTemplateId] = useState<string | null>(null);
+  const [newAccName, setNewAccName] = useState("");
+  const [newAccRequired, setNewAccRequired] = useState(false);
+  const [accSaving, setAccSaving] = useState(false);
+
+  // ── 악세서리 수정 ──
+  const [editingAccId, setEditingAccId] = useState<string | null>(null);
+  const [editingAccName, setEditingAccName] = useState("");
+  const [editingAccRequired, setEditingAccRequired] = useState(false);
+  const [accUpdating, setAccUpdating] = useState(false);
+
+  // ── 삭제 확인 ──
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: "template" | "slot" | "accessory";
+    id: string;
+    name: string;
+    templateId?: string;
+  } | null>(null);
+
+  // ══════════════════════════════════════
+  // 데이터 로딩
+  // ══════════════════════════════════════
+
+  const fetchData = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      const result = await getMealTemplatesAction({
+        page,
+        limit: 20,
+        search: search.trim() || undefined,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      });
+      if (result.success) {
+        setItems(result.data.items as unknown as TemplateRow[]);
+        setPagination(result.data.pagination);
+      } else {
+        toast.error("식단 템플릿 목록 조회에 실패했습니다");
+        setItems([]);
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.fetchData] 실패:", err);
+      toast.error("식단 템플릿 목록 조회 중 오류가 발생했습니다");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+
+  const loadContainerGroupOptions = useCallback(async () => {
+    const { items: groups } = await loadAllPages<ContainerGroupOption>(
+      getContainerGroupsAction as Parameters<typeof loadAllPages<ContainerGroupOption>>[0],
+      "name"
+    );
+    setContainerGroupOptions(groups);
+  }, []);
+
+  useEffect(() => {
+    fetchData(1);
+    loadContainerGroupOptions();
+  }, [fetchData, loadContainerGroupOptions]);
+
+  // ── 단일 템플릿 새로고침 ──
+  const refreshTemplate = async (templateId: string) => {
+    try {
+      const result = await getMealTemplateByIdAction(templateId);
+      if (result.success && result.data) {
+        const updated = result.data as unknown as TemplateRow;
+        setItems((prev) =>
+          prev.map((t) => (t.id === templateId ? updated : t))
+        );
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.refreshTemplate] 실패:", err);
+    }
+  };
+
+  // ══════════════════════════════════════
+  // 템플릿 CRUD
+  // ══════════════════════════════════════
+
+  const openCreateDialog = () => {
+    setFormName("");
+    setFormContainerGroupId("");
+    setEditingTemplate(null);
+    setShowCreateDialog(true);
+  };
+
+  const openEditDialog = (tmpl: TemplateRow) => {
+    setFormName(tmpl.name);
+    setFormContainerGroupId(tmpl.containerGroupId);
+    setEditingTemplate(tmpl);
+    setShowCreateDialog(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!formName.trim() || !formContainerGroupId) return;
+    setFormSaving(true);
+    try {
+      if (editingTemplate) {
+        const result = await updateMealTemplateAction(editingTemplate.id, {
+          name: formName.trim(),
+          containerGroupId: formContainerGroupId,
+        });
+        if (result.success) {
+          toast.success("식단 템플릿이 수정되었습니다");
+          setShowCreateDialog(false);
+          fetchData(pagination.page);
+        } else {
+          toast.error(result.error?.message ?? "식단 템플릿 수정에 실패했습니다");
+        }
+      } else {
+        const result = await createMealTemplateAction({
+          name: formName.trim(),
+          containerGroupId: formContainerGroupId,
+        });
+        if (result.success) {
+          toast.success("식단 템플릿이 등록되었습니다");
+          setShowCreateDialog(false);
+          fetchData(1);
+        } else {
+          toast.error(result.error?.message ?? "식단 템플릿 생성에 실패했습니다");
+        }
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleSaveTemplate] 실패:", err);
+      toast.error("식단 템플릿 저장 중 오류가 발생했습니다");
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  // ══════════════════════════════════════
+  // 슬롯 CRUD
+  // ══════════════════════════════════════
+
+  const handleAddSlot = async () => {
+    if (!addSlotTemplateId || !newSlotLabel.trim()) return;
+    setSlotSaving(true);
+    const templateId = addSlotTemplateId;
+    try {
+      const template = items.find((t) => t.id === templateId);
+      const nextIndex = template ? Math.max(0, ...template.slots.map((s) => s.slotIndex)) + 1 : 0;
+      const result = await addMealTemplateSlotAction(templateId, {
+        slotIndex: nextIndex,
+        label: newSlotLabel.trim(),
+        isRequired: newSlotRequired,
+      });
+      if (result.success) {
+        toast.success("슬롯이 추가되었습니다");
+        setNewSlotLabel("");
+        setNewSlotRequired(true);
+        setAddSlotTemplateId(null);
+        await refreshTemplate(templateId);
+      } else {
+        toast.error(result.error?.message ?? "슬롯 추가에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleAddSlot] 실패:", err);
+      toast.error("슬롯 추가 중 오류가 발생했습니다");
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const handleUpdateSlot = async () => {
+    if (!editingSlotId) return;
+    setSlotUpdating(true);
+    try {
+      const result = await updateMealTemplateSlotAction(editingSlotId, {
+        label: editingSlotLabel.trim() || undefined,
+        isRequired: editingSlotRequired,
+      });
+      if (result.success) {
+        toast.success("슬롯이 수정되었습니다");
+        setEditingSlotId(null);
+        if (expandedId) await refreshTemplate(expandedId);
+      } else {
+        toast.error(result.error?.message ?? "슬롯 수정에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleUpdateSlot] 실패:", err);
+      toast.error("슬롯 수정 중 오류가 발생했습니다");
+    } finally {
+      setSlotUpdating(false);
+    }
+  };
+
+  // ══════════════════════════════════════
+  // 악세서리 CRUD
+  // ══════════════════════════════════════
+
+  const handleAddAccessory = async () => {
+    if (!addAccTemplateId || !newAccName.trim()) return;
+    setAccSaving(true);
+    const templateId = addAccTemplateId;
+    try {
+      const result = await addMealTemplateAccessoryAction(templateId, {
+        name: newAccName.trim(),
+        isRequired: newAccRequired,
+      });
+      if (result.success) {
+        toast.success("악세서리가 추가되었습니다");
+        setNewAccName("");
+        setNewAccRequired(false);
+        setAddAccTemplateId(null);
+        await refreshTemplate(templateId);
+      } else {
+        toast.error(result.error?.message ?? "악세서리 추가에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleAddAccessory] 실패:", err);
+      toast.error("악세서리 추가 중 오류가 발생했습니다");
+    } finally {
+      setAccSaving(false);
+    }
+  };
+
+  const handleUpdateAccessory = async () => {
+    if (!editingAccId) return;
+    setAccUpdating(true);
+    try {
+      const result = await updateMealTemplateAccessoryAction(editingAccId, {
+        name: editingAccName.trim() || undefined,
+        isRequired: editingAccRequired,
+      });
+      if (result.success) {
+        toast.success("악세서리가 수정되었습니다");
+        setEditingAccId(null);
+        if (expandedId) await refreshTemplate(expandedId);
+      } else {
+        toast.error(result.error?.message ?? "악세서리 수정에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleUpdateAccessory] 실패:", err);
+      toast.error("악세서리 수정 중 오류가 발생했습니다");
+    } finally {
+      setAccUpdating(false);
+    }
+  };
+
+  // ══════════════════════════════════════
+  // 삭제
+  // ══════════════════════════════════════
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { type, id, templateId } = deleteTarget;
+    try {
+      if (type === "template") {
+        const result = await deleteMealTemplateAction(id);
+        if (result.success) {
+          toast.success("식단 템플릿이 삭제되었습니다");
+          if (expandedId === id) setExpandedId(null);
+          fetchData(pagination.page);
+        } else {
+          toast.error(result.error?.message ?? "식단 템플릿 삭제에 실패했습니다");
+        }
+      } else if (type === "slot") {
+        const result = await deleteMealTemplateSlotAction(id);
+        if (result.success) {
+          toast.success("슬롯이 삭제되었습니다");
+          if (templateId) await refreshTemplate(templateId);
+        } else {
+          toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+        }
+      } else if (type === "accessory") {
+        const result = await deleteMealTemplateAccessoryAction(id);
+        if (result.success) {
+          toast.success("악세서리가 삭제되었습니다");
+          if (templateId) await refreshTemplate(templateId);
+        } else {
+          toast.error(result.error?.message ?? "악세서리 삭제에 실패했습니다");
+        }
+      }
+    } catch (err) {
+      logger.error("[MealTemplatesPage.handleConfirmDelete] 실패:", err);
+      toast.error("삭제 중 오류가 발생했습니다");
+    }
+    setDeleteTarget(null);
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+    setEditingSlotId(null);
+    setEditingAccId(null);
+  };
+
+  // ══════════════════════════════════════
+  // 렌더링
+  // ══════════════════════════════════════
+
+  return (
+    <div className="space-y-6">
+      {/* ── 헤더 ── */}
+      <div>
+        <h1 className="text-2xl font-bold">식단 템플릿</h1>
+        <p className="text-sm text-gray-500">
+          배식 용기별 슬롯 구성과 악세서리를 정의합니다. 식단 계획에서 템플릿을 선택하면 슬롯이 자동으로 적용됩니다.
+        </p>
+      </div>
+
+      {/* ── 검색 + 등록 ── */}
+      <div className="flex items-center gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Input
+            placeholder="템플릿명, 용기명으로 검색"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
+            className="pl-10"
+          />
+        </div>
+        <Button onClick={() => fetchData(1)} variant="outline" size="sm">검색</Button>
+        <Button onClick={openCreateDialog} className="ml-auto">
+          <Plus className="mr-2 h-4 w-4" />
+          템플릿 등록
+        </Button>
+      </div>
+
+      {/* ══════ 메인 테이블 ══════ */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[40px]" />
+              <TableHead>템플릿명</TableHead>
+              <TableHead className="w-[160px]">용기 그룹</TableHead>
+              <TableHead className="w-[80px] text-center">슬롯</TableHead>
+              <TableHead className="w-[80px] text-center">악세서리</TableHead>
+              <TableHead className="w-[100px]">등록일</TableHead>
+              <TableHead className="w-[80px] text-right">관리</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center">
+                  <div className="flex items-center justify-center gap-2 text-gray-500">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    불러오는 중...
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                  {search.trim()
+                    ? `"${search}" 검색 결과가 없습니다`
+                    : "등록된 식단 템플릿이 없습니다. '템플릿 등록' 버튼을 눌러 추가해 주세요."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              items.map((item) => {
+                const isExpanded = expandedId === item.id;
+                return (
+                  <Fragment key={item.id}>
+                    <TableRow
+                      className={`cursor-pointer transition-colors ${isExpanded ? "bg-purple-50/50 border-l-2 border-l-purple-400" : "hover:bg-gray-50"}`}
+                      onClick={() => toggleExpand(item.id)}
+                    >
+                      <TableCell className="w-[40px] px-2">
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-purple-500" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </TableCell>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <Package className="h-3.5 w-3.5 text-gray-400" />
+                          <span className="text-sm">{item.containerGroup.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="inline-flex rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                          {item._count.slots}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                          {item._count.accessories}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-500">
+                        {new Date(item.createdAt).toLocaleDateString("ko-KR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="수정"
+                            onClick={() => openEditDialog(item)}>
+                            <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="삭제"
+                            onClick={() => setDeleteTarget({ type: "template", id: item.id, name: item.name })}>
+                            <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* ── 확장 영역: 슬롯 + 악세서리 ── */}
+                    {isExpanded && (
+                      <TableRow className="bg-purple-50/20 hover:bg-purple-50/20">
+                        <TableCell colSpan={7} className="p-0 border-t-0">
+                          <div className="border-t border-purple-100 bg-purple-50/30 px-6 py-4 space-y-5">
+
+                            {/* ── 슬롯 섹션 ── */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-600">슬롯 구성 ({item.slots.length}개)</span>
+                                <Button size="sm" variant="outline" className="h-7 text-xs"
+                                  onClick={(e) => { e.stopPropagation(); setAddSlotTemplateId(item.id); setNewSlotLabel(""); setNewSlotRequired(true); }}>
+                                  <Plus className="mr-1 h-3 w-3" /> 슬롯 추가
+                                </Button>
+                              </div>
+                              {item.slots.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-3">등록된 슬롯이 없습니다.</p>
+                              ) : (
+                                <div className="rounded border bg-white">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="w-[60px] text-xs">번호</TableHead>
+                                        <TableHead className="text-xs">슬롯명</TableHead>
+                                        <TableHead className="w-[80px] text-xs text-center">필수</TableHead>
+                                        <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {item.slots.map((slot) => (
+                                        <TableRow key={slot.id}>
+                                          {editingSlotId === slot.id ? (
+                                            <>
+                                              <TableCell className="text-xs font-mono text-gray-400">{slot.slotIndex}</TableCell>
+                                              <TableCell>
+                                                <Input className="h-7 text-xs" value={editingSlotLabel}
+                                                  onChange={(e) => setEditingSlotLabel(e.target.value)}
+                                                  onKeyDown={(e) => { if (e.key === "Enter") handleUpdateSlot(); if (e.key === "Escape") setEditingSlotId(null); }}
+                                                  autoFocus />
+                                              </TableCell>
+                                              <TableCell className="text-center">
+                                                <Switch checked={editingSlotRequired} onCheckedChange={setEditingSlotRequired} />
+                                              </TableCell>
+                                              <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleUpdateSlot} disabled={slotUpdating}>
+                                                    {slotUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-green-600" />}
+                                                  </Button>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingSlotId(null)}>
+                                                    <X className="h-3 w-3 text-gray-400" />
+                                                  </Button>
+                                                </div>
+                                              </TableCell>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
+                                              <TableCell className="text-xs font-medium">{slot.label}</TableCell>
+                                              <TableCell className="text-center">
+                                                <span className={`text-xs ${slot.isRequired ? "text-green-600 font-medium" : "text-gray-400"}`}>
+                                                  {slot.isRequired ? "필수" : "선택"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="슬롯 수정"
+                                                    onClick={() => { setEditingSlotId(slot.id); setEditingSlotLabel(slot.label); setEditingSlotRequired(slot.isRequired); }}>
+                                                    <Pencil className="h-3 w-3 text-gray-400" />
+                                                  </Button>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="슬롯 삭제"
+                                                    onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label, templateId: item.id })}>
+                                                    <Trash2 className="h-3 w-3 text-red-400" />
+                                                  </Button>
+                                                </div>
+                                              </TableCell>
+                                            </>
+                                          )}
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* ── 악세서리 섹션 ── */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-600">악세서리 ({item.accessories.length}개)</span>
+                                <Button size="sm" variant="outline" className="h-7 text-xs"
+                                  onClick={(e) => { e.stopPropagation(); setAddAccTemplateId(item.id); setNewAccName(""); setNewAccRequired(false); }}>
+                                  <Plus className="mr-1 h-3 w-3" /> 악세서리 추가
+                                </Button>
+                              </div>
+                              {item.accessories.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-3">등록된 악세서리가 없습니다.</p>
+                              ) : (
+                                <div className="rounded border bg-white">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="text-xs">악세서리명</TableHead>
+                                        <TableHead className="w-[80px] text-xs text-center">필수</TableHead>
+                                        <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {item.accessories.map((acc) => (
+                                        <TableRow key={acc.id}>
+                                          {editingAccId === acc.id ? (
+                                            <>
+                                              <TableCell>
+                                                <Input className="h-7 text-xs" value={editingAccName}
+                                                  onChange={(e) => setEditingAccName(e.target.value)}
+                                                  onKeyDown={(e) => { if (e.key === "Enter") handleUpdateAccessory(); if (e.key === "Escape") setEditingAccId(null); }}
+                                                  autoFocus />
+                                              </TableCell>
+                                              <TableCell className="text-center">
+                                                <Switch checked={editingAccRequired} onCheckedChange={setEditingAccRequired} />
+                                              </TableCell>
+                                              <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleUpdateAccessory} disabled={accUpdating}>
+                                                    {accUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-green-600" />}
+                                                  </Button>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingAccId(null)}>
+                                                    <X className="h-3 w-3 text-gray-400" />
+                                                  </Button>
+                                                </div>
+                                              </TableCell>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <TableCell className="text-xs font-medium">{acc.name}</TableCell>
+                                              <TableCell className="text-center">
+                                                <span className={`text-xs ${acc.isRequired ? "text-green-600 font-medium" : "text-gray-400"}`}>
+                                                  {acc.isRequired ? "필수" : "선택"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="수정"
+                                                    onClick={() => { setEditingAccId(acc.id); setEditingAccName(acc.name); setEditingAccRequired(acc.isRequired); }}>
+                                                    <Pencil className="h-3 w-3 text-gray-400" />
+                                                  </Button>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="삭제"
+                                                    onClick={() => setDeleteTarget({ type: "accessory", id: acc.id, name: acc.name, templateId: item.id })}>
+                                                    <Trash2 className="h-3 w-3 text-red-400" />
+                                                  </Button>
+                                                </div>
+                                              </TableCell>
+                                            </>
+                                          )}
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* ── 페이지네이션 ── */}
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">총 {pagination.total}건</p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={pagination.page <= 1} onClick={() => fetchData(pagination.page - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm">{pagination.page} / {pagination.totalPages}</span>
+            <Button variant="outline" size="sm" disabled={pagination.page >= pagination.totalPages} onClick={() => fetchData(pagination.page + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+      {pagination.totalPages <= 1 && pagination.total > 0 && (
+        <p className="text-sm text-gray-500">총 {pagination.total}건</p>
+      )}
+
+      {/* ══════ 템플릿 생성/수정 모달 ══════ */}
+      <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) setShowCreateDialog(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingTemplate ? "식단 템플릿 수정" : "식단 템플릿 등록"}</DialogTitle>
+            <DialogDescription>
+              {editingTemplate ? "템플릿 정보를 수정합니다." : "새 식단 템플릿을 등록합니다. 용기 그룹을 선택하면 슬롯 구성을 정의할 수 있습니다."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1">
+              <Label className="text-sm">템플릿명</Label>
+              <Input
+                placeholder="예: 5칸 도시락 기본, 3칸 간식"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveTemplate()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">용기 그룹</Label>
+              <Select value={formContainerGroupId} onValueChange={setFormContainerGroupId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="용기 그룹을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {containerGroupOptions.map((cg) => (
+                    <SelectItem key={cg.id} value={cg.id}>
+                      {cg.name} ({cg.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>취소</Button>
+              <Button onClick={handleSaveTemplate} disabled={formSaving || !formName.trim() || !formContainerGroupId}>
+                {formSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                {editingTemplate ? "수정" : "등록"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 슬롯 추가 모달 ── */}
+      <Dialog open={!!addSlotTemplateId} onOpenChange={(open) => { if (!open) setAddSlotTemplateId(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>슬롯 추가</DialogTitle>
+            <DialogDescription>새 슬롯을 추가합니다. 번호는 자동으로 부여됩니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1">
+              <Label className="text-sm">슬롯명</Label>
+              <Input placeholder="예: 밥, 국, 반찬1" value={newSlotLabel}
+                onChange={(e) => setNewSlotLabel(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddSlot()} autoFocus />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={newSlotRequired} onCheckedChange={setNewSlotRequired} id="slot-required" />
+              <Label htmlFor="slot-required" className="text-sm">필수 슬롯</Label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setAddSlotTemplateId(null)}>취소</Button>
+              <Button onClick={handleAddSlot} disabled={slotSaving || !newSlotLabel.trim()}>
+                {slotSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                추가
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 악세서리 추가 모달 ── */}
+      <Dialog open={!!addAccTemplateId} onOpenChange={(open) => { if (!open) setAddAccTemplateId(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>악세서리 추가</DialogTitle>
+            <DialogDescription>젓가락, 뚜껑, 띠지 등 부속품을 추가합니다.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1">
+              <Label className="text-sm">악세서리명</Label>
+              <Input placeholder="예: 젓가락, 뚜껑, 띠지" value={newAccName}
+                onChange={(e) => setNewAccName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddAccessory()} autoFocus />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={newAccRequired} onCheckedChange={setNewAccRequired} id="acc-required" />
+              <Label htmlFor="acc-required" className="text-sm">필수 악세서리</Label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setAddAccTemplateId(null)}>취소</Button>
+              <Button onClick={handleAddAccessory} disabled={accSaving || !newAccName.trim()}>
+                {accSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                추가
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 삭제 확인 모달 ── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>삭제 확인</AlertDialogTitle>
+            <AlertDialogDescription>
+              &apos;{deleteTarget?.name}&apos;을(를) 삭제하시겠습니까?
+              {deleteTarget?.type === "template" && " 관련 슬롯과 악세서리도 함께 삭제됩니다."}
+              이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

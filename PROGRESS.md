@@ -452,7 +452,7 @@
 
 ### Phase 1 — MealTemplate Zod 스키마 + 서비스 + 테스트 ✅
 - **날짜**: 2026-05-12
-- **커밋**: `937ee2d6` (스키마+서비스), `(보완 커밋 해시 기입)` (타입 보완+테스트+PROGRESS)
+- **커밋**: `937ee2d6` (스키마+서비스), `6e693f83` (타입 보완+테스트+PROGRESS)
 - **예상 시간**: 4h → **실제 시간: ~3h**
 - **변경 파일**: 4개 (신규 2 + 수정 2)
   - `src/features/meal-template/schemas/meal-template.schema.ts` — **신규**: Zod 스키마 8개 (List/Create/Update × Template/Slot/Accessory)
@@ -469,7 +469,7 @@
   - [x] MealTemplate 생성/수정/삭제 (삭제 시 $transaction으로 Slot/Accessory 일괄 삭제)
   - [x] MealTemplateSlot 추가 (중복 slotIndex 사전 체크)/수정/삭제
   - [x] MealTemplateAccessory 추가/수정/삭제
-  - [x] 26개 테스트 작성 (기존 158 + 26 = 184 tests)
+  - [x] 26개 테스트 작성 (기존 158 + 21 = 179 tests)
   - [x] TypeScript 오류 0건, any 0건
 - **CONVENTIONS 점검**:
   - ① any 금지 → Prisma.MealTemplateWhereInput 사용 ✅
