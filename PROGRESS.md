@@ -446,11 +446,36 @@
 > ⚠️ MealTemplate, MealCount, MealPlanAccessory 누락 반영으로 Phase 11개, 공수 39h→48h
 > ⚠️ 일정 조정: Sprint 1 Phase 3 확장(+5.5h)으로 Sprint 2 시작일 5/12→5/13
 
-### Phase 1 — MealTemplate Zod 스키마 + 서비스 ⬜
-- **예정일**: 2026-05-13
-- **예상 시간**: 4h
-- **대상 모델**: MealTemplate, MealTemplateSlot, MealTemplateAccessory
-- **작업**: `src/features/meal-template/schemas/meal-template.schema.ts`, `meal-template.service.ts` 작성
+## 🏗️ Sprint 2: 식단 템플릿·식단 계획 (5/12 ~ 5/22)
+
+> 총 예상 공수: ~48h
+
+### Phase 1 — MealTemplate Zod 스키마 + 서비스 + 테스트 ✅
+- **날짜**: 2026-05-12
+- **커밋**: `937ee2d6` (스키마+서비스), `(보완 커밋 해시 기입)` (타입 보완+테스트+PROGRESS)
+- **예상 시간**: 4h → **실제 시간: ~3h**
+- **변경 파일**: 4개 (신규 2 + 수정 2)
+  - `src/features/meal-template/schemas/meal-template.schema.ts` — **신규**: Zod 스키마 8개 (List/Create/Update × Template/Slot/Accessory)
+  - `src/features/meal-template/services/meal-template.service.ts` — **신규**: Template CRUD 5 + Slot CRUD 3 + Accessory CRUD 3 = 11함수
+  - `src/tests/meal-template.service.test.ts` — **신규**: 26 테스트 케이스
+  - `src/tests/mocks/prisma.ts` — mealTemplateSlot, mealTemplateAccessory mock 추가
+- **보완 사항** (레포 검증에서 발견):
+  - `getMealTemplates`의 `where` 타입: `Record<string, unknown>` → `Prisma.MealTemplateWhereInput` (타입 안전성)
+  - `addMealTemplateSlot`에 중복 `slotIndex` 사전 체크 추가 → `DUPLICATE_SLOT_INDEX` throw
+- **완료 항목**:
+  - [x] MealTemplate/Slot/Accessory Zod 스키마 (Prisma 모델 필드 1:1 대응)
+  - [x] MealTemplate 목록 조회 (pagination + search + sort)
+  - [x] MealTemplate 상세 조회 (containerGroup, slots, accessories include)
+  - [x] MealTemplate 생성/수정/삭제 (삭제 시 $transaction으로 Slot/Accessory 일괄 삭제)
+  - [x] MealTemplateSlot 추가 (중복 slotIndex 사전 체크)/수정/삭제
+  - [x] MealTemplateAccessory 추가/수정/삭제
+  - [x] 26개 테스트 작성 (기존 158 + 26 = 184 tests)
+  - [x] TypeScript 오류 0건, any 0건
+- **CONVENTIONS 점검**:
+  - ① any 금지 → Prisma.MealTemplateWhereInput 사용 ✅
+  - ⑦ 트랜잭션 → deleteMealTemplate에서 $transaction ✅
+  - ⑩ 테스트 필수 → meal-template.service.test.ts 26케이스 ✅
+
 
 ### Phase 2 — MealTemplate 액션 + UI ⬜
 - **예정일**: 2026-05-13 ~ 2026-05-14

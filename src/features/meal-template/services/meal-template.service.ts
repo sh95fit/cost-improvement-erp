@@ -1,5 +1,6 @@
 // src/features/meal-template/services/meal-template.service.ts
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type {
   CreateMealTemplateInput,
   UpdateMealTemplateInput,
@@ -28,7 +29,7 @@ export async function getMealTemplates(
   const { page, limit, search, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = { companyId };
+  const where: Prisma.MealTemplateWhereInput = { companyId };
 
   if (search) {
     where.OR = [
@@ -123,6 +124,12 @@ export async function addMealTemplateSlot(
   mealTemplateId: string,
   input: CreateMealTemplateSlotInput
 ) {
+  // 중복 slotIndex 사전 체크
+  const existing = await prisma.mealTemplateSlot.findFirst({
+    where: { mealTemplateId, slotIndex: input.slotIndex },
+  });
+  if (existing) throw new Error("DUPLICATE_SLOT_INDEX");
+
   return prisma.mealTemplateSlot.create({
     data: {
       mealTemplateId,
