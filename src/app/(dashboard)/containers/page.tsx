@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   getContainerGroupsAction,
-  getContainerGroupByIdAction,
+  getSlotsBySubsidiaryIdAction,
   addContainerSlotAction,
   updateContainerSlotAction,
   deleteContainerSlotAction,
@@ -97,7 +97,7 @@ export default function ContainersPage() {
   // ── 단일 그룹 새로고침 ──
   const refreshGroup = async (groupId: string) => {
     try {
-      const result = await getContainerGroupByIdAction(groupId);
+      const result = await getSlotsBySubsidiaryIdAction(groupId);
       if (result.success && result.data) {
         const updated = result.data as unknown as GroupRow;
         setItems((prev) =>
