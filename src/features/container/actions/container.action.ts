@@ -126,5 +126,5 @@ export async function deleteContainerSlotAction(
   }
 }
 
-export { getContainerGroupsAction as getSubsidiariesAction };
-export { getContainerGroupByIdAction as getSlotsBySubsidiaryIdAction };
+export const getSubsidiariesAction = getContainerGroupsAction;
+export const getSlotsBySubsidiaryIdAction = getContainerGroupByIdAction;
