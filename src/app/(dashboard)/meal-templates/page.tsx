@@ -40,19 +40,33 @@ import {
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
 import { loadAllPages } from "@/lib/action-helpers";
+import type { PaginatedFetcher } from "@/lib/action-helpers";
 
-// ── 타입 ──
-type SlotRow = { id: string; slotIndex: number; label: string; isRequired: boolean };
-type AccessoryRow = { id: string; name: string; isRequired: boolean };
-type ContainerGroupOption = { id: string; name: string; code: string };
+// ── v5 타입 ──
+type SubsidiaryOption = { id: string; name: string; code: string };
+
+type ContainerRow = {
+  id: string;
+  subsidiaryMasterId: string;
+  sortOrder: number;
+  subsidiaryMaster: SubsidiaryOption;
+};
+
+type AccessoryRow = {
+  id: string;
+  subsidiaryMasterId: string;
+  consumptionType: string;
+  fixedQuantity: number | null;
+  isRequired: boolean;
+  subsidiaryMaster: SubsidiaryOption;
+};
+
 type TemplateRow = {
   id: string;
   name: string;
-  containerGroupId: string;
-  containerGroup: ContainerGroupOption;
-  slots: SlotRow[];
+  containers: ContainerRow[];
   accessories: AccessoryRow[];
-  _count: { slots: number; accessories: number };
+  _count: { containers: number; accessories: number };
   createdAt: string;
   updatedAt: string;
 };
@@ -64,46 +78,42 @@ export default function MealTemplatesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ── 용기 그룹 옵션 ──
-  const [containerGroupOptions, setContainerGroupOptions] = useState<ContainerGroupOption[]>([]);
+  // ── 부자재 옵션 (CONTAINER / ACCESSORY) ──
+  const [containerOptions, setContainerOptions] = useState<SubsidiaryOption[]>([]);
+  const [accessoryOptions, setAccessoryOptions] = useState<SubsidiaryOption[]>([]);
 
   // ── 템플릿 생성/수정 ──
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
   const [formName, setFormName] = useState("");
-  const [formContainerGroupId, setFormContainerGroupId] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
-  // ── 아코디언 (상세보기) ──
+  // ── 아코디언 ──
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // ── 슬롯 추가 ──
-  const [addSlotTemplateId, setAddSlotTemplateId] = useState<string | null>(null);
-  const [newSlotLabel, setNewSlotLabel] = useState("");
-  const [newSlotRequired, setNewSlotRequired] = useState(true);
-  const [slotSaving, setSlotSaving] = useState(false);
-
-  // ── 슬롯 수정 ──
-  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
-  const [editingSlotLabel, setEditingSlotLabel] = useState("");
-  const [editingSlotRequired, setEditingSlotRequired] = useState(true);
-  const [slotUpdating, setSlotUpdating] = useState(false);
+  // ── 용기(Container) 추가 ──
+  const [addContainerTemplateId, setAddContainerTemplateId] = useState<string | null>(null);
+  const [newContainerSubId, setNewContainerSubId] = useState("");
+  const [containerSaving, setContainerSaving] = useState(false);
 
   // ── 악세서리 추가 ──
   const [addAccTemplateId, setAddAccTemplateId] = useState<string | null>(null);
-  const [newAccName, setNewAccName] = useState("");
+  const [newAccSubId, setNewAccSubId] = useState("");
+  const [newAccConsumptionType, setNewAccConsumptionType] = useState("PER_MEAL_COUNT");
+  const [newAccFixedQty, setNewAccFixedQty] = useState("");
   const [newAccRequired, setNewAccRequired] = useState(false);
   const [accSaving, setAccSaving] = useState(false);
 
   // ── 악세서리 수정 ──
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
-  const [editingAccName, setEditingAccName] = useState("");
+  const [editingAccConsumptionType, setEditingAccConsumptionType] = useState("PER_MEAL_COUNT");
+  const [editingAccFixedQty, setEditingAccFixedQty] = useState("");
   const [editingAccRequired, setEditingAccRequired] = useState(false);
   const [accUpdating, setAccUpdating] = useState(false);
 
   // ── 삭제 확인 ──
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: "template" | "slot" | "accessory";
+    type: "template" | "container" | "accessory";
     id: string;
     name: string;
     templateId?: string;
@@ -139,28 +149,34 @@ export default function MealTemplatesPage() {
     }
   }, [search]);
 
-  const loadContainerGroupOptions = useCallback(async () => {
-    const { items: groups } = await loadAllPages<ContainerGroupOption>(
-      getContainerGroupsAction as Parameters<typeof loadAllPages<ContainerGroupOption>>[0],
-      "name"
-    );
-    setContainerGroupOptions(groups);
+  const loadOptions = useCallback(async () => {
+    try {
+      // CONTAINER 타입 부자재 로딩 (getContainerGroupsAction = SubsidiaryMaster CONTAINER)
+      const { items: cItems } = await loadAllPages<SubsidiaryOption>(
+        getContainerGroupsAction as PaginatedFetcher<SubsidiaryOption>,
+        "name"
+      );
+      setContainerOptions(cItems);
+
+      // TODO: ACCESSORY/CONSUMABLE 타입 부자재도 별도 action으로 로딩 가능
+      // 현재는 container 옵션을 accessory에서도 사용 (전체 부자재 목록 필요 시 확장)
+      setAccessoryOptions(cItems);
+    } catch (err) {
+      logger.error("[MealTemplatesPage.loadOptions] 실패:", err);
+    }
   }, []);
 
   useEffect(() => {
     fetchData(1);
-    loadContainerGroupOptions();
-  }, [fetchData, loadContainerGroupOptions]);
+    loadOptions();
+  }, [fetchData, loadOptions]);
 
-  // ── 단일 템플릿 새로고침 ──
   const refreshTemplate = async (templateId: string) => {
     try {
       const result = await getMealTemplateByIdAction(templateId);
       if (result.success && result.data) {
         const updated = result.data as unknown as TemplateRow;
-        setItems((prev) =>
-          prev.map((t) => (t.id === templateId ? updated : t))
-        );
+        setItems((prev) => prev.map((t) => (t.id === templateId ? updated : t)));
       }
     } catch (err) {
       logger.error("[MealTemplatesPage.refreshTemplate] 실패:", err);
@@ -173,108 +189,79 @@ export default function MealTemplatesPage() {
 
   const openCreateDialog = () => {
     setFormName("");
-    setFormContainerGroupId("");
     setEditingTemplate(null);
     setShowCreateDialog(true);
   };
 
   const openEditDialog = (tmpl: TemplateRow) => {
     setFormName(tmpl.name);
-    setFormContainerGroupId(tmpl.containerGroupId);
     setEditingTemplate(tmpl);
     setShowCreateDialog(true);
   };
 
   const handleSaveTemplate = async () => {
-    if (!formName.trim() || !formContainerGroupId) return;
+    if (!formName.trim()) return;
     setFormSaving(true);
     try {
       if (editingTemplate) {
         const result = await updateMealTemplateAction(editingTemplate.id, {
           name: formName.trim(),
-          containerGroupId: formContainerGroupId,
         });
         if (result.success) {
           toast.success("식단 템플릿이 수정되었습니다");
           setShowCreateDialog(false);
           fetchData(pagination.page);
         } else {
-          toast.error(result.error?.message ?? "식단 템플릿 수정에 실패했습니다");
+          toast.error(result.error?.message ?? "수정에 실패했습니다");
         }
       } else {
         const result = await createMealTemplateAction({
           name: formName.trim(),
-          containerGroupId: formContainerGroupId,
         });
         if (result.success) {
           toast.success("식단 템플릿이 등록되었습니다");
           setShowCreateDialog(false);
           fetchData(1);
         } else {
-          toast.error(result.error?.message ?? "식단 템플릿 생성에 실패했습니다");
+          toast.error(result.error?.message ?? "생성에 실패했습니다");
         }
       }
     } catch (err) {
       logger.error("[MealTemplatesPage.handleSaveTemplate] 실패:", err);
-      toast.error("식단 템플릿 저장 중 오류가 발생했습니다");
+      toast.error("저장 중 오류가 발생했습니다");
     } finally {
       setFormSaving(false);
     }
   };
 
   // ══════════════════════════════════════
-  // 슬롯 CRUD
+  // 용기(Container) CRUD
   // ══════════════════════════════════════
 
-  const handleAddSlot = async () => {
-    if (!addSlotTemplateId || !newSlotLabel.trim()) return;
-    setSlotSaving(true);
-    const templateId = addSlotTemplateId;
+  const handleAddContainer = async () => {
+    if (!addContainerTemplateId || !newContainerSubId) return;
+    setContainerSaving(true);
+    const templateId = addContainerTemplateId;
     try {
       const template = items.find((t) => t.id === templateId);
-      const nextIndex = template ? Math.max(0, ...template.slots.map((s) => s.slotIndex)) + 1 : 0;
+      const nextSort = template ? Math.max(0, ...template.containers.map((c) => c.sortOrder)) + 1 : 0;
       const result = await addMealTemplateContainerAction(templateId, {
-        slotIndex: nextIndex,
-        label: newSlotLabel.trim(),
-        isRequired: newSlotRequired,
+        subsidiaryMasterId: newContainerSubId,
+        sortOrder: nextSort,
       });
       if (result.success) {
-        toast.success("슬롯이 추가되었습니다");
-        setNewSlotLabel("");
-        setNewSlotRequired(true);
-        setAddSlotTemplateId(null);
+        toast.success("용기가 추가되었습니다");
+        setNewContainerSubId("");
+        setAddContainerTemplateId(null);
         await refreshTemplate(templateId);
       } else {
-        toast.error(result.error?.message ?? "슬롯 추가에 실패했습니다");
+        toast.error(result.error?.message ?? "용기 추가에 실패했습니다");
       }
     } catch (err) {
-      logger.error("[MealTemplatesPage.handleAddSlot] 실패:", err);
-      toast.error("슬롯 추가 중 오류가 발생했습니다");
+      logger.error("[MealTemplatesPage.handleAddContainer] 실패:", err);
+      toast.error("용기 추가 중 오류가 발생했습니다");
     } finally {
-      setSlotSaving(false);
-    }
-  };
-
-  const handleUpdateSlot = async () => {
-    if (!editingSlotId) return;
-    setSlotUpdating(true);
-    try {
-      const result = await updateMealTemplateContainerAction(editingSlotId, {
-        label: editingSlotLabel.trim() || undefined,
-        isRequired: editingSlotRequired,
-      });
-      if (result.success) {
-        toast.success("슬롯이 수정되었습니다");
-        setEditingSlotId(null);
-        if (expandedId) await refreshTemplate(expandedId);
-      } else {
-        toast.error(result.error?.message ?? "슬롯 수정에 실패했습니다");
-      }
-    } catch (err) {
-      logger.error("[MealTemplatesPage.handleUpdateSlot] 실패:", err);
-      toast.error("슬롯 수정 중 오류가 발생했습니다");
-    } finally {
-      setSlotUpdating(false);
+      setContainerSaving(false);
     }
   };
 
@@ -283,17 +270,21 @@ export default function MealTemplatesPage() {
   // ══════════════════════════════════════
 
   const handleAddAccessory = async () => {
-    if (!addAccTemplateId || !newAccName.trim()) return;
+    if (!addAccTemplateId || !newAccSubId) return;
     setAccSaving(true);
     const templateId = addAccTemplateId;
     try {
       const result = await addMealTemplateAccessoryAction(templateId, {
-        name: newAccName.trim(),
+        subsidiaryMasterId: newAccSubId,
+        consumptionType: newAccConsumptionType,
+        fixedQuantity: newAccFixedQty ? parseFloat(newAccFixedQty) : undefined,
         isRequired: newAccRequired,
       });
       if (result.success) {
         toast.success("악세서리가 추가되었습니다");
-        setNewAccName("");
+        setNewAccSubId("");
+        setNewAccConsumptionType("PER_MEAL_COUNT");
+        setNewAccFixedQty("");
         setNewAccRequired(false);
         setAddAccTemplateId(null);
         await refreshTemplate(templateId);
@@ -313,7 +304,8 @@ export default function MealTemplatesPage() {
     setAccUpdating(true);
     try {
       const result = await updateMealTemplateAccessoryAction(editingAccId, {
-        name: editingAccName.trim() || undefined,
+        consumptionType: editingAccConsumptionType as "PER_MEAL_COUNT" | "FIXED_QUANTITY",
+        fixedQuantity: editingAccFixedQty ? parseFloat(editingAccFixedQty) : undefined,
         isRequired: editingAccRequired,
       });
       if (result.success) {
@@ -321,7 +313,7 @@ export default function MealTemplatesPage() {
         setEditingAccId(null);
         if (expandedId) await refreshTemplate(expandedId);
       } else {
-        toast.error(result.error?.message ?? "악세서리 수정에 실패했습니다");
+        toast.error(result.error?.message ?? "수정에 실패했습니다");
       }
     } catch (err) {
       logger.error("[MealTemplatesPage.handleUpdateAccessory] 실패:", err);
@@ -346,15 +338,15 @@ export default function MealTemplatesPage() {
           if (expandedId === id) setExpandedId(null);
           fetchData(pagination.page);
         } else {
-          toast.error(result.error?.message ?? "식단 템플릿 삭제에 실패했습니다");
+          toast.error(result.error?.message ?? "삭제에 실패했습니다");
         }
-      } else if (type === "slot") {
+      } else if (type === "container") {
         const result = await deleteMealTemplateContainerAction(id);
         if (result.success) {
-          toast.success("슬롯이 삭제되었습니다");
+          toast.success("용기가 삭제되었습니다");
           if (templateId) await refreshTemplate(templateId);
         } else {
-          toast.error(result.error?.message ?? "슬롯 삭제에 실패했습니다");
+          toast.error(result.error?.message ?? "삭제에 실패했습니다");
         }
       } else if (type === "accessory") {
         const result = await deleteMealTemplateAccessoryAction(id);
@@ -362,7 +354,7 @@ export default function MealTemplatesPage() {
           toast.success("악세서리가 삭제되었습니다");
           if (templateId) await refreshTemplate(templateId);
         } else {
-          toast.error(result.error?.message ?? "악세서리 삭제에 실패했습니다");
+          toast.error(result.error?.message ?? "삭제에 실패했습니다");
         }
       }
     } catch (err) {
@@ -374,7 +366,6 @@ export default function MealTemplatesPage() {
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
-    setEditingSlotId(null);
     setEditingAccId(null);
   };
 
@@ -384,20 +375,19 @@ export default function MealTemplatesPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── 헤더 ── */}
       <div>
         <h1 className="text-2xl font-bold">식단 템플릿</h1>
         <p className="text-sm text-gray-500">
-          배식 용기별 슬롯 구성과 악세서리를 정의합니다. 식단 계획에서 템플릿을 선택하면 슬롯이 자동으로 적용됩니다.
+          배식 용기와 악세서리 구성을 정의합니다. 식단 계획에서 템플릿을 선택하면 자동으로 적용됩니다.
         </p>
       </div>
 
-      {/* ── 검색 + 등록 ── */}
+      {/* 검색 + 등록 */}
       <div className="flex items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="템플릿명, 용기명으로 검색"
+            placeholder="템플릿명으로 검색"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
@@ -411,15 +401,14 @@ export default function MealTemplatesPage() {
         </Button>
       </div>
 
-      {/* ══════ 메인 테이블 ══════ */}
+      {/* 메인 테이블 */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]" />
               <TableHead>템플릿명</TableHead>
-              <TableHead className="w-[160px]">용기 그룹</TableHead>
-              <TableHead className="w-[80px] text-center">슬롯</TableHead>
+              <TableHead className="w-[80px] text-center">용기</TableHead>
               <TableHead className="w-[80px] text-center">악세서리</TableHead>
               <TableHead className="w-[100px]">등록일</TableHead>
               <TableHead className="w-[80px] text-right">관리</TableHead>
@@ -428,7 +417,7 @@ export default function MealTemplatesPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-gray-500">
                     <Loader2 className="h-5 w-5 animate-spin" />
                     불러오는 중...
@@ -437,10 +426,10 @@ export default function MealTemplatesPage() {
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
                   {search.trim()
                     ? `"${search}" 검색 결과가 없습니다`
-                    : "등록된 식단 템플릿이 없습니다. '템플릿 등록' 버튼을 눌러 추가해 주세요."}
+                    : "등록된 식단 템플릿이 없습니다."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -456,15 +445,9 @@ export default function MealTemplatesPage() {
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-purple-500" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                       </TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <Package className="h-3.5 w-3.5 text-gray-400" />
-                          <span className="text-sm">{item.containerGroup.name}</span>
-                        </div>
-                      </TableCell>
                       <TableCell className="text-center">
                         <span className="inline-flex rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
-                          {item._count.slots}
+                          {item._count.containers}
                         </span>
                       </TableCell>
                       <TableCell className="text-center">
@@ -489,83 +472,66 @@ export default function MealTemplatesPage() {
                       </TableCell>
                     </TableRow>
 
-                    {/* ── 확장 영역: 슬롯 + 악세서리 ── */}
+                    {/* 확장 영역 */}
                     {isExpanded && (
                       <TableRow className="bg-purple-50/20 hover:bg-purple-50/20">
-                        <TableCell colSpan={7} className="p-0 border-t-0">
+                        <TableCell colSpan={6} className="p-0 border-t-0">
                           <div className="border-t border-purple-100 bg-purple-50/30 px-6 py-4 space-y-5">
 
-                            {/* ── 슬롯 섹션 ── */}
+                            {/* ── 용기(Container) 섹션 ── */}
                             <div className="space-y-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-600">슬롯 구성 ({item.slots.length}개)</span>
+                                <span className="text-xs font-semibold text-gray-600">
+                                  용기 구성 ({item.containers.length}개)
+                                </span>
                                 <Button size="sm" variant="outline" className="h-7 text-xs"
-                                  onClick={(e) => { e.stopPropagation(); setAddSlotTemplateId(item.id); setNewSlotLabel(""); setNewSlotRequired(true); }}>
-                                  <Plus className="mr-1 h-3 w-3" /> 슬롯 추가
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddContainerTemplateId(item.id);
+                                    setNewContainerSubId("");
+                                  }}>
+                                  <Plus className="mr-1 h-3 w-3" /> 용기 추가
                                 </Button>
                               </div>
-                              {item.slots.length === 0 ? (
-                                <p className="text-center text-xs text-gray-400 py-3">등록된 슬롯이 없습니다.</p>
+                              {item.containers.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-3">등록된 용기가 없습니다.</p>
                               ) : (
                                 <div className="rounded border bg-white">
                                   <Table>
                                     <TableHeader>
                                       <TableRow>
-                                        <TableHead className="w-[60px] text-xs">번호</TableHead>
-                                        <TableHead className="text-xs">슬롯명</TableHead>
-                                        <TableHead className="w-[80px] text-xs text-center">필수</TableHead>
-                                        <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                                        <TableHead className="w-[60px] text-xs">순서</TableHead>
+                                        <TableHead className="text-xs">용기명</TableHead>
+                                        <TableHead className="text-xs">코드</TableHead>
+                                        <TableHead className="w-[60px] text-xs text-right">관리</TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                      {item.slots.map((slot) => (
-                                        <TableRow key={slot.id}>
-                                          {editingSlotId === slot.id ? (
-                                            <>
-                                              <TableCell className="text-xs font-mono text-gray-400">{slot.slotIndex}</TableCell>
-                                              <TableCell>
-                                                <Input className="h-7 text-xs" value={editingSlotLabel}
-                                                  onChange={(e) => setEditingSlotLabel(e.target.value)}
-                                                  onKeyDown={(e) => { if (e.key === "Enter") handleUpdateSlot(); if (e.key === "Escape") setEditingSlotId(null); }}
-                                                  autoFocus />
-                                              </TableCell>
-                                              <TableCell className="text-center">
-                                                <Switch checked={editingSlotRequired} onCheckedChange={setEditingSlotRequired} />
-                                              </TableCell>
-                                              <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleUpdateSlot} disabled={slotUpdating}>
-                                                    {slotUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-green-600" />}
-                                                  </Button>
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingSlotId(null)}>
-                                                    <X className="h-3 w-3 text-gray-400" />
-                                                  </Button>
-                                                </div>
-                                              </TableCell>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <TableCell className="text-xs font-mono">{slot.slotIndex}</TableCell>
-                                              <TableCell className="text-xs font-medium">{slot.label}</TableCell>
-                                              <TableCell className="text-center">
-                                                <span className={`text-xs ${slot.isRequired ? "text-green-600 font-medium" : "text-gray-400"}`}>
-                                                  {slot.isRequired ? "필수" : "선택"}
-                                                </span>
-                                              </TableCell>
-                                              <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="슬롯 수정"
-                                                    onClick={() => { setEditingSlotId(slot.id); setEditingSlotLabel(slot.label); setEditingSlotRequired(slot.isRequired); }}>
-                                                    <Pencil className="h-3 w-3 text-gray-400" />
-                                                  </Button>
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" title="슬롯 삭제"
-                                                    onClick={() => setDeleteTarget({ type: "slot", id: slot.id, name: slot.label, templateId: item.id })}>
-                                                    <Trash2 className="h-3 w-3 text-red-400" />
-                                                  </Button>
-                                                </div>
-                                              </TableCell>
-                                            </>
-                                          )}
+                                      {item.containers.map((cont) => (
+                                        <TableRow key={cont.id}>
+                                          <TableCell className="text-xs font-mono text-gray-400">
+                                            {cont.sortOrder}
+                                          </TableCell>
+                                          <TableCell className="text-xs font-medium">
+                                            <div className="flex items-center gap-1.5">
+                                              <Package className="h-3.5 w-3.5 text-gray-400" />
+                                              {cont.subsidiaryMaster.name}
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="text-xs text-gray-400 font-mono">
+                                            {cont.subsidiaryMaster.code}
+                                          </TableCell>
+                                          <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-6 w-6" title="삭제"
+                                              onClick={() => setDeleteTarget({
+                                                type: "container",
+                                                id: cont.id,
+                                                name: cont.subsidiaryMaster.name,
+                                                templateId: item.id,
+                                              })}>
+                                              <Trash2 className="h-3 w-3 text-red-400" />
+                                            </Button>
+                                          </TableCell>
                                         </TableRow>
                                       ))}
                                     </TableBody>
@@ -577,9 +543,18 @@ export default function MealTemplatesPage() {
                             {/* ── 악세서리 섹션 ── */}
                             <div className="space-y-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-600">악세서리 ({item.accessories.length}개)</span>
+                                <span className="text-xs font-semibold text-gray-600">
+                                  악세서리 ({item.accessories.length}개)
+                                </span>
                                 <Button size="sm" variant="outline" className="h-7 text-xs"
-                                  onClick={(e) => { e.stopPropagation(); setAddAccTemplateId(item.id); setNewAccName(""); setNewAccRequired(false); }}>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddAccTemplateId(item.id);
+                                    setNewAccSubId("");
+                                    setNewAccConsumptionType("PER_MEAL_COUNT");
+                                    setNewAccFixedQty("");
+                                    setNewAccRequired(false);
+                                  }}>
                                   <Plus className="mr-1 h-3 w-3" /> 악세서리 추가
                                 </Button>
                               </div>
@@ -590,9 +565,10 @@ export default function MealTemplatesPage() {
                                   <Table>
                                     <TableHeader>
                                       <TableRow>
-                                        <TableHead className="text-xs">악세서리명</TableHead>
+                                        <TableHead className="text-xs">부자재명</TableHead>
+                                        <TableHead className="w-[100px] text-xs">소비 모드</TableHead>
                                         <TableHead className="w-[80px] text-xs text-center">필수</TableHead>
-                                        <TableHead className="w-[100px] text-xs text-right">관리</TableHead>
+                                        <TableHead className="w-[80px] text-xs text-right">관리</TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -600,21 +576,31 @@ export default function MealTemplatesPage() {
                                         <TableRow key={acc.id}>
                                           {editingAccId === acc.id ? (
                                             <>
+                                              <TableCell className="text-xs font-medium">
+                                                {acc.subsidiaryMaster.name}
+                                              </TableCell>
                                               <TableCell>
-                                                <Input className="h-7 text-xs" value={editingAccName}
-                                                  onChange={(e) => setEditingAccName(e.target.value)}
-                                                  onKeyDown={(e) => { if (e.key === "Enter") handleUpdateAccessory(); if (e.key === "Escape") setEditingAccId(null); }}
-                                                  autoFocus />
+                                                <Select value={editingAccConsumptionType} onValueChange={setEditingAccConsumptionType}>
+                                                  <SelectTrigger className="h-7 text-xs">
+                                                    <SelectValue />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    <SelectItem value="PER_MEAL_COUNT">식수당</SelectItem>
+                                                    <SelectItem value="FIXED_QUANTITY">고정수량</SelectItem>
+                                                  </SelectContent>
+                                                </Select>
                                               </TableCell>
                                               <TableCell className="text-center">
                                                 <Switch checked={editingAccRequired} onCheckedChange={setEditingAccRequired} />
                                               </TableCell>
                                               <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-1">
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleUpdateAccessory} disabled={accUpdating}>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6"
+                                                    onClick={handleUpdateAccessory} disabled={accUpdating}>
                                                     {accUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-green-600" />}
                                                   </Button>
-                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingAccId(null)}>
+                                                  <Button variant="ghost" size="icon" className="h-6 w-6"
+                                                    onClick={() => setEditingAccId(null)}>
                                                     <X className="h-3 w-3 text-gray-400" />
                                                   </Button>
                                                 </div>
@@ -622,7 +608,13 @@ export default function MealTemplatesPage() {
                                             </>
                                           ) : (
                                             <>
-                                              <TableCell className="text-xs font-medium">{acc.name}</TableCell>
+                                              <TableCell className="text-xs font-medium">
+                                                {acc.subsidiaryMaster.name}
+                                                <span className="ml-1 text-gray-400">({acc.subsidiaryMaster.code})</span>
+                                              </TableCell>
+                                              <TableCell className="text-xs text-gray-500">
+                                                {acc.consumptionType === "PER_MEAL_COUNT" ? "식수당" : `고정 ${acc.fixedQuantity ?? 0}`}
+                                              </TableCell>
                                               <TableCell className="text-center">
                                                 <span className={`text-xs ${acc.isRequired ? "text-green-600 font-medium" : "text-gray-400"}`}>
                                                   {acc.isRequired ? "필수" : "선택"}
@@ -631,11 +623,21 @@ export default function MealTemplatesPage() {
                                               <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-1">
                                                   <Button variant="ghost" size="icon" className="h-6 w-6" title="수정"
-                                                    onClick={() => { setEditingAccId(acc.id); setEditingAccName(acc.name); setEditingAccRequired(acc.isRequired); }}>
+                                                    onClick={() => {
+                                                      setEditingAccId(acc.id);
+                                                      setEditingAccConsumptionType(acc.consumptionType);
+                                                      setEditingAccFixedQty(acc.fixedQuantity?.toString() ?? "");
+                                                      setEditingAccRequired(acc.isRequired);
+                                                    }}>
                                                     <Pencil className="h-3 w-3 text-gray-400" />
                                                   </Button>
                                                   <Button variant="ghost" size="icon" className="h-6 w-6" title="삭제"
-                                                    onClick={() => setDeleteTarget({ type: "accessory", id: acc.id, name: acc.name, templateId: item.id })}>
+                                                    onClick={() => setDeleteTarget({
+                                                      type: "accessory",
+                                                      id: acc.id,
+                                                      name: acc.subsidiaryMaster.name,
+                                                      templateId: item.id,
+                                                    })}>
                                                     <Trash2 className="h-3 w-3 text-red-400" />
                                                   </Button>
                                                 </div>
@@ -662,16 +664,18 @@ export default function MealTemplatesPage() {
         </Table>
       </div>
 
-      {/* ── 페이지네이션 ── */}
+      {/* 페이지네이션 */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">총 {pagination.total}건</p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={pagination.page <= 1} onClick={() => fetchData(pagination.page - 1)}>
+            <Button variant="outline" size="sm" disabled={pagination.page <= 1}
+              onClick={() => fetchData(pagination.page - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm">{pagination.page} / {pagination.totalPages}</span>
-            <Button variant="outline" size="sm" disabled={pagination.page >= pagination.totalPages} onClick={() => fetchData(pagination.page + 1)}>
+            <Button variant="outline" size="sm" disabled={pagination.page >= pagination.totalPages}
+              onClick={() => fetchData(pagination.page + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -687,7 +691,9 @@ export default function MealTemplatesPage() {
           <DialogHeader>
             <DialogTitle>{editingTemplate ? "식단 템플릿 수정" : "식단 템플릿 등록"}</DialogTitle>
             <DialogDescription>
-              {editingTemplate ? "템플릿 정보를 수정합니다." : "새 식단 템플릿을 등록합니다. 용기 그룹을 선택하면 슬롯 구성을 정의할 수 있습니다."}
+              {editingTemplate
+                ? "템플릿 이름을 수정합니다."
+                : "새 식단 템플릿을 등록합니다. 용기와 악세서리는 등록 후 추가할 수 있습니다."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
@@ -701,24 +707,9 @@ export default function MealTemplatesPage() {
                 autoFocus
               />
             </div>
-            <div className="space-y-1">
-              <Label className="text-sm">용기 그룹</Label>
-              <Select value={formContainerGroupId} onValueChange={setFormContainerGroupId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="용기 그룹을 선택하세요" />
-                </SelectTrigger>
-                <SelectContent>
-                  {containerGroupOptions.map((cg) => (
-                    <SelectItem key={cg.id} value={cg.id}>
-                      {cg.name} ({cg.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>취소</Button>
-              <Button onClick={handleSaveTemplate} disabled={formSaving || !formName.trim() || !formContainerGroupId}>
+              <Button onClick={handleSaveTemplate} disabled={formSaving || !formName.trim()}>
                 {formSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 {editingTemplate ? "수정" : "등록"}
               </Button>
@@ -727,28 +718,33 @@ export default function MealTemplatesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── 슬롯 추가 모달 ── */}
-      <Dialog open={!!addSlotTemplateId} onOpenChange={(open) => { if (!open) setAddSlotTemplateId(null); }}>
+      {/* ══════ 용기 추가 모달 ══════ */}
+      <Dialog open={!!addContainerTemplateId} onOpenChange={(open) => { if (!open) setAddContainerTemplateId(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>슬롯 추가</DialogTitle>
-            <DialogDescription>새 슬롯을 추가합니다. 번호는 자동으로 부여됩니다.</DialogDescription>
+            <DialogTitle>용기 추가</DialogTitle>
+            <DialogDescription>템플릿에 배식 용기를 추가합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="space-y-1">
-              <Label className="text-sm">슬롯명</Label>
-              <Input placeholder="예: 밥, 국, 반찬1" value={newSlotLabel}
-                onChange={(e) => setNewSlotLabel(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddSlot()} autoFocus />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={newSlotRequired} onCheckedChange={setNewSlotRequired} id="slot-required" />
-              <Label htmlFor="slot-required" className="text-sm">필수 슬롯</Label>
+              <Label className="text-sm">용기 선택</Label>
+              <Select value={newContainerSubId} onValueChange={setNewContainerSubId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="용기를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {containerOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.name} ({opt.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setAddSlotTemplateId(null)}>취소</Button>
-              <Button onClick={handleAddSlot} disabled={slotSaving || !newSlotLabel.trim()}>
-                {slotSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+              <Button variant="ghost" onClick={() => setAddContainerTemplateId(null)}>취소</Button>
+              <Button onClick={handleAddContainer} disabled={containerSaving || !newContainerSubId}>
+                {containerSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 추가
               </Button>
             </div>
@@ -756,7 +752,7 @@ export default function MealTemplatesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── 악세서리 추가 모달 ── */}
+      {/* ══════ 악세서리 추가 모달 ══════ */}
       <Dialog open={!!addAccTemplateId} onOpenChange={(open) => { if (!open) setAddAccTemplateId(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -765,18 +761,51 @@ export default function MealTemplatesPage() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="space-y-1">
-              <Label className="text-sm">악세서리명</Label>
-              <Input placeholder="예: 젓가락, 뚜껑, 띠지" value={newAccName}
-                onChange={(e) => setNewAccName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddAccessory()} autoFocus />
+              <Label className="text-sm">부자재 선택</Label>
+              <Select value={newAccSubId} onValueChange={setNewAccSubId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="부자재를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accessoryOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.name} ({opt.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-sm">소비 모드</Label>
+              <Select value={newAccConsumptionType} onValueChange={setNewAccConsumptionType}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PER_MEAL_COUNT">식수당 (인원수만큼)</SelectItem>
+                  <SelectItem value="FIXED_QUANTITY">고정 수량</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {newAccConsumptionType === "FIXED_QUANTITY" && (
+              <div className="space-y-1">
+                <Label className="text-sm">고정 수량</Label>
+                <Input
+                  type="number"
+                  placeholder="예: 10"
+                  value={newAccFixedQty}
+                  onChange={(e) => setNewAccFixedQty(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Switch checked={newAccRequired} onCheckedChange={setNewAccRequired} id="acc-required" />
               <Label htmlFor="acc-required" className="text-sm">필수 악세서리</Label>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setAddAccTemplateId(null)}>취소</Button>
-              <Button onClick={handleAddAccessory} disabled={accSaving || !newAccName.trim()}>
+              <Button onClick={handleAddAccessory} disabled={accSaving || !newAccSubId}>
                 {accSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 추가
               </Button>
@@ -792,7 +821,7 @@ export default function MealTemplatesPage() {
             <AlertDialogTitle>삭제 확인</AlertDialogTitle>
             <AlertDialogDescription>
               &apos;{deleteTarget?.name}&apos;을(를) 삭제하시겠습니까?
-              {deleteTarget?.type === "template" && " 관련 슬롯과 악세서리도 함께 삭제됩니다."}
+              {deleteTarget?.type === "template" && " 관련 용기와 악세서리도 함께 삭제됩니다."}
               이 작업은 되돌릴 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
