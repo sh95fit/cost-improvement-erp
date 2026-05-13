@@ -31,18 +31,17 @@ export const mockPrisma = {
   semiProduct: createModelMock(),
   bOM: createModelMock(),
   bOMItem: createModelMock(),
-  containerGroup: createModelMock(),
+  // ★ v5: containerGroup 제거, containerSlot 유지
   containerSlot: createModelMock(),
-  containerAccessory: createModelMock(),
+  // ★ v5: mealTemplateSlot → mealTemplateContainer
   mealTemplate: createModelMock(),
-  mealTemplateSlot: createModelMock(),         
-  mealTemplateAccessory: createModelMock(),    
+  mealTemplateContainer: createModelMock(),
+  mealTemplateAccessory: createModelMock(),
   supplier: createModelMock(),
   unitMaster: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 };
 
-// 기존 코드 호환을 위한 alias export
 export const prismaMock = mockPrisma;
 
 vi.mock("@/lib/prisma", () => ({

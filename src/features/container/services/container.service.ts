@@ -1,33 +1,14 @@
-// src/features/container/services/container.service.ts — 전체 코드
+// src/features/container/services/container.service.ts
 import { prisma } from "@/lib/prisma";
 import type {
-  ContainerGroupListQuery,
-  CreateContainerGroupInput,
-  UpdateContainerGroupInput,
   CreateContainerSlotInput,
   UpdateContainerSlotInput,
-  CreateContainerAccessoryInput,
-  UpdateContainerAccessoryInput,
 } from "../schemas/container.schema";
 
-// ── 코드 자동 생성 ──
-async function generateContainerGroupCode(companyId: string): Promise<string> {
-  const last = await prisma.containerGroup.findFirst({
-    where: { companyId, deletedAt: null },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
-  if (!last) return "CTG-001";
-  const match = last.code.match(/^CTG-(\d+)$/);
-  if (!match) return "CTG-001";
-  const next = parseInt(match[1], 10) + 1;
-  return `CTG-${String(next).padStart(3, "0")}`;
-}
-
 // ── 슬롯 인덱스 자동 채번 (1부터 시작, 기존 최대+1) ──
-async function getNextSlotIndex(containerGroupId: string): Promise<number> {
+async function getNextSlotIndex(subsidiaryMasterId: string): Promise<number> {
   const last = await prisma.containerSlot.findFirst({
-    where: { containerGroupId },
+    where: { subsidiaryMasterId },
     orderBy: { slotIndex: "desc" },
     select: { slotIndex: true },
   });
@@ -35,7 +16,7 @@ async function getNextSlotIndex(containerGroupId: string): Promise<number> {
 }
 
 // ════════════════════════════════════════
-// 의존성 체크 (신규)
+// 의존성 체크
 // ════════════════════════════════════════
 
 export type DependencyInfo = {
@@ -44,29 +25,38 @@ export type DependencyInfo = {
 };
 
 /**
- * ContainerGroup 삭제 전 의존성 확인
- * - MealTemplate에서 참조 중인지
+ * 용기(SubsidiaryMaster) 삭제 전 의존성 확인
+ * - MealTemplateContainer에서 참조 중인지
  * - RecipeBOMSlot에서 참조 중인지
+ * - ContainerSlot이 존재하는지
  */
-export async function checkContainerGroupDependency(
-  containerGroupId: string
+export async function checkContainerDependency(
+  subsidiaryMasterId: string
 ): Promise<DependencyInfo> {
   const details: string[] = [];
 
-  // 1. MealTemplate 참조 확인
-  const mealTemplateCount = await prisma.mealTemplate.count({
-    where: { containerGroupId },
+  // 1. MealTemplateContainer 참조 확인
+  const mealTemplateContainerCount = await prisma.mealTemplateContainer.count({
+    where: { subsidiaryMasterId },
   });
-  if (mealTemplateCount > 0) {
-    details.push(`식단 템플릿 ${mealTemplateCount}건에서 사용 중`);
+  if (mealTemplateContainerCount > 0) {
+    details.push(`식단 템플릿 ${mealTemplateContainerCount}건에서 사용 중`);
   }
 
   // 2. RecipeBOMSlot 참조 확인
   const recipeBomSlotCount = await prisma.recipeBOMSlot.count({
-    where: { containerGroupId },
+    where: { subsidiaryMasterId },
   });
   if (recipeBomSlotCount > 0) {
     details.push(`레시피 BOM 슬롯 ${recipeBomSlotCount}건에서 사용 중`);
+  }
+
+  // 3. ContainerSlot 존재 확인
+  const slotCount = await prisma.containerSlot.count({
+    where: { subsidiaryMasterId },
+  });
+  if (slotCount > 0) {
+    details.push(`컨테이너 슬롯 ${slotCount}건이 등록되어 있음`);
   }
 
   return {
@@ -77,27 +67,25 @@ export async function checkContainerGroupDependency(
 
 /**
  * ContainerSlot 삭제 전 의존성 확인
- * - RecipeBOMSlot에서 동일 containerGroupId + slotIndex 참조 중인지
+ * - RecipeBOMSlot에서 동일 subsidiaryMasterId + slotIndex 참조 중인지
  */
 export async function checkContainerSlotDependency(
   slotId: string
 ): Promise<DependencyInfo> {
   const details: string[] = [];
 
-  // 슬롯 정보 조회
   const slot = await prisma.containerSlot.findUnique({
     where: { id: slotId },
-    select: { containerGroupId: true, slotIndex: true },
+    select: { subsidiaryMasterId: true, slotIndex: true },
   });
 
   if (!slot) {
     return { hasDependency: false, details: [] };
   }
 
-  // RecipeBOMSlot에서 동일 containerGroupId + slotIndex 참조 확인
   const recipeBomSlotCount = await prisma.recipeBOMSlot.count({
     where: {
-      containerGroupId: slot.containerGroupId,
+      subsidiaryMasterId: slot.subsidiaryMasterId,
       slotIndex: slot.slotIndex,
     },
   });
@@ -112,16 +100,20 @@ export async function checkContainerSlotDependency(
 }
 
 // ════════════════════════════════════════
-// ContainerGroup
+// 용기(SubsidiaryMaster type=CONTAINER) 조회
 // ════════════════════════════════════════
 
-export async function getContainerGroups(
+/**
+ * CONTAINER 타입 부자재 목록 조회 (containers 페이지용)
+ */
+export async function getContainerSubsidiaries(
   companyId: string,
-  query: ContainerGroupListQuery
+  query: { page: number; limit: number; search?: string; sortBy: string; sortOrder: string }
 ) {
   const { page, limit, search, sortBy, sortOrder } = query;
   const where = {
     companyId,
+    subsidiaryType: "CONTAINER" as const,
     deletedAt: null,
     ...(search
       ? {
@@ -134,7 +126,7 @@ export async function getContainerGroups(
   };
 
   const [items, total] = await Promise.all([
-    prisma.containerGroup.findMany({
+    prisma.subsidiaryMaster.findMany({
       where,
       select: {
         id: true,
@@ -142,7 +134,7 @@ export async function getContainerGroups(
         code: true,
         createdAt: true,
         updatedAt: true,
-        slots: {
+        containerSlots: {
           select: { id: true, slotIndex: true, label: true, volumeMl: true },
           orderBy: { slotIndex: "asc" },
         },
@@ -151,84 +143,54 @@ export async function getContainerGroups(
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.containerGroup.count({ where }),
+    prisma.subsidiaryMaster.count({ where }),
   ]);
 
   return {
-    items,
+    items: items.map((item) => ({
+      ...item,
+      slots: item.containerSlots, // UI 호환 alias
+    })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 }
 
-export async function getContainerGroupById(companyId: string, id: string) {
-  const group = await prisma.containerGroup.findFirst({
-    where: { id, companyId, deletedAt: null },
+/**
+ * 용기 단건 조회 (슬롯 포함)
+ */
+export async function getContainerSubsidiaryById(companyId: string, id: string) {
+  const sub = await prisma.subsidiaryMaster.findFirst({
+    where: { id, companyId, subsidiaryType: "CONTAINER", deletedAt: null },
     include: {
-      slots: { orderBy: { slotIndex: "asc" } },
+      containerSlots: { orderBy: { slotIndex: "asc" } },
     },
   });
-  if (!group) throw new Error("NOT_FOUND");
-  return group;
-}
-
-export async function createContainerGroup(
-  companyId: string,
-  input: CreateContainerGroupInput
-) {
-  const code = await generateContainerGroupCode(companyId);
-  return prisma.containerGroup.create({
-    data: { ...input, companyId, code },
-    include: {
-      slots: { orderBy: { slotIndex: "asc" } },
-    },
-  });
-}
-
-export async function updateContainerGroup(
-  companyId: string,
-  id: string,
-  input: UpdateContainerGroupInput
-) {
-  const group = await prisma.containerGroup.findFirst({
-    where: { id, companyId, deletedAt: null },
-  });
-  if (!group) throw new Error("NOT_FOUND");
-  return prisma.containerGroup.update({
-    where: { id },
-    data: input,
-  });
-}
-
-export async function deleteContainerGroup(companyId: string, id: string) {
-  const group = await prisma.containerGroup.findFirst({
-    where: { id, companyId, deletedAt: null },
-  });
-  if (!group) throw new Error("NOT_FOUND");
-
-  // ★ 의존성 체크 추가
-  const dependency = await checkContainerGroupDependency(id);
-  if (dependency.hasDependency) {
-    throw new Error(`DEPENDENCY:${dependency.details.join(", ")}`);
-  }
-
-  return prisma.containerGroup.update({
-    where: { id },
-    data: { deletedAt: new Date() },
-  });
+  if (!sub) throw new Error("NOT_FOUND");
+  return {
+    ...sub,
+    slots: sub.containerSlots, // UI 호환 alias
+  };
 }
 
 // ════════════════════════════════════════
-// ContainerSlot
+// ContainerSlot CRUD
 // ════════════════════════════════════════
+
+export async function getSlotsBySubsidiaryId(subsidiaryMasterId: string) {
+  return prisma.containerSlot.findMany({
+    where: { subsidiaryMasterId },
+    orderBy: { slotIndex: "asc" },
+  });
+}
 
 export async function addContainerSlot(
-  containerGroupId: string,
+  subsidiaryMasterId: string,
   input: CreateContainerSlotInput
 ) {
-  const nextIndex = await getNextSlotIndex(containerGroupId);
+  const nextIndex = await getNextSlotIndex(subsidiaryMasterId);
   return prisma.containerSlot.create({
     data: {
-      containerGroupId,
+      subsidiaryMasterId,
       slotIndex: nextIndex,
       label: input.label,
       volumeMl: input.volumeMl ?? null,
@@ -247,38 +209,9 @@ export async function updateContainerSlot(
 }
 
 export async function deleteContainerSlot(id: string) {
-  // ★ 의존성 체크 추가
   const dependency = await checkContainerSlotDependency(id);
   if (dependency.hasDependency) {
     throw new Error(`DEPENDENCY:${dependency.details.join(", ")}`);
   }
-
   return prisma.containerSlot.delete({ where: { id } });
-}
-
-// ════════════════════════════════════════
-// ContainerAccessory (DB 무결성 유지용, UI에서는 미노출)
-// ════════════════════════════════════════
-
-export async function addContainerAccessory(
-  containerGroupId: string,
-  input: CreateContainerAccessoryInput
-) {
-  return prisma.containerAccessory.create({
-    data: { ...input, containerGroupId },
-  });
-}
-
-export async function updateContainerAccessory(
-  id: string,
-  input: UpdateContainerAccessoryInput
-) {
-  return prisma.containerAccessory.update({
-    where: { id },
-    data: input,
-  });
-}
-
-export async function deleteContainerAccessory(id: string) {
-  return prisma.containerAccessory.delete({ where: { id } });
 }

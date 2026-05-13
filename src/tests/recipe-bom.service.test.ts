@@ -302,14 +302,14 @@ describe("recipe-bom.service", () => {
       const mockSlot = {
         id: "s1",
         recipeBomId: "rb1",
-        containerGroupId: "cg1",
+        subsidiaryMasterId: "cg1",
         slotIndex: 0,
         totalWeightG: 200,
       };
       mockPrisma.recipeBOMSlot.create.mockResolvedValue(mockSlot);
 
       const result = await addRecipeBOMSlot("rb1", {
-        containerGroupId: "cg1",
+        subsidiaryMasterId: "cg1",
         slotIndex: 0,
         totalWeightG: 200,
         sortOrder: 0,

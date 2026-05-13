@@ -1,4 +1,4 @@
-// src/features/recipe/schemas/recipe.schema.ts — 전체 코드
+// src/features/recipe/schemas/recipe.schema.ts
 import { z } from "zod";
 import { IngredientType, BOMStatus } from "@prisma/client";
 
@@ -10,13 +10,9 @@ const bomStatusValues = Object.values(BOMStatus) as [string, ...string[]];
 // ════════════════════════════════════════
 
 export const createRecipeSchema = z.object({
-  name: z
-    .string()
-    .min(1, "레시피명은 필수입니다")
-    .max(100, "레시피명은 100자 이내여야 합니다"),
+  name: z.string().min(1, "레시피명은 필수입니다").max(100, "레시피명은 100자 이내여야 합니다"),
   description: z.string().max(500, "설명은 500자 이내여야 합니다").optional(),
 });
-
 export const updateRecipeSchema = createRecipeSchema.partial();
 
 // ════════════════════════════════════════
@@ -25,9 +21,7 @@ export const updateRecipeSchema = createRecipeSchema.partial();
 
 export const createRecipeIngredientSchema = z
   .object({
-    ingredientType: z
-      .enum(ingredientTypeValues)
-      .transform((v) => v as IngredientType),
+    ingredientType: z.enum(ingredientTypeValues).transform((v) => v as IngredientType),
     materialMasterId: z.string().optional(),
     semiProductId: z.string().optional(),
     sortOrder: z.number().int().min(0).default(0),
@@ -52,10 +46,7 @@ export const updateRecipeIngredientSchema = z.object({
 export const createRecipeBOMSchema = z.object({
   recipeId: z.string().min(1, "레시피 ID는 필수입니다"),
   version: z.number().int().min(1).default(1),
-  status: z
-    .enum(bomStatusValues)
-    .transform((v) => v as BOMStatus)
-    .default("DRAFT"),
+  status: z.enum(bomStatusValues).transform((v) => v as BOMStatus).default("DRAFT"),
   baseWeightG: z.number().min(0).default(0),
 });
 
@@ -68,19 +59,17 @@ export const updateRecipeBOMBaseWeightSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// RecipeBOMSlot
+// RecipeBOMSlot — ★ containerGroupId → subsidiaryMasterId
 // ════════════════════════════════════════
 
-// ★ 변경: totalWeightG min(0.1) → min(0) — 초기 생성 시 0 허용
 export const createRecipeBOMSlotSchema = z.object({
-  containerGroupId: z.string().min(1, "용기 그룹은 필수입니다"),
+  subsidiaryMasterId: z.string().min(1, "용기(부자재)는 필수입니다"),
   slotIndex: z.number().int().min(0, "슬롯 인덱스는 0 이상이어야 합니다"),
   totalWeightG: z.number().min(0, "총 중량은 0 이상이어야 합니다").default(0),
   note: z.string().max(200).optional(),
   sortOrder: z.number().int().min(0).default(0),
 });
 
-// ★ 변경: totalWeightG min(0.1) → min(0)
 export const updateRecipeBOMSlotSchema = z.object({
   totalWeightG: z.number().min(0).optional(),
   note: z.string().max(200).optional(),
@@ -93,9 +82,7 @@ export const updateRecipeBOMSlotSchema = z.object({
 
 export const createRecipeBOMSlotItemSchema = z
   .object({
-    ingredientType: z
-      .enum(ingredientTypeValues)
-      .transform((v) => v as IngredientType),
+    ingredientType: z.enum(ingredientTypeValues).transform((v) => v as IngredientType),
     materialMasterId: z.string().optional(),
     semiProductId: z.string().optional(),
     weightG: z.number().min(0).default(0),
@@ -122,16 +109,9 @@ export const updateRecipeBOMSlotItemSchema = z.object({
 // ════════════════════════════════════════
 
 export const createSemiProductSchema = z.object({
-  name: z
-    .string()
-    .min(1, "반제품명은 필수입니다")
-    .max(100, "반제품명은 100자 이내여야 합니다"),
-  unit: z
-    .string()
-    .min(1, "단위는 필수입니다")
-    .max(20, "단위는 20자 이내여야 합니다"),
+  name: z.string().min(1, "반제품명은 필수입니다").max(100),
+  unit: z.string().min(1, "단위는 필수입니다").max(20),
 });
-
 export const updateSemiProductSchema = createSemiProductSchema.partial();
 
 // ════════════════════════════════════════
@@ -141,10 +121,7 @@ export const updateSemiProductSchema = createSemiProductSchema.partial();
 export const createBOMSchema = z.object({
   semiProductId: z.string().min(1, "반제품 ID는 필수입니다"),
   version: z.number().int().min(1).default(1),
-  status: z
-    .enum(bomStatusValues)
-    .transform((v) => v as BOMStatus)
-    .default("DRAFT"),
+  status: z.enum(bomStatusValues).transform((v) => v as BOMStatus).default("DRAFT"),
   baseQuantity: z.number().min(0.001).default(1),
   baseUnit: z.string().max(20).default("kg"),
 });
@@ -153,17 +130,10 @@ export const updateBOMStatusSchema = z.object({
   status: z.enum(bomStatusValues).transform((v) => v as BOMStatus),
 });
 
-// ════════════════════════════════════════
-// BOMItem (반제품 BOM 전용)
-// ════════════════════════════════════════
-
 export const createBOMItemSchema = z.object({
   materialMasterId: z.string().min(1, "식자재 ID는 필수입니다"),
   quantity: z.number().min(0.001, "수량은 0보다 커야 합니다"),
-  unit: z
-    .string()
-    .min(1, "단위는 필수입니다")
-    .max(20, "단위는 20자 이내여야 합니다"),
+  unit: z.string().min(1, "단위는 필수입니다").max(20),
   sortOrder: z.number().int().min(0).default(0),
 });
 
@@ -174,7 +144,7 @@ export const updateBOMItemSchema = z.object({
 });
 
 // ════════════════════════════════════════
-// 목록 조회용 필터
+// 목록 조회 필터
 // ════════════════════════════════════════
 
 export const recipeListQuerySchema = z.object({

@@ -1,0 +1,11 @@
+-- DropIndex
+DROP INDEX "unit_conversions_company_id_material_master_id_from_unit_to_key";
+
+-- RenameIndex
+ALTER INDEX "meal_template_accessories_meal_template_id_subsidiary_mast_key" RENAME TO "meal_template_accessories_meal_template_id_subsidiary_maste_key";
+
+-- RenameIndex
+ALTER INDEX "recipe_bom_slots_recipe_bom_id_subsidiary_master_id_slot_idx_ke" RENAME TO "recipe_bom_slots_recipe_bom_id_subsidiary_master_id_slot_in_key";
+
+-- RenameIndex
+ALTER INDEX "unit_conversions_company_id_material_master_id_subsidiary_mas_k" RENAME TO "unit_conversions_company_id_material_master_id_subsidiary_m_key";

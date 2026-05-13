@@ -25,9 +25,9 @@ import {
   createMealTemplateAction,
   updateMealTemplateAction,
   deleteMealTemplateAction,
-  addMealTemplateSlotAction,
-  updateMealTemplateSlotAction,
-  deleteMealTemplateSlotAction,
+  addMealTemplateContainerAction,
+  updateMealTemplateContainerAction,
+  deleteMealTemplateContainerAction,
   addMealTemplateAccessoryAction,
   updateMealTemplateAccessoryAction,
   deleteMealTemplateAccessoryAction,
@@ -233,7 +233,7 @@ export default function MealTemplatesPage() {
     try {
       const template = items.find((t) => t.id === templateId);
       const nextIndex = template ? Math.max(0, ...template.slots.map((s) => s.slotIndex)) + 1 : 0;
-      const result = await addMealTemplateSlotAction(templateId, {
+      const result = await addMealTemplateContainerAction(templateId, {
         slotIndex: nextIndex,
         label: newSlotLabel.trim(),
         isRequired: newSlotRequired,
@@ -259,7 +259,7 @@ export default function MealTemplatesPage() {
     if (!editingSlotId) return;
     setSlotUpdating(true);
     try {
-      const result = await updateMealTemplateSlotAction(editingSlotId, {
+      const result = await updateMealTemplateContainerAction(editingSlotId, {
         label: editingSlotLabel.trim() || undefined,
         isRequired: editingSlotRequired,
       });
@@ -349,7 +349,7 @@ export default function MealTemplatesPage() {
           toast.error(result.error?.message ?? "식단 템플릿 삭제에 실패했습니다");
         }
       } else if (type === "slot") {
-        const result = await deleteMealTemplateSlotAction(id);
+        const result = await deleteMealTemplateContainerAction(id);
         if (result.success) {
           toast.success("슬롯이 삭제되었습니다");
           if (templateId) await refreshTemplate(templateId);

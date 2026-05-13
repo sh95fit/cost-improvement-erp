@@ -11,8 +11,8 @@ import {
   mealTemplateListQuerySchema,
   createMealTemplateSchema,
   updateMealTemplateSchema,
-  createMealTemplateSlotSchema,
-  updateMealTemplateSlotSchema,
+  createMealTemplateContainerSchema,
+  updateMealTemplateContainerSchema,
   createMealTemplateAccessorySchema,
   updateMealTemplateAccessorySchema,
 } from "../schemas/meal-template.schema";
@@ -24,12 +24,10 @@ import * as mealTemplateService from "../services/meal-template.service";
 
 export async function getMealTemplatesAction(
   rawQuery: Record<string, unknown>
-): Promise<
-  ActionResult<{
-    items: Awaited<ReturnType<typeof mealTemplateService.getMealTemplates>>["items"];
-    pagination: { page: number; limit: number; total: number; totalPages: number };
-  }>
-> {
+): Promise<ActionResult<{
+  items: Awaited<ReturnType<typeof mealTemplateService.getMealTemplates>>["items"];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "READ");
@@ -121,67 +119,65 @@ export async function deleteMealTemplateAction(
 }
 
 // ════════════════════════════════════════
-// MealTemplateSlot
+// MealTemplateContainer (★ v5: Slot 대체)
 // ════════════════════════════════════════
 
-export async function addMealTemplateSlotAction(
+export async function addMealTemplateContainerAction(
   mealTemplateId: string,
   rawInput: Record<string, unknown>
 ): Promise<ActionResult<unknown>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "UPDATE");
-    const input = createMealTemplateSlotSchema.parse(rawInput);
-    const slot = await mealTemplateService.addMealTemplateSlot(mealTemplateId, input);
+    const input = createMealTemplateContainerSchema.parse(rawInput);
+    const container = await mealTemplateService.addMealTemplateContainer(mealTemplateId, input);
     await createAuditLog({
       session,
       action: "CREATE",
-      entityType: "MealTemplateSlot",
-      entityId: slot.id,
-      after: slot as unknown as Record<string, unknown>,
+      entityType: "MealTemplateContainer",
+      entityId: container.id,
+      after: container as unknown as Record<string, unknown>,
     });
-    return actionOk(slot);
+    return actionOk(container);
   } catch (error) {
-    return handleActionError(error, "슬롯 추가에 실패했습니다", {
-      DUPLICATE_SLOT_INDEX: "동일한 슬롯 번호가 이미 존재합니다",
-    });
+    return handleActionError(error, "용기 추가에 실패했습니다");
   }
 }
 
-export async function updateMealTemplateSlotAction(
+export async function updateMealTemplateContainerAction(
   id: string,
   rawInput: Record<string, unknown>
 ): Promise<ActionResult<unknown>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "UPDATE");
-    const input = updateMealTemplateSlotSchema.parse(rawInput);
-    const slot = await mealTemplateService.updateMealTemplateSlot(id, input);
-    return actionOk(slot);
+    const input = updateMealTemplateContainerSchema.parse(rawInput);
+    const container = await mealTemplateService.updateMealTemplateContainer(id, input);
+    return actionOk(container);
   } catch (error) {
-    return handleActionError(error, "슬롯 수정에 실패했습니다", {
-      NOT_FOUND: "슬롯을 찾을 수 없습니다",
+    return handleActionError(error, "용기 수정에 실패했습니다", {
+      NOT_FOUND: "용기를 찾을 수 없습니다",
     });
   }
 }
 
-export async function deleteMealTemplateSlotAction(
+export async function deleteMealTemplateContainerAction(
   id: string
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "recipe", "DELETE");
-    await mealTemplateService.deleteMealTemplateSlot(id);
+    await mealTemplateService.deleteMealTemplateContainer(id);
     return actionOk({ id });
   } catch (error) {
-    return handleActionError(error, "슬롯 삭제에 실패했습니다", {
-      NOT_FOUND: "슬롯을 찾을 수 없습니다",
+    return handleActionError(error, "용기 삭제에 실패했습니다", {
+      NOT_FOUND: "용기를 찾을 수 없습니다",
     });
   }
 }
 
 // ════════════════════════════════════════
-// MealTemplateAccessory
+// MealTemplateAccessory (★ v5: subsidiaryMasterId 기반)
 // ════════════════════════════════════════
 
 export async function addMealTemplateAccessoryAction(

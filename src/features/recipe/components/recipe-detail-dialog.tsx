@@ -73,8 +73,8 @@ import {
 import { getSemiProductsAction } from "../actions/semi-product.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import {
-  getContainerGroupsAction,
-  getContainerGroupByIdAction,
+  getSubsidiariesAction,
+  getSlotsBySubsidiaryIdAction,
 } from "@/features/container/actions/container.action";
 import {
   Pencil,
@@ -151,7 +151,7 @@ type RecipeBOMSlotRow = {
   totalWeightG: number;
   note: string | null;
   sortOrder: number;
-  containerGroup: { id: string; name: string; code: string };
+  subsidiaryMaster: { id: string; name: string; code: string };
   items: RecipeBOMSlotItemRow[];
 };
 
@@ -344,8 +344,8 @@ export function RecipeDetailDialog({
 
   // ★ Phase 6: 슬롯 라벨 조회 함수
   const getSlotLabel = useCallback(
-    (containerGroupId: string, slotIndex: number): string | null => {
-      const slots = slotLabelCache[containerGroupId];
+    (subsidiaryMasterId: string, slotIndex: number): string | null => {
+      const slots = slotLabelCache[subsidiaryMasterId];
       if (!slots) return null;
       const match = slots.find((s) => s.slotIndex === slotIndex);
       return match?.label ?? null;
@@ -360,7 +360,7 @@ export function RecipeDetailDialog({
       if (uncached.length === 0) return;
 
       const results = await Promise.allSettled(
-        uncached.map((id) => getContainerGroupByIdAction(id))
+        uncached.map((id) => getSlotsBySubsidiaryIdAction(id))
       );
 
       const newCache: typeof slotLabelCache = {};
@@ -401,7 +401,7 @@ export function RecipeDetailDialog({
         // ★ Phase 6: BOM 슬롯의 용기 그룹 라벨 일괄 로드
         const groupIds = new Set<string>();
         boms.forEach((bom) =>
-          bom.slots.forEach((slot) => groupIds.add(slot.containerGroup.id))
+          bom.slots.forEach((slot) => groupIds.add(slot.subsidiaryMaster.id))
         );
         if (groupIds.size > 0) {
           loadSlotLabels(Array.from(groupIds));
@@ -431,7 +431,7 @@ export function RecipeDetailDialog({
           "name"
         ),
         loadAllPages<{ id: string; name: string; code: string }>(
-          getContainerGroupsAction as PaginatedFetcher<{ id: string; name: string; code: string }>,
+          getSubsidiariesAction as PaginatedFetcher<{ id: string; name: string; code: string }>,
           "name"
         ),
       ]);
@@ -498,7 +498,7 @@ export function RecipeDetailDialog({
     setSelectedGroupSlots([]);
     if (!groupId) return;
     try {
-      const result = await getContainerGroupByIdAction(groupId);
+      const result = await getSlotsBySubsidiaryIdAction(groupId);
       if (result.success && result.data) {
         const slots = (
           result.data.slots as {
@@ -536,9 +536,9 @@ export function RecipeDetailDialog({
     const seen = new Set<string>();
     recipeBoms.forEach((bom) =>
       bom.slots.forEach((slot) => {
-        if (!seen.has(slot.containerGroup.id)) {
-          seen.add(slot.containerGroup.id);
-          groups.push(slot.containerGroup);
+        if (!seen.has(slot.subsidiaryMaster.id)) {
+          seen.add(slot.subsidiaryMaster.id);
+          groups.push(slot.subsidiaryMaster);
         }
       })
     );
@@ -768,7 +768,7 @@ export function RecipeDetailDialog({
     setSlotSaving(true);
     try {
       const result = await addRecipeBOMSlotAction(bomId, {
-        containerGroupId: newSlotContainerGroupId,
+        subsidiaryMasterId: newSlotContainerGroupId,
         slotIndex: parseInt(newSlotIndex) || 0,
         totalWeightG: parseFloat(newSlotWeight) || 0,
         note: newSlotNote || undefined,
@@ -1037,7 +1037,7 @@ export function RecipeDetailDialog({
               <div className="space-y-2">
                 {activeBom.slots.map((slot) => {
                   const slotLabel = getSlotLabel(
-                    slot.containerGroup.id,
+                    slot.subsidiaryMaster.id,
                     slot.slotIndex
                   );
                   const weightSum = calcSlotWeightSum(slot.items);
@@ -1048,7 +1048,7 @@ export function RecipeDetailDialog({
                     >
                       <div className="flex items-center gap-2 text-sm mb-1">
                         <span className="font-medium">
-                          {slot.containerGroup.name}
+                          {slot.subsidiaryMaster.name}
                         </span>
                         <span className="text-gray-400">
                           {slotLabel
@@ -1486,7 +1486,7 @@ export function RecipeDetailDialog({
                       ) : (
                         bom.slots.map((slot) => {
                           const slotLabel = getSlotLabel(
-                            slot.containerGroup.id,
+                            slot.subsidiaryMaster.id,
                             slot.slotIndex
                           );
                           const weightSum = calcSlotWeightSum(slot.items);
@@ -1501,7 +1501,7 @@ export function RecipeDetailDialog({
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm">
                                   <span className="font-medium">
-                                    {slot.containerGroup.name}
+                                    {slot.subsidiaryMaster.name}
                                   </span>
                                   {/* ★ Phase 6 / 이슈 #6: 실제 슬롯 라벨 표시 */}
                                   <span className="text-gray-400">
@@ -1552,7 +1552,7 @@ export function RecipeDetailDialog({
                                         setDeleteConfirm({
                                           type: "slot",
                                           id: slot.id,
-                                          name: slot.containerGroup.name,
+                                          name: slot.subsidiaryMaster.name,
                                         })
                                       }
                                     >

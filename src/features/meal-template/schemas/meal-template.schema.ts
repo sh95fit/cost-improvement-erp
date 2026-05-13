@@ -12,43 +12,43 @@ export const mealTemplateListQuerySchema = z.object({
 });
 export type MealTemplateListQuery = z.infer<typeof mealTemplateListQuerySchema>;
 
+// ★ v5: containerGroupId 제거 — MealTemplate는 name만
 export const createMealTemplateSchema = z.object({
   name: z.string().min(1, "이름을 입력하세요").max(100),
-  containerGroupId: z.string().min(1, "용기 그룹을 선택하세요"),
 });
 export type CreateMealTemplateInput = z.infer<typeof createMealTemplateSchema>;
 
 export const updateMealTemplateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  containerGroupId: z.string().min(1).optional(),
 });
 export type UpdateMealTemplateInput = z.infer<typeof updateMealTemplateSchema>;
 
-// ── MealTemplateSlot ──
+// ── MealTemplateContainer (★ v5 신규: MealTemplateSlot 대체) ──
 
-export const createMealTemplateSlotSchema = z.object({
-  slotIndex: z.coerce.number().int().min(0),
-  label: z.string().min(1, "슬롯 이름을 입력하세요").max(50),
-  isRequired: z.boolean().default(true),
+export const createMealTemplateContainerSchema = z.object({
+  subsidiaryMasterId: z.string().min(1, "용기를 선택하세요"),
+  sortOrder: z.number().int().min(0).default(0),
 });
-export type CreateMealTemplateSlotInput = z.infer<typeof createMealTemplateSlotSchema>;
+export type CreateMealTemplateContainerInput = z.infer<typeof createMealTemplateContainerSchema>;
 
-export const updateMealTemplateSlotSchema = z.object({
-  label: z.string().min(1).max(50).optional(),
-  isRequired: z.boolean().optional(),
+export const updateMealTemplateContainerSchema = z.object({
+  sortOrder: z.number().int().min(0).optional(),
 });
-export type UpdateMealTemplateSlotInput = z.infer<typeof updateMealTemplateSlotSchema>;
+export type UpdateMealTemplateContainerInput = z.infer<typeof updateMealTemplateContainerSchema>;
 
-// ── MealTemplateAccessory ──
+// ── MealTemplateAccessory (★ v5: name 제거, subsidiaryMasterId 추가) ──
 
 export const createMealTemplateAccessorySchema = z.object({
-  name: z.string().min(1, "부속품 이름을 입력하세요").max(100),
+  subsidiaryMasterId: z.string().min(1, "부자재를 선택하세요"),
+  consumptionType: z.enum(["PER_MEAL_COUNT", "FIXED_QUANTITY"]).default("PER_MEAL_COUNT"),
+  fixedQuantity: z.number().min(0).optional(),
   isRequired: z.boolean().default(false),
 });
 export type CreateMealTemplateAccessoryInput = z.infer<typeof createMealTemplateAccessorySchema>;
 
 export const updateMealTemplateAccessorySchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  consumptionType: z.enum(["PER_MEAL_COUNT", "FIXED_QUANTITY"]).optional(),
+  fixedQuantity: z.number().min(0).optional(),
   isRequired: z.boolean().optional(),
 });
 export type UpdateMealTemplateAccessoryInput = z.infer<typeof updateMealTemplateAccessorySchema>;

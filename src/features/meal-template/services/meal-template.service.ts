@@ -5,8 +5,8 @@ import type {
   CreateMealTemplateInput,
   UpdateMealTemplateInput,
   MealTemplateListQuery,
-  CreateMealTemplateSlotInput,
-  UpdateMealTemplateSlotInput,
+  CreateMealTemplateContainerInput,
+  UpdateMealTemplateContainerInput,
   CreateMealTemplateAccessoryInput,
   UpdateMealTemplateAccessoryInput,
 } from "../schemas/meal-template.schema";
@@ -16,26 +16,29 @@ import type {
 // ════════════════════════════════════════
 
 const TEMPLATE_INCLUDE = {
-  containerGroup: { select: { id: true, name: true, code: true } },
-  slots: { orderBy: { slotIndex: "asc" as const } },
-  accessories: { orderBy: { name: "asc" as const } },
-  _count: { select: { slots: true, accessories: true } },
-};
+  containers: {
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
+    },
+    orderBy: { sortOrder: "asc" as const },
+  },
+  accessories: {
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
+    },
+    orderBy: { id: "asc" as const },  // ★ createdAt → id (MealTemplateAccessory에 createdAt 없음)
+  },
+  _count: { select: { containers: true, accessories: true } },
+} as const;
 
-export async function getMealTemplates(
-  companyId: string,
-  query: MealTemplateListQuery
-) {
+export async function getMealTemplates(companyId: string, query: MealTemplateListQuery) {
   const { page, limit, search, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
   const where: Prisma.MealTemplateWhereInput = { companyId };
 
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { containerGroup: { name: { contains: search, mode: "insensitive" } } },
-    ];
+    where.OR = [{ name: { contains: search, mode: "insensitive" } }];
   }
 
   const [items, total] = await Promise.all([
@@ -51,12 +54,7 @@ export async function getMealTemplates(
 
   return {
     items,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 }
 
@@ -67,28 +65,15 @@ export async function getMealTemplateById(companyId: string, id: string) {
   });
 }
 
-export async function createMealTemplate(
-  companyId: string,
-  input: CreateMealTemplateInput
-) {
+export async function createMealTemplate(companyId: string, input: CreateMealTemplateInput) {
   return prisma.mealTemplate.create({
-    data: {
-      companyId,
-      name: input.name,
-      containerGroupId: input.containerGroupId,
-    },
+    data: { companyId, name: input.name },
     include: TEMPLATE_INCLUDE,
   });
 }
 
-export async function updateMealTemplate(
-  companyId: string,
-  id: string,
-  input: UpdateMealTemplateInput
-) {
-  const existing = await prisma.mealTemplate.findFirst({
-    where: { id, companyId },
-  });
+export async function updateMealTemplate(companyId: string, id: string, input: UpdateMealTemplateInput) {
+  const existing = await prisma.mealTemplate.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("NOT_FOUND");
 
   return prisma.mealTemplate.update({
@@ -99,100 +84,86 @@ export async function updateMealTemplate(
 }
 
 export async function deleteMealTemplate(companyId: string, id: string) {
-  const existing = await prisma.mealTemplate.findFirst({
-    where: { id, companyId },
-  });
+  const existing = await prisma.mealTemplate.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("NOT_FOUND");
 
-  // 연관 슬롯·악세서리 함께 삭제 (트랜잭션)
   return prisma.$transaction(async (tx) => {
-    await tx.mealTemplateAccessory.deleteMany({
-      where: { mealTemplateId: id },
-    });
-    await tx.mealTemplateSlot.deleteMany({
-      where: { mealTemplateId: id },
-    });
+    await tx.mealTemplateAccessory.deleteMany({ where: { mealTemplateId: id } });
+    await tx.mealTemplateContainer.deleteMany({ where: { mealTemplateId: id } });
     return tx.mealTemplate.delete({ where: { id } });
   });
 }
 
 // ════════════════════════════════════════
-// MealTemplateSlot CRUD
+// MealTemplateContainer (★ v5: MealTemplateSlot 대체)
 // ════════════════════════════════════════
 
-export async function addMealTemplateSlot(
-  mealTemplateId: string,
-  input: CreateMealTemplateSlotInput
-) {
-  // 중복 slotIndex 사전 체크
-  const existing = await prisma.mealTemplateSlot.findFirst({
-    where: { mealTemplateId, slotIndex: input.slotIndex },
-  });
-  if (existing) throw new Error("DUPLICATE_SLOT_INDEX");
-
-  return prisma.mealTemplateSlot.create({
+export async function addMealTemplateContainer(mealTemplateId: string, input: CreateMealTemplateContainerInput) {
+  return prisma.mealTemplateContainer.create({
     data: {
       mealTemplateId,
-      slotIndex: input.slotIndex,
-      label: input.label,
-      isRequired: input.isRequired,
+      subsidiaryMasterId: input.subsidiaryMasterId,
+      sortOrder: input.sortOrder,
+    },
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
     },
   });
 }
 
-export async function updateMealTemplateSlot(
-  id: string,
-  input: UpdateMealTemplateSlotInput
-) {
-  const existing = await prisma.mealTemplateSlot.findFirst({ where: { id } });
+export async function updateMealTemplateContainer(id: string, input: UpdateMealTemplateContainerInput) {
+  const existing = await prisma.mealTemplateContainer.findFirst({ where: { id } });
   if (!existing) throw new Error("NOT_FOUND");
 
-  return prisma.mealTemplateSlot.update({
+  return prisma.mealTemplateContainer.update({
     where: { id },
     data: input,
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
+    },
   });
 }
 
-export async function deleteMealTemplateSlot(id: string) {
-  const existing = await prisma.mealTemplateSlot.findFirst({ where: { id } });
+export async function deleteMealTemplateContainer(id: string) {
+  const existing = await prisma.mealTemplateContainer.findFirst({ where: { id } });
   if (!existing) throw new Error("NOT_FOUND");
-
-  return prisma.mealTemplateSlot.delete({ where: { id } });
+  return prisma.mealTemplateContainer.delete({ where: { id } });
 }
 
 // ════════════════════════════════════════
-// MealTemplateAccessory CRUD
+// MealTemplateAccessory (★ v5: subsidiaryMasterId 기반)
 // ════════════════════════════════════════
 
-export async function addMealTemplateAccessory(
-  mealTemplateId: string,
-  input: CreateMealTemplateAccessoryInput
-) {
+export async function addMealTemplateAccessory(mealTemplateId: string, input: CreateMealTemplateAccessoryInput) {
   return prisma.mealTemplateAccessory.create({
     data: {
       mealTemplateId,
-      name: input.name,
+      subsidiaryMasterId: input.subsidiaryMasterId,
+      consumptionType: input.consumptionType,
+      fixedQuantity: input.fixedQuantity,
       isRequired: input.isRequired,
+    },
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
     },
   });
 }
 
-export async function updateMealTemplateAccessory(
-  id: string,
-  input: UpdateMealTemplateAccessoryInput
-) {
+export async function updateMealTemplateAccessory(id: string, input: UpdateMealTemplateAccessoryInput) {
   const existing = await prisma.mealTemplateAccessory.findFirst({ where: { id } });
   if (!existing) throw new Error("NOT_FOUND");
 
   return prisma.mealTemplateAccessory.update({
     where: { id },
     data: input,
+    include: {
+      subsidiaryMaster: { select: { id: true, name: true, code: true } },
+    },
   });
 }
 
 export async function deleteMealTemplateAccessory(id: string) {
   const existing = await prisma.mealTemplateAccessory.findFirst({ where: { id } });
   if (!existing) throw new Error("NOT_FOUND");
-
   return prisma.mealTemplateAccessory.delete({ where: { id } });
 }

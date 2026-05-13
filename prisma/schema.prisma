@@ -1,7 +1,8 @@
 // ============================================================
-// 원가 정확도 개선 프로젝트 - schema.prisma v4
+// 원가 정확도 개선 프로젝트 - schema.prisma v5
 // Prisma 7 + Next.js 16 (Turbopack) 호환
-// 모델 68개, Enum 29개
+// v4 → v5: ContainerGroup 폐지 → SubsidiaryMaster(CONTAINER) 흡수
+//           MealTemplate 재설계, Supplier에 supplierType 추가
 // ============================================================
 
 generator client {
@@ -52,9 +53,6 @@ enum ItemType {
   @@map("item_type")
 }
 
-// ★ 삭제: OwnerType 제거 (BOM은 반제품 전용으로 변경)
-
-// ★ 신규: 레시피 재료 타입
 enum IngredientType {
   MATERIAL
   SEMI_PRODUCT
@@ -238,6 +236,26 @@ enum StockGrade {
   @@map("stock_grade")
 }
 
+// ★ 신규 Enum (v5)
+enum SubsidiaryType {
+  CONTAINER
+  ACCESSORY
+  CONSUMABLE
+  @@map("subsidiary_type")
+}
+
+enum ConsumptionMode {
+  PER_MEAL_COUNT
+  FIXED_QUANTITY
+  @@map("consumption_mode")
+}
+
+enum SupplierType {
+  MATERIAL
+  SUBSIDIARY
+  @@map("supplier_type")
+}
+
 
 // ============================================================
 // MODELS
@@ -264,11 +282,11 @@ model Company {
   subsidiaryMasters  SubsidiaryMaster[]
   unitConversions    UnitConversion[]
   suppliers          Supplier[]
-  containerGroups    ContainerGroup[]
+  // ★ 삭제: containerGroups (ContainerGroup 모델 폐지)
   recipes            Recipe[]
   semiProducts       SemiProduct[]
   boms               BOM[]
-  recipeBoms         RecipeBOM[]                          // ★ 변경: servingSets → recipeBoms
+  recipeBoms         RecipeBOM[]
   mealTemplates      MealTemplate[]
   mealPlanGroups     MealPlanGroup[]
   autoGenLogs        AutoGenLog[]
@@ -466,55 +484,68 @@ model MaterialMaster {
   inventoryTransferItems InventoryTransferItem[]
   purchaseOrderItems    PurchaseOrderItem[]
   shippingOrderItems    ShippingOrderItem[]
-  recipeIngredients     RecipeIngredient[]                 // ★ 신규
-  recipeBomSlotItems    RecipeBOMSlotItem[]                // ★ 신규
+  recipeIngredients     RecipeIngredient[]
+  recipeBomSlotItems    RecipeBOMSlotItem[]
 
   @@unique([companyId, code])
   @@index([companyId])
   @@map("material_masters")
 }
 
+// ★ 변경: subsidiaryType 추가, 용기 슬롯/식단템플릿/레시피BOM 관계 추가
 model SubsidiaryMaster {
-  id        String   @id @default(cuid())
-  companyId String   @map("company_id")
-  name      String
-  code      String
-  unit      String
-  unitCategory UnitCategory @default(COUNT) @map("unit_category")
+  id             String         @id @default(cuid())
+  companyId      String         @map("company_id")
+  name           String
+  code           String
+  subsidiaryType SubsidiaryType @default(CONSUMABLE) @map("subsidiary_type")
+  unit           String
+  unitCategory   UnitCategory   @default(COUNT) @map("unit_category")
   stockGrade          StockGrade @default(C) @map("stock_grade")
   stockGradeUpdatedAt DateTime?  @map("stock_grade_updated_at")
   defaultSupplierItemId String?  @unique @map("default_supplier_item_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
- 
-  company       Company @relation(fields: [companyId], references: [id])
-  defaultSupplierItem   SupplierItem? @relation("DefaultSubsidiarySupplierItem", fields: [defaultSupplierItemId], references: [id], onDelete: SetNull)
-  supplierItems SupplierItem[]
-  mealPlanAccessories MealPlanAccessory[]
-  purchaseOrderItems  PurchaseOrderItem[]
-  inventoryLots       InventoryLot[]
-  shippingOrderItems  ShippingOrderItem[]
-  unitConversions    UnitConversion[]
+
+  company              Company @relation(fields: [companyId], references: [id])
+  defaultSupplierItem  SupplierItem? @relation("DefaultSubsidiarySupplierItem", fields: [defaultSupplierItemId], references: [id], onDelete: SetNull)
+  supplierItems        SupplierItem[]
+  mealPlanAccessories  MealPlanAccessory[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  inventoryLots        InventoryLot[]
+  shippingOrderItems   ShippingOrderItem[]
+  unitConversions      UnitConversion[]
+  // ★ 신규: 용기 슬롯 (subsidiaryType=CONTAINER일 때)
+  containerSlots       ContainerSlot[]
+  // ★ 신규: 식단 템플릿 용기 연결
+  mealTemplateContainers MealTemplateContainer[]
+  // ★ 신규: 식단 템플릿 악세서리 연결
+  mealTemplateAccessories MealTemplateAccessory[]
+  // ★ 신규: 레시피 BOM 슬롯 연결
+  recipeBomSlots       RecipeBOMSlot[]
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([companyId, subsidiaryType])
   @@map("subsidiary_masters")
 }
 
+// ★ 변경: supplierType 추가
 model Supplier {
-  id        String   @id @default(cuid())
-  companyId String   @map("company_id")
-  name      String
-  code      String
-  contactName  String? @map("contact_name")
-  contactPhone String? @map("contact_phone")
-  contactEmail String? @map("contact_email")
-  address   String?
-  note      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id           String       @id @default(cuid())
+  companyId    String       @map("company_id")
+  name         String
+  code         String
+  supplierType SupplierType @default(MATERIAL) @map("supplier_type")
+  contactName  String?      @map("contact_name")
+  contactPhone String?      @map("contact_phone")
+  contactEmail String?      @map("contact_email")
+  address      String?
+  note         String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  deletedAt    DateTime?    @map("deleted_at")
 
   company        Company @relation(fields: [companyId], references: [id])
   supplierItems  SupplierItem[]
@@ -522,6 +553,7 @@ model Supplier {
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([companyId, supplierType])
   @@map("suppliers")
 }
 
@@ -572,55 +604,27 @@ model SupplierItemPriceHistory {
   @@map("supplier_item_price_histories")
 }
 
-// ---- 4. 용기 ----
-
-model ContainerGroup {
-  id        String   @id @default(cuid())
-  companyId String   @map("company_id")
-  name      String
-  code      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
-
-  company         Company @relation(fields: [companyId], references: [id])
-  slots           ContainerSlot[]
-  accessories     ContainerAccessory[]
-  mealTemplates   MealTemplate[]
-  recipeBomSlots  RecipeBOMSlot[]                          // ★ 변경: servingSetItems → recipeBomSlots
-
-  @@unique([companyId, code])
-  @@index([companyId])
-  @@map("container_groups")
-}
+// ---- 4. 용기 슬롯 (ContainerGroup 폐지 → SubsidiaryMaster로 흡수) ----
+// ★ 변경: containerGroupId → subsidiaryMasterId
 
 model ContainerSlot {
-  id               String @id @default(cuid())
-  containerGroupId String @map("container_group_id")
-  slotIndex        Int    @map("slot_index")
-  label            String
-  volumeMl         Float? @map("volume_ml")
+  id                 String @id @default(cuid())
+  subsidiaryMasterId String @map("subsidiary_master_id")
+  slotIndex          Int    @map("slot_index")
+  label              String
+  volumeMl           Float? @map("volume_ml")
 
-  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
+  subsidiaryMaster SubsidiaryMaster @relation(fields: [subsidiaryMasterId], references: [id])
 
-  @@unique([containerGroupId, slotIndex])
-  @@index([containerGroupId])
+  @@unique([subsidiaryMasterId, slotIndex])
+  @@index([subsidiaryMasterId])
   @@map("container_slots")
 }
 
-model ContainerAccessory {
-  id               String @id @default(cuid())
-  containerGroupId String @map("container_group_id")
-  name             String
-  description      String?
+// ★ 삭제: ContainerGroup 모델 전체 제거
+// ★ 삭제: ContainerAccessory 모델 전체 제거
 
-  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
-
-  @@index([containerGroupId])
-  @@map("container_accessories")
-}
-
-// ---- 5. 레시피 / BOM ---- // ★ 전면 재설계
+// ---- 5. 레시피 / BOM ----
 
 model Recipe {
   id          String    @id @default(cuid())
@@ -633,19 +637,16 @@ model Recipe {
   deletedAt   DateTime? @map("deleted_at")
 
   company          Company            @relation(fields: [companyId], references: [id])
-  ingredients      RecipeIngredient[]                     // ★ 변경: variants → ingredients
-  recipeBoms       RecipeBOM[]                            // ★ 신규
-  mealPlanSlots    MealPlanSlot[]                         // ★ 변경: RecipeVariant에서 Recipe로 이동
-  cookingPlanSlots CookingPlanSlot[]                      // ★ 변경: RecipeVariant에서 Recipe로 이동
+  ingredients      RecipeIngredient[]
+  recipeBoms       RecipeBOM[]
+  mealPlanSlots    MealPlanSlot[]
+  cookingPlanSlots CookingPlanSlot[]
 
   @@unique([companyId, code])
   @@index([companyId])
   @@map("recipes")
 }
 
-// ★ 삭제: RecipeVariant 모델 제거
-
-// ★ 신규: 레시피 재료 (식자재 또는 반제품)
 model RecipeIngredient {
   id               String         @id @default(cuid())
   recipeId         String         @map("recipe_id")
@@ -666,7 +667,6 @@ model RecipeIngredient {
   @@map("recipe_ingredients")
 }
 
-// ★ 신규: 레시피 BOM (용기별 배식 중량 버전 관리)
 model RecipeBOM {
   id          String    @id @default(cuid())
   companyId   String    @map("company_id")
@@ -674,7 +674,7 @@ model RecipeBOM {
   version     Int       @default(1)
   status      BOMStatus @default(DRAFT)
   baseWeightG Float     @map("base_weight_g")
-  activatedAt DateTime? @map("activated_at")             
+  activatedAt DateTime? @map("activated_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
@@ -687,28 +687,28 @@ model RecipeBOM {
   @@index([recipeId])
   @@map("recipe_boms")
 }
-// ★ 신규: 레시피 BOM 슬롯 (용기 그룹별)
+
+// ★ 변경: containerGroupId → subsidiaryMasterId
 model RecipeBOMSlot {
-  id               String @id @default(cuid())
-  recipeBomId      String @map("recipe_bom_id")
-  containerGroupId String @map("container_group_id")
-  slotIndex        Int    @map("slot_index")
-  totalWeightG     Float  @map("total_weight_g")
-  note             String?
-  sortOrder        Int    @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(cuid())
+  recipeBomId        String   @map("recipe_bom_id")
+  subsidiaryMasterId String   @map("subsidiary_master_id")
+  slotIndex          Int      @map("slot_index")
+  totalWeightG       Float    @map("total_weight_g")
+  note               String?
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  recipeBom      RecipeBOM          @relation(fields: [recipeBomId], references: [id])
-  containerGroup ContainerGroup     @relation(fields: [containerGroupId], references: [id])
-  items          RecipeBOMSlotItem[]
+  recipeBom        RecipeBOM          @relation(fields: [recipeBomId], references: [id])
+  subsidiaryMaster SubsidiaryMaster   @relation(fields: [subsidiaryMasterId], references: [id])
+  items            RecipeBOMSlotItem[]
 
-  @@unique([recipeBomId, containerGroupId, slotIndex])
+  @@unique([recipeBomId, subsidiaryMasterId, slotIndex])
   @@index([recipeBomId])
-  @@index([containerGroupId])
+  @@index([subsidiaryMasterId])
   @@map("recipe_bom_slots")
 }
 
-// ★ 신규: 레시피 BOM 슬롯 아이템 (재료별 중량)
 model RecipeBOMSlotItem {
   id               String         @id @default(cuid())
   recipeBomSlotId  String         @map("recipe_bom_slot_id")
@@ -742,23 +742,22 @@ model SemiProduct {
 
   company            Company            @relation(fields: [companyId], references: [id])
   boms               BOM[]
-  recipeIngredients  RecipeIngredient[]                   // ★ 신규
-  recipeBomSlotItems RecipeBOMSlotItem[]                  // ★ 신규
+  recipeIngredients  RecipeIngredient[]
+  recipeBomSlotItems RecipeBOMSlotItem[]
 
   @@unique([companyId, code])
   @@index([companyId])
   @@map("semi_products")
 }
 
-// ★ 변경: BOM은 반제품(SemiProduct) 전용
 model BOM {
   id            String    @id @default(cuid())
   companyId     String    @map("company_id")
-  semiProductId String    @map("semi_product_id")          // ★ 변경: 필수 (optional → required)
+  semiProductId String    @map("semi_product_id")
   version       Int       @default(1)
   status        BOMStatus @default(DRAFT)
-  baseQuantity  Float     @default(1) @map("base_quantity") // ★ 신규: 기준 생산량
-  baseUnit      String    @default("kg") @map("base_unit")  // ★ 신규: 기준 단위
+  baseQuantity  Float     @default(1) @map("base_quantity")
+  baseUnit      String    @default("kg") @map("base_unit")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
@@ -767,17 +766,15 @@ model BOM {
   semiProduct SemiProduct @relation(fields: [semiProductId], references: [id])
   items       BOMItem[]
 
-  // ★ 삭제: ownerType, recipeVariantId 제거
   @@index([companyId])
   @@index([semiProductId])
   @@map("boms")
 }
 
-// ★ 변경: BOMItem - materialMasterId 필수, subsidiaryMaster 관계 유지
 model BOMItem {
   id               String   @id @default(cuid())
   bomId            String   @map("bom_id")
-  materialMasterId String   @map("material_master_id")     // ★ 변경: optional → required
+  materialMasterId String   @map("material_master_id")
   quantity         Float
   unit             String
   sortOrder        Int      @default(0) @map("sort_order")
@@ -786,13 +783,10 @@ model BOMItem {
   bom            BOM             @relation(fields: [bomId], references: [id])
   materialMaster MaterialMaster  @relation(fields: [materialMasterId], references: [id])
 
-  // ★ 삭제: itemType, subsidiaryMasterId 제거
   @@index([bomId])
   @@index([materialMasterId])
   @@map("bom_items")
 }
-
-// ★ 삭제: ServingSet, ServingSetItem 모델 제거
 
 model UnitConversion {
   id                 String       @id @default(cuid())
@@ -835,51 +829,59 @@ model UnitMaster {
   @@map("unit_masters")
 }
 
-// ---- 6. 식단 템플릿 ----
+// ---- 6. 식단 템플릿 ---- // ★ 전면 재설계
 
 model MealTemplate {
-  id               String @id @default(cuid())
-  companyId        String @map("company_id")
-  name             String
-  containerGroupId String @map("container_group_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  company        Company        @relation(fields: [companyId], references: [id])
-  containerGroup ContainerGroup @relation(fields: [containerGroupId], references: [id])
-  slots          MealTemplateSlot[]
-  accessories    MealTemplateAccessory[]
+  company     Company                 @relation(fields: [companyId], references: [id])
+  containers  MealTemplateContainer[]
+  accessories MealTemplateAccessory[]
 
+  // ★ 삭제: containerGroupId, slots (MealTemplateSlot 모델 폐지)
   @@index([companyId])
-  @@index([containerGroupId])
   @@map("meal_templates")
 }
 
-model MealTemplateSlot {
-  id             String  @id @default(cuid())
-  mealTemplateId String  @map("meal_template_id")
-  slotIndex      Int     @map("slot_index")
-  label          String
-  isRequired     Boolean @default(true) @map("is_required")
+// ★ 신규: 식단 템플릿 ↔ 용기(SubsidiaryMaster CONTAINER) 연결 (1:N)
+model MealTemplateContainer {
+  id                 String @id @default(cuid())
+  mealTemplateId     String @map("meal_template_id")
+  subsidiaryMasterId String @map("subsidiary_master_id")
+  sortOrder          Int    @default(0) @map("sort_order")
 
-  mealTemplate MealTemplate @relation(fields: [mealTemplateId], references: [id])
+  mealTemplate     MealTemplate     @relation(fields: [mealTemplateId], references: [id], onDelete: Cascade)
+  subsidiaryMaster SubsidiaryMaster @relation(fields: [subsidiaryMasterId], references: [id])
 
-  @@unique([mealTemplateId, slotIndex])
+  @@unique([mealTemplateId, subsidiaryMasterId])
   @@index([mealTemplateId])
-  @@map("meal_template_slots")
+  @@index([subsidiaryMasterId])
+  @@map("meal_template_containers")
 }
 
+// ★ 변경: 부자재 참조 + 소비모드 추가 (이름 문자열 → SubsidiaryMaster FK)
 model MealTemplateAccessory {
-  id             String  @id @default(cuid())
-  mealTemplateId String  @map("meal_template_id")
-  name           String
-  isRequired     Boolean @default(false) @map("is_required")
+  id                 String          @id @default(cuid())
+  mealTemplateId     String          @map("meal_template_id")
+  subsidiaryMasterId String          @map("subsidiary_master_id")
+  consumptionType    ConsumptionMode @default(PER_MEAL_COUNT) @map("consumption_type")
+  fixedQuantity      Float?          @map("fixed_quantity")
+  isRequired         Boolean         @default(false) @map("is_required")
 
-  mealTemplate MealTemplate @relation(fields: [mealTemplateId], references: [id])
+  mealTemplate     MealTemplate     @relation(fields: [mealTemplateId], references: [id], onDelete: Cascade)
+  subsidiaryMaster SubsidiaryMaster @relation(fields: [subsidiaryMasterId], references: [id])
 
+  @@unique([mealTemplateId, subsidiaryMasterId])
   @@index([mealTemplateId])
+  @@index([subsidiaryMasterId])
   @@map("meal_template_accessories")
 }
+
+// ★ 삭제: MealTemplateSlot 모델 전체 제거
 
 // ---- 7. 식단 계획 ----
 
@@ -924,20 +926,19 @@ model MealPlan {
   @@map("meal_plans")
 }
 
-// ★ 변경: MealPlanSlot - recipeVariantId → recipeId + recipeBomId
 model MealPlanSlot {
   id          String   @id @default(cuid())
   mealPlanId  String   @map("meal_plan_id")
   slotIndex   Int      @map("slot_index")
-  recipeId    String?  @map("recipe_id")                   // ★ 변경
-  recipeBomId String?  @map("recipe_bom_id")               // ★ 신규
+  recipeId    String?  @map("recipe_id")
+  recipeBomId String?  @map("recipe_bom_id")
   quantity    Int      @default(0)
   note        String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   mealPlan  MealPlan   @relation(fields: [mealPlanId], references: [id])
-  recipe    Recipe?    @relation(fields: [recipeId], references: [id])       // ★ 변경
+  recipe    Recipe?    @relation(fields: [recipeId], references: [id])
 
   @@unique([mealPlanId, slotIndex])
   @@index([mealPlanId])
@@ -1411,10 +1412,10 @@ model CookingPlan {
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
 
-  company        Company            @relation(fields: [companyId], references: [id])
-  productionLine ProductionLine     @relation(fields: [productionLineId], references: [id])
-  items          CookingPlanItem[]
-  slots          CookingPlanSlot[]
+  company          Company            @relation(fields: [companyId], references: [id])
+  productionLine   ProductionLine     @relation(fields: [productionLineId], references: [id])
+  items            CookingPlanItem[]
+  slots            CookingPlanSlot[]
   consumptionItems ConsumptionItem[]
 
   @@index([companyId])
@@ -1439,7 +1440,6 @@ model CookingPlanItem {
   @@map("cooking_plan_items")
 }
 
-// CookingPlanSlot - recipeVariantId → recipeId + recipeBomId
 model CookingPlanSlot {
   id              String   @id @default(cuid())
   cookingPlanId   String   @map("cooking_plan_id")
@@ -1448,7 +1448,7 @@ model CookingPlanSlot {
   recipeBomId     String?  @map("recipe_bom_id")
   servings        Int      @default(1)
   note            String?
-  bomSnapshotJson Json?    @map("bom_snapshot_json")       // ★ 추가
+  bomSnapshotJson Json?    @map("bom_snapshot_json")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

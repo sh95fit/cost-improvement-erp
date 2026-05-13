@@ -5,10 +5,12 @@ import pg from "pg";
 const { Pool } = pg;
 
 // ============================================================
-// 원가 정확도 개선 프로젝트 - seed.ts v4
+// 원가 정확도 개선 프로젝트 - seed.ts v5
 // 모든 시드 데이터는 멱등성 보장 (중복 실행 안전)
 // Prisma 7 호환
-// v3 → v4: RecipeVariant 제거, RecipeIngredient/RecipeBOM 사용
+// v4 → v5: ContainerGroup 폐지 → SubsidiaryMaster(CONTAINER) 흡수
+//           MealTemplate 재설계, Supplier에 supplierType 추가
+//           시스템 관리자 환경변수 주입 지원
 // ============================================================
 
 if (process.env.NODE_ENV === "production") {
@@ -96,21 +98,25 @@ async function main() {
   }
   console.log(`✅ PermissionSetItems: ${sysAdminResources.length * sysAdminActions.length}개`);
 
-  // ---- 3. System Admin User ----
+  // ---- 3. System Admin User ---- // ★ 환경변수 주입 지원
+  const adminProviderUserId = process.env.SEED_SYSTEM_ADMIN_PROVIDER_ID || "google-oauth2|system-admin";
   const adminEmail = process.env.SEED_SYSTEM_ADMIN_EMAIL || "admin@lunchlab.com";
   const adminName = process.env.SEED_SYSTEM_ADMIN_NAME || "시스템관리자";
 
   const adminUser = await prisma.user.upsert({
-    where: { providerUserId: "google-oauth2|system-admin" },
-    update: {},
+    where: { providerUserId: adminProviderUserId },
+    update: {
+      email: adminEmail,
+      name: adminName,
+    },
     create: {
-      providerUserId: "google-oauth2|system-admin",
+      providerUserId: adminProviderUserId,
       email: adminEmail,
       name: adminName,
       status: "ACTIVE",
     },
   });
-  console.log("✅ Admin User:", adminUser.email);
+  console.log("✅ Admin User:", adminUser.email, `(providerUserId: ${adminProviderUserId})`);
 
   await prisma.userScope.upsert({
     where: { userId_companyId: { userId: adminUser.id, companyId: company.id } },
@@ -190,7 +196,6 @@ async function main() {
     { name: "참기름", code: "MAT-005", materialType: "RAW" as const, unit: "L", unitCategory: "VOLUME" as const },
     { name: "냉동만두", code: "MAT-006", materialType: "RAW" as const, unit: "kg", unitCategory: "WEIGHT" as const },
   ];
-  
 
   const materialRecords: Record<string, string> = {};
   for (const mat of materials) {
@@ -203,38 +208,94 @@ async function main() {
   }
   console.log("✅ MaterialMasters: 6개 생성");
 
-  // ---- 9. SubsidiaryMasters ----
+  // ---- 9. SubsidiaryMasters ---- // ★ v5: subsidiaryType 추가, 6개로 확장
   const subsidiaries = [
-    { name: "도시락 용기 (대)", code: "SUB-001", unit: "개" },
-    { name: "도시락 용기 (소)", code: "SUB-002", unit: "개" },
-    { name: "수저 세트", code: "SUB-003", unit: "세트" },
-    { name: "포장 비닐", code: "SUB-004", unit: "장" },
+    // 용기 (CONTAINER) - 슬롯 구성 가능
+    { name: "5칸 도시락 용기", code: "SUB-001", unit: "개", subsidiaryType: "CONTAINER" as const },
+    { name: "소형 반찬 용기", code: "SUB-002", unit: "개", subsidiaryType: "CONTAINER" as const },
+    // 악세서리 (ACCESSORY)
+    { name: "수저 세트", code: "SUB-003", unit: "세트", subsidiaryType: "ACCESSORY" as const },
+    { name: "5칸 도시락 뚜껑", code: "SUB-004", unit: "개", subsidiaryType: "ACCESSORY" as const },
+    { name: "소형 반찬 뚜껑", code: "SUB-005", unit: "개", subsidiaryType: "ACCESSORY" as const },
+    // 기타 소모품 (CONSUMABLE)
+    { name: "포장 비닐", code: "SUB-006", unit: "장", subsidiaryType: "CONSUMABLE" as const },
   ];
 
+  const subsidiaryRecords: Record<string, string> = {};
   for (const sub of subsidiaries) {
-    await prisma.subsidiaryMaster.upsert({
+    const record = await prisma.subsidiaryMaster.upsert({
       where: { companyId_code: { companyId: company.id, code: sub.code } },
       update: {},
       create: { companyId: company.id, ...sub },
     });
+    subsidiaryRecords[sub.code] = record.id;
   }
-  console.log("✅ SubsidiaryMasters: 4개 생성");
+  console.log("✅ SubsidiaryMasters: 6개 생성 (CONTAINER 2, ACCESSORY 3, CONSUMABLE 1)");
 
-  // ---- 10. Suppliers ----
+  // ---- 10. ContainerSlots ---- // ★ v5: SubsidiaryMaster(CONTAINER)에 슬롯 연결
+  // SUB-001: 5칸 도시락 → 밥, 메인반찬, 부반찬1, 부반찬2, 국/찌개
+  const sub001Slots = [
+    { slotIndex: 0, label: "밥", volumeMl: 300 },
+    { slotIndex: 1, label: "메인반찬", volumeMl: 250 },
+    { slotIndex: 2, label: "부반찬1", volumeMl: 150 },
+    { slotIndex: 3, label: "부반찬2", volumeMl: 150 },
+    { slotIndex: 4, label: "국/찌개", volumeMl: 200 },
+  ];
+  for (const cs of sub001Slots) {
+    await prisma.containerSlot.upsert({
+      where: { subsidiaryMasterId_slotIndex: { subsidiaryMasterId: subsidiaryRecords["SUB-001"], slotIndex: cs.slotIndex } },
+      update: {},
+      create: { subsidiaryMasterId: subsidiaryRecords["SUB-001"], ...cs },
+    });
+  }
+
+  // SUB-002: 소형 반찬 용기 → 반찬1, 반찬2
+  const sub002Slots = [
+    { slotIndex: 0, label: "반찬1", volumeMl: 200 },
+    { slotIndex: 1, label: "반찬2", volumeMl: 200 },
+  ];
+  for (const cs of sub002Slots) {
+    await prisma.containerSlot.upsert({
+      where: { subsidiaryMasterId_slotIndex: { subsidiaryMasterId: subsidiaryRecords["SUB-002"], slotIndex: cs.slotIndex } },
+      update: {},
+      create: { subsidiaryMasterId: subsidiaryRecords["SUB-002"], ...cs },
+    });
+  }
+  console.log("✅ ContainerSlots: 7개 생성 (SUB-001: 5슬롯, SUB-002: 2슬롯)");
+
+  // ---- 11. Suppliers ---- // ★ v5: supplierType 추가, 부자재 공급업체 1개 추가
   const supplierA = await prisma.supplier.upsert({
     where: { companyId_code: { companyId: company.id, code: "SUP-001" } },
     update: {},
-    create: { companyId: company.id, name: "신선농산", code: "SUP-001", contactName: "김신선", contactPhone: "010-1111-2222", contactEmail: "fresh@supplier.com" },
+    create: {
+      companyId: company.id, name: "신선농산", code: "SUP-001",
+      supplierType: "MATERIAL",
+      contactName: "김신선", contactPhone: "010-1111-2222", contactEmail: "fresh@supplier.com",
+    },
   });
 
   const supplierB = await prisma.supplier.upsert({
     where: { companyId_code: { companyId: company.id, code: "SUP-002" } },
     update: {},
-    create: { companyId: company.id, name: "대한식자재", code: "SUP-002", contactName: "이대한", contactPhone: "010-3333-4444", contactEmail: "daehan@supplier.com" },
+    create: {
+      companyId: company.id, name: "대한식자재", code: "SUP-002",
+      supplierType: "MATERIAL",
+      contactName: "이대한", contactPhone: "010-3333-4444", contactEmail: "daehan@supplier.com",
+    },
   });
-  console.log("✅ Suppliers: 2개 생성");
 
-  // ---- 11. SupplierItems ----
+  const supplierC = await prisma.supplier.upsert({
+    where: { companyId_code: { companyId: company.id, code: "SUP-003" } },
+    update: {},
+    create: {
+      companyId: company.id, name: "한빛포장", code: "SUP-003",
+      supplierType: "SUBSIDIARY",
+      contactName: "박한빛", contactPhone: "010-5555-6666", contactEmail: "hanbit@packaging.com",
+    },
+  });
+  console.log("✅ Suppliers: 3개 생성 (MATERIAL 2, SUBSIDIARY 1)");
+
+  // ---- 12. SupplierItems ----
   const supplierItems = [
     { supplierId: supplierA.id, materialCode: "MAT-001", productName: "국내산 쌀 20kg", spec: "20kg", supplyUnit: "포(20kg)", supplyUnitQty: 20, currentPrice: 52000 },
     { supplierId: supplierA.id, materialCode: "MAT-002", productName: "냉장 닭가슴살", spec: "1kg", supplyUnit: "kg", supplyUnitQty: 1, currentPrice: 8500 },
@@ -270,7 +331,7 @@ async function main() {
   }
   console.log("✅ SupplierItems: 6개 생성");
 
-  // ---- 11-1. SupplierItemPriceHistory ----
+  // ---- 12-1. SupplierItemPriceHistory ----
   for (const siId of supplierItemRecords) {
     const existingHistory = await prisma.supplierItemPriceHistory.findFirst({
       where: { supplierItemId: siId },
@@ -283,38 +344,7 @@ async function main() {
   }
   console.log("✅ SupplierItemPriceHistory: 6개 생성");
 
-  // ---- 12. ContainerGroup ----
-  const containerGroup = await prisma.containerGroup.upsert({
-    where: { companyId_code: { companyId: company.id, code: "CTG-001" } },
-    update: {},
-    create: { companyId: company.id, name: "기본 도시락 4칸", code: "CTG-001" },
-  });
-
-  const containerSlots = [
-    { slotIndex: 0, label: "밥", volumeMl: 300 },
-    { slotIndex: 1, label: "메인반찬", volumeMl: 250 },
-    { slotIndex: 2, label: "부반찬1", volumeMl: 150 },
-    { slotIndex: 3, label: "부반찬2", volumeMl: 150 },
-  ];
-  for (const cs of containerSlots) {
-    await prisma.containerSlot.upsert({
-      where: { containerGroupId_slotIndex: { containerGroupId: containerGroup.id, slotIndex: cs.slotIndex } },
-      update: {},
-      create: { containerGroupId: containerGroup.id, ...cs },
-    });
-  }
-
-  const existingAccessory = await prisma.containerAccessory.findFirst({
-    where: { containerGroupId: containerGroup.id, name: "수저 세트" },
-  });
-  if (!existingAccessory) {
-    await prisma.containerAccessory.create({
-      data: { containerGroupId: containerGroup.id, name: "수저 세트", description: "일회용 수저+젓가락" },
-    });
-  }
-  console.log("✅ ContainerGroup: 1개 (4슬롯 + 1악세서리)");
-
-  // ---- 13. Recipes ---- // ★ v4: RecipeVariant 제거, RecipeIngredient 사용
+  // ---- 13. Recipes ----
   const recipeA = await prisma.recipe.upsert({
     where: { companyId_code: { companyId: company.id, code: "RCP-001" } },
     update: {},
@@ -328,7 +358,7 @@ async function main() {
   });
   console.log("✅ Recipes: 2개 생성");
 
-  // ---- 13-1. RecipeIngredients ---- // ★ 신규
+  // ---- 13-1. RecipeIngredients ----
   const ingredientDataA = [
     { ingredientType: "MATERIAL" as const, materialMasterId: materialRecords["MAT-001"], sortOrder: 0 },
     { ingredientType: "MATERIAL" as const, materialMasterId: materialRecords["MAT-002"], sortOrder: 1 },
@@ -360,7 +390,7 @@ async function main() {
   }
   console.log("✅ RecipeIngredients: 4개 생성");
 
-  // ---- 13-2. RecipeBOM ---- // ★ 신규
+  // ---- 13-2. RecipeBOM ---- // ★ v5: containerGroupId → subsidiaryMasterId
   let recipeBomA = await prisma.recipeBOM.findFirst({
     where: { companyId: company.id, recipeId: recipeA.id },
   });
@@ -370,22 +400,22 @@ async function main() {
     });
   }
 
-  // RecipeBOM 슬롯
+  // RecipeBOM 슬롯 (SUB-001 용기 기준)
   let slotRice = await prisma.recipeBOMSlot.findFirst({
-    where: { recipeBomId: recipeBomA.id, containerGroupId: containerGroup.id, slotIndex: 0 },
+    where: { recipeBomId: recipeBomA.id, subsidiaryMasterId: subsidiaryRecords["SUB-001"], slotIndex: 0 },
   });
   if (!slotRice) {
     slotRice = await prisma.recipeBOMSlot.create({
-      data: { recipeBomId: recipeBomA.id, containerGroupId: containerGroup.id, slotIndex: 0, totalWeightG: 200, note: "밥", sortOrder: 0 },
+      data: { recipeBomId: recipeBomA.id, subsidiaryMasterId: subsidiaryRecords["SUB-001"], slotIndex: 0, totalWeightG: 200, note: "밥", sortOrder: 0 },
     });
   }
 
   let slotMain = await prisma.recipeBOMSlot.findFirst({
-    where: { recipeBomId: recipeBomA.id, containerGroupId: containerGroup.id, slotIndex: 1 },
+    where: { recipeBomId: recipeBomA.id, subsidiaryMasterId: subsidiaryRecords["SUB-001"], slotIndex: 1 },
   });
   if (!slotMain) {
     slotMain = await prisma.recipeBOMSlot.create({
-      data: { recipeBomId: recipeBomA.id, containerGroupId: containerGroup.id, slotIndex: 1, totalWeightG: 150, note: "메인반찬", sortOrder: 1 },
+      data: { recipeBomId: recipeBomA.id, subsidiaryMasterId: subsidiaryRecords["SUB-001"], slotIndex: 1, totalWeightG: 150, note: "메인반찬", sortOrder: 1 },
     });
   }
 
@@ -416,7 +446,7 @@ async function main() {
   });
   console.log("✅ SemiProduct: 1개");
 
-  // ---- 15. BOMs (반제품 전용) ---- // ★ v4: ownerType/recipeVariantId 제거
+  // ---- 15. BOMs (반제품 전용) ----
   let bomSemi = await prisma.bOM.findFirst({
     where: { companyId: company.id, semiProductId: semiProduct.id },
   });
@@ -434,7 +464,7 @@ async function main() {
   }
   console.log("✅ BOMs: 1개 (반제품 전용)");
 
-  // ---- 15-1. BOMItems ---- // ★ v4: itemType 제거, materialMasterId 필수
+  // ---- 15-1. BOMItems ----
   const existingBomSemiItems = await prisma.bOMItem.count({ where: { bomId: bomSemi.id } });
   if (existingBomSemiItems === 0) {
     await prisma.bOMItem.createMany({
@@ -446,7 +476,7 @@ async function main() {
   }
   console.log("✅ BOMItems: 2개");
 
-  // ---- 15-2. UnitMasters ----
+  // ---- 16. UnitMasters ----
   const unitMasterData = [
     // 자재용 (MATERIAL)
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "g", name: "g (그램)", sortOrder: 0 },
@@ -490,7 +520,7 @@ async function main() {
   }
   console.log(`✅ UnitMasters: ${unitMasterData.length}개 생성 (자재 20 + 부자재 10)`);
 
-  // ---- 16. UnitConversions ----
+  // ---- 17. UnitConversions ----
   const unitConversions = [
     { materialCode: null, fromUnit: "kg", toUnit: "g", factor: 1000, unitCategory: "WEIGHT" as const },
     { materialCode: null, fromUnit: "L", toUnit: "mL", factor: 1000, unitCategory: "VOLUME" as const },
@@ -513,41 +543,50 @@ async function main() {
   }
   console.log("✅ UnitConversions: 7개 생성");
 
-  // ---- 17. MealTemplate ----
+  // ---- 18. MealTemplate ---- // ★ v5: 전면 재설계 (MealTemplateContainer + MealTemplateAccessory)
   let mealTemplate = await prisma.mealTemplate.findFirst({
     where: { companyId: company.id, name: "기본 도시락 템플릿" },
   });
   if (!mealTemplate) {
     mealTemplate = await prisma.mealTemplate.create({
-      data: { companyId: company.id, name: "기본 도시락 템플릿", containerGroupId: containerGroup.id },
+      data: { companyId: company.id, name: "기본 도시락 템플릿" },
     });
   }
 
-  const templateSlots = [
-    { slotIndex: 0, label: "밥", isRequired: true },
-    { slotIndex: 1, label: "메인반찬", isRequired: true },
-    { slotIndex: 2, label: "부반찬1", isRequired: false },
-    { slotIndex: 3, label: "부반찬2", isRequired: false },
+  // 템플릿 ↔ 용기 연결 (MealTemplateContainer)
+  const templateContainers = [
+    { subsidiaryMasterId: subsidiaryRecords["SUB-001"], sortOrder: 0 },  // 5칸 도시락 용기
   ];
-  for (const ts of templateSlots) {
-    await prisma.mealTemplateSlot.upsert({
-      where: { mealTemplateId_slotIndex: { mealTemplateId: mealTemplate.id, slotIndex: ts.slotIndex } },
-      update: {},
-      create: { mealTemplateId: mealTemplate.id, ...ts },
+  for (const tc of templateContainers) {
+    const existing = await prisma.mealTemplateContainer.findFirst({
+      where: { mealTemplateId: mealTemplate.id, subsidiaryMasterId: tc.subsidiaryMasterId },
     });
+    if (!existing) {
+      await prisma.mealTemplateContainer.create({
+        data: { mealTemplateId: mealTemplate.id, ...tc },
+      });
+    }
   }
 
-  const existingMealAccessory = await prisma.mealTemplateAccessory.findFirst({
-    where: { mealTemplateId: mealTemplate.id, name: "수저 세트" },
-  });
-  if (!existingMealAccessory) {
-    await prisma.mealTemplateAccessory.create({
-      data: { mealTemplateId: mealTemplate.id, name: "수저 세트", isRequired: true },
+  // 템플릿 ↔ 악세서리 연결 (MealTemplateAccessory)
+  const templateAccessories = [
+    { subsidiaryMasterId: subsidiaryRecords["SUB-003"], consumptionType: "PER_MEAL_COUNT" as const, isRequired: true },   // 수저 세트
+    { subsidiaryMasterId: subsidiaryRecords["SUB-004"], consumptionType: "PER_MEAL_COUNT" as const, isRequired: true },   // 5칸 도시락 뚜껑
+    { subsidiaryMasterId: subsidiaryRecords["SUB-006"], consumptionType: "FIXED_QUANTITY" as const, fixedQuantity: 50, isRequired: false },  // 포장 비닐 (고정 50장)
+  ];
+  for (const ta of templateAccessories) {
+    const existing = await prisma.mealTemplateAccessory.findFirst({
+      where: { mealTemplateId: mealTemplate.id, subsidiaryMasterId: ta.subsidiaryMasterId },
     });
+    if (!existing) {
+      await prisma.mealTemplateAccessory.create({
+        data: { mealTemplateId: mealTemplate.id, ...ta },
+      });
+    }
   }
-  console.log("✅ MealTemplate: 1개 (4슬롯 + 1악세서리)");
+  console.log("✅ MealTemplate: 1개 (용기 1종 + 악세서리 3종)");
 
-  // ---- 18. NotificationTagDefs ----
+  // ---- 19. NotificationTagDefs ----
   const tagDefs = [
     { tagKey: "company_name", label: "회사명" },
     { tagKey: "user_name", label: "사용자 이름" },
@@ -569,7 +608,7 @@ async function main() {
   }
   console.log("✅ NotificationTagDefs: 14개");
 
-  // ---- 19. NotificationTemplates ----
+  // ---- 20. NotificationTemplates ----
   let templateMealPlan = await prisma.notificationTemplate.findFirst({ where: { name: "식단 확정 알림" } });
   if (!templateMealPlan) {
     templateMealPlan = await prisma.notificationTemplate.create({
@@ -592,7 +631,7 @@ async function main() {
   }
   console.log("✅ NotificationTemplates: 3개");
 
-  // ---- 20. NotificationRules ----
+  // ---- 21. NotificationRules ----
   const existingRules = await prisma.notificationRule.count({ where: { companyId: company.id } });
   if (existingRules === 0) {
     await prisma.notificationRule.createMany({
@@ -609,28 +648,25 @@ async function main() {
   console.log("\n🎉 시드 데이터 투입 완료!");
   console.log("────────────────────────────");
   console.log("Company:              1");
-  console.log("PermissionSets:       3");
-  console.log("PermissionSetItems:   90");
+  console.log("PermissionSets:       3 (90 items)");
   console.log("User (Admin):         1");
   console.log("UserScope:            1");
   console.log("Locations:            2");
   console.log("ProductionLines:      4");
-  console.log("Lineups:              2");
-  console.log("LineupLocationMaps:   3");
+  console.log("Lineups:              2 (3 location maps)");
   console.log("MaterialMasters:      6");
-  console.log("SubsidiaryMasters:    4");
-  console.log("Suppliers:            2");
-  console.log("SupplierItems:        6");
-  console.log("PriceHistories:       6");
-  console.log("ContainerGroup:       1 (4슬롯 + 1악세서리)");
+  console.log("SubsidiaryMasters:    6 (CONTAINER 2, ACCESSORY 3, CONSUMABLE 1)");
+  console.log("ContainerSlots:       7 (SUB-001: 5슬롯, SUB-002: 2슬롯)");
+  console.log("Suppliers:            3 (MATERIAL 2, SUBSIDIARY 1)");
+  console.log("SupplierItems:        6 (+ 6 price histories)");
   console.log("Recipes:              2");
   console.log("RecipeIngredients:    4");
   console.log("RecipeBOM:            1 (2슬롯, 3아이템)");
   console.log("SemiProduct:          1");
-  console.log("BOMs (반제품):        1");
-  console.log("BOMItems:             2");
+  console.log("BOMs (반제품):        1 (2 items)");
+  console.log("UnitMasters:          30 (자재 20 + 부자재 10)");
   console.log("UnitConversions:      7");
-  console.log("MealTemplate:         1 (4슬롯 + 1악세서리)");
+  console.log("MealTemplate:         1 (용기 1종 + 악세서리 3종)");
   console.log("NotificationTagDefs:  14");
   console.log("NotificationTemplates:3");
   console.log("NotificationRules:    3");
