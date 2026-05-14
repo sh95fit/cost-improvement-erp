@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-12 (Phase 14 완료 — Sprint 1 최종 QA, handleActionError 전도메인 통일)
+> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 2-b 완료 — v5 Prisma 마이그레이션, MealTemplate UI)
 
 ---
 
@@ -39,9 +39,9 @@
 | 11 | Supplier | 구현완료 | — | ✅ |
 | 12 | SupplierItem | 구현완료 | — | ✅ |
 | 13 | SupplierItemPriceHistory | 구현완료 | — | ✅ |
-| 14 | ContainerGroup | 구현완료 | — | ✅ |
+| 14 | ~~ContainerGroup~~ | 구현완료 | — | ✅ (v5: SubsidiaryMaster에 흡수, 모델 삭제) |
 | 15 | ContainerSlot | 구현완료 | — | ✅ |
-| 16 | ContainerAccessory | 구현완료 | — | ✅ |
+| 16 | ~~ContainerAccessory~~ | 구현완료 | — | ✅ (v5: MealTemplateAccessory로 대체, 모델 삭제) |
 | 17 | Recipe | 구현완료 | — | ✅ |
 | 18 | RecipeIngredient | 구현완료 | — | ✅ |
 | 19 | RecipeBOM | 구현완료 | — | ✅ |
@@ -52,9 +52,9 @@
 | 24 | BOMItem | 구현완료 | — | ✅ |
 | 25 | UnitConversion | 구현완료 | — | ✅ |
 | 26 | UnitMaster | 구현완료 | S1-P3 | ✅ |
-| 27 | MealTemplate | S2 | P1-2 | ⬜ |
-| 28 | MealTemplateSlot | S2 | P1-2 | ⬜ |
-| 29 | MealTemplateAccessory | S2 | P1-2 | ⬜ |
+| 27 | MealTemplate | S2 | P1-2 | ✅ |
+| 28 | MealTemplateContainer | S2 | P1-2 | ✅ (v5: MealTemplateSlot 폐지) |
+| 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
 | 30 | MealPlanGroup | S2 | P3-5 | ⬜ |
 | 31 | MealPlan | S2 | P3-5 | ⬜ |
 | 32 | MealPlanSlot | S2 | P6-7 | ⬜ |
@@ -441,96 +441,133 @@
 
 ---
 
-## 🏗️ Sprint 2: 식단 템플릿 + 식단 계획 (5/13 ~ 5/22, ~48h)
-
-> ⚠️ MealTemplate, MealCount, MealPlanAccessory 누락 반영으로 Phase 11개, 공수 39h→48h
-> ⚠️ 일정 조정: Sprint 1 Phase 3 확장(+5.5h)으로 Sprint 2 시작일 5/12→5/13
-
 ## 🏗️ Sprint 2: 식단 템플릿·식단 계획 (5/12 ~ 5/22)
 
 > 총 예상 공수: ~48h
+> ⚠️ 일정 조정: Sprint 1 Phase 3 확장(+5.5h)으로 Sprint 2 시작일 5/12→5/13
+> ⚠️ v5 마이그레이션(Phase 2-b)으로 ContainerGroup 폐지, MealTemplateSlot→MealTemplateContainer 전환
 
 ### Phase 1 — MealTemplate Zod 스키마 + 서비스 + 테스트 ✅
 - **날짜**: 2026-05-12
 - **커밋**: `937ee2d6` (스키마+서비스), `6e693f83` (타입 보완+테스트+PROGRESS)
 - **예상 시간**: 4h → **실제 시간: ~3h**
 - **변경 파일**: 4개 (신규 2 + 수정 2)
-  - `src/features/meal-template/schemas/meal-template.schema.ts` — **신규**: Zod 스키마 8개 (List/Create/Update × Template/Slot/Accessory)
-  - `src/features/meal-template/services/meal-template.service.ts` — **신규**: Template CRUD 5 + Slot CRUD 3 + Accessory CRUD 3 = 11함수
-  - `src/tests/meal-template.service.test.ts` — **신규**: 26 테스트 케이스
-  - `src/tests/mocks/prisma.ts` — mealTemplateSlot, mealTemplateAccessory mock 추가
-- **보완 사항** (레포 검증에서 발견):
-  - `getMealTemplates`의 `where` 타입: `Record<string, unknown>` → `Prisma.MealTemplateWhereInput` (타입 안전성)
-  - `addMealTemplateSlot`에 중복 `slotIndex` 사전 체크 추가 → `DUPLICATE_SLOT_INDEX` throw
+  - `src/features/meal-template/schemas/meal-template.schema.ts` — **신규**: Zod 스키마 8개
+  - `src/features/meal-template/services/meal-template.service.ts` — **신규**: Template CRUD 5 + Container 3 + Accessory 3 = 11함수
+  - `src/tests/meal-template.service.test.ts` — **신규**: 테스트 케이스
+  - `src/tests/mocks/prisma.ts` — mealTemplateContainer, mealTemplateAccessory mock 추가
 - **완료 항목**:
-  - [x] MealTemplate/Slot/Accessory Zod 스키마 (Prisma 모델 필드 1:1 대응)
+  - [x] MealTemplate/Container/Accessory Zod 스키마 (v5 Prisma 모델 1:1 대응)
   - [x] MealTemplate 목록 조회 (pagination + search + sort)
-  - [x] MealTemplate 상세 조회 (containerGroup, slots, accessories include)
-  - [x] MealTemplate 생성/수정/삭제 (삭제 시 $transaction으로 Slot/Accessory 일괄 삭제)
-  - [x] MealTemplateSlot 추가 (중복 slotIndex 사전 체크)/수정/삭제
-  - [x] MealTemplateAccessory 추가/수정/삭제
-  - [x] 26개 테스트 작성 (기존 158 + 21 = 179 tests)
+  - [x] MealTemplate 상세 조회 (containers, accessories, subsidiaryMaster include)
+  - [x] MealTemplate 생성/수정/삭제 (삭제 시 $transaction으로 Container/Accessory 일괄 삭제)
+  - [x] MealTemplateContainer 추가/수정/삭제 (subsidiaryMasterId + sortOrder)
+  - [x] MealTemplateAccessory 추가/수정/삭제 (subsidiaryMasterId + consumptionType + fixedQuantity + isRequired)
   - [x] TypeScript 오류 0건, any 0건
-- **CONVENTIONS 점검**:
-  - ① any 금지 → Prisma.MealTemplateWhereInput 사용 ✅
-  - ⑦ 트랜잭션 → deleteMealTemplate에서 $transaction ✅
-  - ⑩ 테스트 필수 → meal-template.service.test.ts 26케이스 ✅
+- **v5 반영**: Phase 2-b에서 MealTemplateSlot → MealTemplateContainer로 전면 전환 완료
 
+### Phase 2 — MealTemplate 액션 + UI + 사이드바 ✅
+- **날짜**: 2026-05-12
+- **커밋**: `5f92eba6`
+- **예상 시간**: 5h → **실제 시간: ~3h**
+- **변경 파일**: 3개 (신규 2 + 수정 1)
+  - `src/features/meal-template/actions/meal-template.action.ts` — **신규**: 11 action (Template 5 + Container 3 + Accessory 3), handleActionError 패턴
+  - `src/app/(dashboard)/meal-templates/page.tsx` — **신규**: 식단 템플릿 CRUD 페이지 (목록/검색/아코디언/용기·악세서리 CRUD/toast)
+  - `src/components/layout/sidebar.tsx` — "식단 템플릿" 메뉴 추가 (LayoutTemplate 아이콘)
+- **완료 항목**:
+  - [x] 11개 action 함수 (handleActionError, 권한 체크, 감사 로그)
+  - [x] 식단 템플릿 CRUD UI (생성/수정/삭제 모달)
+  - [x] 아코디언 확장: 용기/악세서리 상세 표시
+  - [x] 용기 추가 모달 (SubsidiaryMaster CONTAINER 선택)
+  - [x] 악세서리 추가 모달 (부자재 선택, 소비모드, 고정수량, 필수여부)
+  - [x] 악세서리 인라인 수정 (consumptionType, isRequired)
+  - [x] 삭제 확인 AlertDialog (template/container/accessory 분기)
+  - [x] 사이드바 메뉴 추가, 전체 toast 적용
+  - [x] TypeScript 오류 0건
 
-### Phase 2 — MealTemplate 액션 + UI ⬜
-- **예정일**: 2026-05-13 ~ 2026-05-14
+### Phase 2-b — v5 Prisma 스키마 마이그레이션 ✅
+- **날짜**: 2026-05-13
+- **커밋**: `9f084f25`, `197dfe81`, `4b73dd39`, `2801c6de`
+- **v5 핵심 의사결정**:
+  - **용기가 부자재에 흡수**: ContainerGroup 폐지 → SubsidiaryMaster에 `subsidiaryType: CONTAINER | ACCESSORY | CONSUMABLE` enum 추가. 용기를 부자재 관리(/subsidiaries)에서 등록하고, /containers 페이지는 슬롯 전용 관리로 변경
+  - **부자재 공급업체 유형 구분**: Supplier에 `supplierType: MATERIAL | SUBSIDIARY` 추가. 식재료·부자재 공급업체를 같은 테이블에서 유형 구분으로 관리. 부자재도 공급업체와 연결되어 발주→입고→사용 프로세스를 타도록 설계
+  - **ContainerAccessory 폐지**: 부속품(악세서리)은 MealTemplateAccessory(subsidiaryMasterId FK)로 관리
+  - **MealTemplateSlot → MealTemplateContainer**: subsidiaryMasterId + sortOrder 구조로 전면 재설계
+  - **MealTemplateAccessory 변경**: name 문자열 → subsidiaryMasterId FK 참조
+  - **RecipeBOMSlot**: containerGroupId → subsidiaryMasterId 전환
+- **변경 파일**:
+  - `prisma/schema.prisma` — v5 전면 재설계 + 마이그레이션 `20260513054059_restructure_v5_subsidiary_container_template`
+  - `container.schema.ts` — ContainerGroup/AccessorySchema 삭제, subsidiaryMasterId 기반만 유지
+  - `container.service.ts` — SubsidiaryMaster(CONTAINER) 쿼리, MealTemplateContainer 의존성 체크
+  - `container.action.ts` — ContainerGroup/Accessory CRUD action 삭제, export-as alias → const assignment (Turbopack 호환)
+  - `meal-template.schema.ts` — containerGroupId 제거, subsidiaryMasterId 기반
+  - `meal-template.service.ts` — TEMPLATE_INCLUDE에 containers/accessories/subsidiaryMaster
+  - `meal-templates/page.tsx` — v5 타입(ContainerRow, AccessoryRow, TemplateRow), API 호출 전환
+  - `containers/page.tsx` — 슬롯 전용 관리로 변경, 안내문 "용기는 부자재 관리에서 등록합니다"
+  - `recipe-detail-dialog.tsx` — getSlotsBySubsidiaryIdAction import 수정
+  - `prisma mock` — containerGroup 제거, mealTemplateContainer 추가
+- **해결된 이슈**: Turbopack에서 `export { X as Y }` 패턴이 원래 이름을 숨기는 문제 → `export const Y = X` 패턴으로 수정
+- **테스트**: 12파일 / 160개 PASS
+
+### Phase 2-c — v5 전환 UI·로직 보완 ⬜
+- **예정일**: 2026-05-14
 - **예상 시간**: 5h
-- **작업**: `meal-template.action.ts`, `meal-template-list.tsx`, `meal-template-form.tsx`, `/meal-templates/page.tsx`
+- **v5 의사결정 반영 누락분**:
+  - [ ] 부자재 등록/수정 폼에 `subsidiaryType` 선택 UI 추가 (CONTAINER/ACCESSORY/CONSUMABLE) — 스키마·서비스·폼 전부
+  - [ ] 부자재 목록에 유형 컬럼 + 유형별 필터 추가
+  - [ ] 공급업체 등록/수정 폼에 `supplierType` 선택 UI 추가 (MATERIAL/SUBSIDIARY) — 스키마·서비스·폼 전부
+  - [ ] 공급업체 목록에 유형 컬럼 + 유형별 필터 추가
+  - [ ] 식단 템플릿 악세서리 옵션: ACCESSORY/CONSUMABLE 타입 부자재 별도 로딩 (현재 CONTAINER만 로딩됨)
+  - [ ] 식단 템플릿 악세서리 인라인 편집에 fixedQuantity 입력 추가
+  - [ ] 식단 템플릿 용기 sortOrder 인라인 편집 UI 추가
 
 ### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ⬜
-- **예정일**: 2026-05-14 ~ 2026-05-15
+- **예정일**: 2026-05-15 ~ 2026-05-16
 - **예상 시간**: 6h
 - **대상 모델**: MealPlanGroup, MealPlan, MealPlanSlot
 - **작업**: `meal-plan.schema.ts`, `meal-plan.service.ts` (그룹 CRUD, 식단 생성·복사, 슬롯 배정)
 
 ### Phase 4 — MealPlan 액션 ⬜
-- **예정일**: 2026-05-15 ~ 2026-05-16
+- **예정일**: 2026-05-16 ~ 2026-05-17
 - **예상 시간**: 4h
 - **작업**: `meal-plan.action.ts` (입력 검증, 권한, 감사 로그)
 
 ### Phase 5 — 식단 그룹 UI ⬜
-- **예정일**: 2026-05-16
+- **예정일**: 2026-05-17
 - **예상 시간**: 4h
 - **작업**: `meal-plan-group-list.tsx`, `meal-plan-group-form.tsx`
 
 ### Phase 6 — 식단 캘린더 뷰 ⬜
-- **예정일**: 2026-05-16 ~ 2026-05-17
+- **예정일**: 2026-05-17 ~ 2026-05-18
 - **예상 시간**: 6h
 - **작업**: `meal-plan-calendar.tsx` (주간/월간 캘린더, 드래그/클릭 슬롯 배정)
 
 ### Phase 7 — 슬롯 상세 에디터 ⬜
-- **예정일**: 2026-05-17 ~ 2026-05-18
+- **예정일**: 2026-05-18 ~ 2026-05-19
 - **예상 시간**: 4h
 - **작업**: `meal-plan-slot-editor.tsx` (레시피 선택, RecipeBOM 선택, 인원수 입력)
 
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
-- **예정일**: 2026-05-18 ~ 2026-05-19
+- **예정일**: 2026-05-19 ~ 2026-05-20
 - **예상 시간**: 4h
 - **대상 모델**: MealCount, MealPlanAccessory
 - **작업**: 예상/확정 식수 입력, 부자재(악세서리) 매핑 UI
 
 ### Phase 9 — 소요량 자동 산출 서비스 ⬜
-- **예정일**: 2026-05-19 ~ 2026-05-20
+- **예정일**: 2026-05-20 ~ 2026-05-21
 - **예상 시간**: 5h
 - **대상 모델**: MaterialRequirement
 - **작업**: `material-requirement.service.ts` (BOM→재료 전개, 인원수 반영, 자동 산출)
 
 ### Phase 10 — 테스트 작성 ⬜
-- **예정일**: 2026-05-20 ~ 2026-05-21
+- **예정일**: 2026-05-21 ~ 2026-05-22
 - **예상 시간**: 4h
-- **작업**: `meal-template.service.test.ts`, `meal-plan.service.test.ts`, `material-requirement.service.test.ts`
+- **작업**: `meal-plan.service.test.ts`, `material-requirement.service.test.ts`
 
 ### Phase 11 — 페이지 통합 + Sprint 2 QA ⬜
-- **예정일**: 2026-05-21 ~ 2026-05-22
+- **예정일**: 2026-05-22 ~ 2026-05-23
 - **예상 시간**: 4h (QA 1일 여유 포함)
 - **작업**: `/meal-plans/page.tsx` 통합, toast 적용, E2E 검증, PROGRESS.md 갱신
-
----
 
 ## 🏗️ Sprint 3: 발주 + 입고 (5/23 ~ 5/31, ~32h)
 
