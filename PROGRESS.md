@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 2-d 완료 — supplier 패턴 통일, Phase 3 준비)
+> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 4 완료 — MealPlanGroup/MealPlan 스키마+서비스+액션)
 
 ---
 
@@ -55,9 +55,9 @@
 | 27 | MealTemplate | S2 | P1-2 | ✅ |
 | 28 | MealTemplateContainer | S2 | P1-2 | ✅ (v5: MealTemplateSlot 폐지) |
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
-| 30 | MealPlanGroup | S2 | P3-5 | ⬜ |
-| 31 | MealPlan | S2 | P3-5 | ⬜ |
-| 32 | MealPlanSlot | S2 | P6-7 | ⬜ |
+| 30 | MealPlanGroup | S2 | P3-4 | ✅ |
+| 31 | MealPlan | S2 | P3-4 | ✅ |
+| 32 | MealPlanSlot | S2 | P3-4 | ✅ |
 | 33 | MealCount | S2 | P8 | ⬜ |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
@@ -590,16 +590,43 @@
   - [ ] PROGRESS.md 갱신
 - **비고**: MealPlanGroup/MealPlan 구현이 우선순위 높으므로, Phase 3 진행 후 필요 시 Sprint 2 후반에 병행 가능
 
-### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ⬜
-- **예정일**: 2026-05-15 ~ 2026-05-16
-- **예상 시간**: 6h
-- **대상 모델**: MealPlanGroup, MealPlan, MealPlanSlot
-- **작업**: `meal-plan.schema.ts`, `meal-plan.service.ts` (그룹 CRUD, 식단 생성·복사, 슬롯 배정)
+### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ✅
+- **날짜**: 2026-05-14
+- **커밋**: `298ae851`
+- **예상 시간**: 6h → **실제 시간: ~2h**
+- **변경 파일**: 3개 (+426 / -0)
+  - `src/features/meal-plan/schemas/meal-plan.schema.ts` — **신규**: Zod 스키마 8개 (MealPlanGroup list/create/update, MealPlan create/update, MealPlanSlot create/update)
+  - `src/features/meal-plan/services/meal-plan.service.ts` — **신규**: 14개 서비스 함수
+  - `src/tests/mocks/prisma.ts` — 6개 모델 mock 추가 (mealPlanGroup, mealPlan, mealPlanSlot, mealCount, mealPlanAccessory, lineup)
+- **완료 항목**:
+  - [x] MealPlanGroup: 목록(pagination + status/lineup/dateRange 필터), 상세, 생성, 수정(상태 변경), 삭제(cascade tx), 복사(deep clone)
+  - [x] MealPlan: 그룹별 조회, 생성(slotType + mealTemplateId), 수정, 삭제(cascade tx)
+  - [x] MealPlanSlot: 목록, 생성(slotIndex + recipe + BOM + quantity), 수정, 삭제
+  - [x] Include 상수 분리 (GROUP_LIST_INCLUDE, GROUP_DETAIL_INCLUDE, MEAL_PLAN_INCLUDE)
+  - [x] deleteMealPlanGroup: 4단계 cascade 삭제 (Slot → Accessory → Plan → Count → Group)
+  - [x] copyMealPlanGroup: $transaction deep clone (Group → Plan → Slot + Accessory)
+  - [x] Prisma mock 6개 모델 추가
+  - [x] TypeScript 오류 0건
+  - [x] 기존 테스트 160 PASS 유지
+- **패턴 일치**: meal-template.service.ts와 동일 (Include 상수, $transaction cascade, NOT_FOUND throw, hard delete)
 
-### Phase 4 — MealPlan 액션 ⬜
-- **예정일**: 2026-05-16 ~ 2026-05-17
-- **예상 시간**: 4h
-- **작업**: `meal-plan.action.ts` (입력 검증, 권한, 감사 로그)
+### Phase 4 — MealPlan 액션 ✅
+- **날짜**: 2026-05-14
+- **커밋**: `a831418f`
+- **예상 시간**: 4h → **실제 시간: ~1h**
+- **변경 파일**: 1개 (+304 / -0)
+  - `src/features/meal-plan/actions/meal-plan.action.ts` — **신규**: 13개 server action
+- **완료 항목**:
+  - [x] MealPlanGroup: getMealPlanGroupsAction, getMealPlanGroupByIdAction, createMealPlanGroupAction, updateMealPlanGroupAction, deleteMealPlanGroupAction, copyMealPlanGroupAction
+  - [x] MealPlan: getMealPlansByGroupAction, createMealPlanAction, updateMealPlanAction, deleteMealPlanAction
+  - [x] MealPlanSlot: getMealPlanSlotsAction, createMealPlanSlotAction, updateMealPlanSlotAction, deleteMealPlanSlotAction
+  - [x] 전체 handleActionError 패턴 적용 (13/13)
+  - [x] assertPermission(session, "mealPlan", action) 통일
+  - [x] createAuditLog: CREATE/UPDATE/DELETE 대상 전부 적용
+  - [x] 도메인 에러 매핑: NOT_FOUND, P2002(unique constraint)
+  - [x] TypeScript 오류 0건
+  - [x] 기존 테스트 160 PASS 유지
+- **패턴 일치**: meal-template.action.ts와 동일 (requireCompanySession + assertPermission + handleActionError + createAuditLog + actionOk)
 
 ### Phase 5 — 식단 그룹 UI ⬜
 - **예정일**: 2026-05-17
