@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 2-b 완료 — v5 Prisma 마이그레이션, MealTemplate UI)
+> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 2-d 완료 — supplier 패턴 통일, Phase 3 준비)
 
 ---
 
@@ -548,18 +548,47 @@
   - supplier.service.ts의 generateSupplierCode 미전환 (findFirst 패턴 유지) → Phase 2-d에서 수정
   - 부자재 등록 시 공급업체 연결 UI 부재 → Phase 2-d에서 보완
 
-### Phase 2-d — 부자재 등록 UX 개선 + 잔여 버그 수정 (예정)
-- **예상 날짜**: 2026-05-14
+### Phase 2-d — supplier 서비스 패턴 통일 + 타입 정리 ✅
+- **날짜**: 2026-05-14
+- **커밋**: `2dc5e89e`
+- **예상 시간**: 3h → **실제 시간: ~4h** (테스트 실패 디버깅 포함)
+- **변경 파일**: 3개 (+46 / -33)
+  - `src/features/supplier/services/supplier.service.ts` — `generateSupplierCode` findFirst → `$queryRaw` 전환 (soft-delete extension 우회), `getSuppliers`/`getSupplierById`/`deleteSupplier`에 명시적 `deletedAt: null` 조건 추가, `deleteSupplier`를 `delete()` → `update({ deletedAt })` explicit soft-delete로 변경
+  - `src/tests/supplier.service.test.ts` — createSupplier 테스트에서 `findFirst` mock → `$queryRaw` mock 전환, deleteSupplier 테스트에서 `delete` mock → `update` mock 검증 + `delete` 미호출 확인, getSupplierById 테스트에 `deletedAt: null` where 검증 추가
+  - `src/app/(dashboard)/suppliers/page.tsx` — `SupplierWithType` 커스텀 타입 제거, Prisma `Supplier` 타입 직접 사용으로 간소화
+- **완료 항목**:
+  - [x] supplier.service.ts: generateSupplierCode → $queryRaw 전환 (material/subsidiary 패턴과 동일)
+  - [x] supplier.service.ts: getSuppliers where 절에 deletedAt: null 명시
+  - [x] supplier.service.ts: getSupplierById where 절에 deletedAt: null 명시
+  - [x] supplier.service.ts: deleteSupplier → explicit soft-delete (update + deletedAt)
+  - [x] supplier.service.test.ts: $queryRaw mock 기반 코드 채번 테스트 (SUP-001, SUP-006)
+  - [x] supplier.service.test.ts: soft-delete 테스트 → update mock + delete 미호출 검증
+  - [x] supplier.service.test.ts: getSupplierById null 반환 테스트 정상화
+  - [x] suppliers/page.tsx: SupplierWithType 제거 → Prisma Supplier 직접 사용
+  - [x] TypeScript 오류 0건
+  - [x] 테스트: 12 파일 / 160 PASS (3건 실패 → 0건)
+- **패턴 통일 검증 결과**:
+
+  | 항목 | material.service | subsidiary.service | supplier.service |
+  |------|-----------------|-------------------|-----------------|
+  | 코드 채번 | $queryRaw ✅ | $queryRaw ✅ | $queryRaw ✅ |
+  | deletedAt: null | 명시 ✅ | 명시 ✅ | 명시 ✅ |
+  | soft-delete | update({ deletedAt }) ✅ | update({ deletedAt }) ✅ | update({ deletedAt }) ✅ |
+  | 테스트 mock | $queryRaw ✅ | $queryRaw ✅ | $queryRaw ✅ |
+
+- **미완료 → Phase 2-e 이관**:
+  - 부자재 등록/수정 폼에 공급업체 연결 섹션 추가 (SubsidiaryMaster + SupplierItem 트랜잭션)
+
+### Phase 2-e — 부자재-공급업체 연결 UX ⬜ (선택적, Phase 3 이후 진행 가능)
 - **예상 시간**: 3h
 - **작업 목록**:
-  - [ ] supplier.service.ts: generateSupplierCode → $queryRaw 전환
-  - [ ] supplier.service.test.ts: $queryRaw mock 전환
   - [ ] 부자재 등록/수정 폼에 공급업체 연결 섹션 추가
     - 부자재 공급업체(supplierType=SUBSIDIARY) Select
     - 제품명, 규격, 공급단위, 단가 입력
     - 저장 시 SubsidiaryMaster + SupplierItem 트랜잭션 처리
     - defaultSupplierItemId 자동 설정 (첫 연결 시)
   - [ ] PROGRESS.md 갱신
+- **비고**: MealPlanGroup/MealPlan 구현이 우선순위 높으므로, Phase 3 진행 후 필요 시 Sprint 2 후반에 병행 가능
 
 ### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ⬜
 - **예정일**: 2026-05-15 ~ 2026-05-16
