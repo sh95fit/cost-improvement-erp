@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 4 완료 — MealPlanGroup/MealPlan 스키마+서비스+액션)
+> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 5 완료 — 식단 계획 CRUD UI)
 
 ---
 
@@ -628,10 +628,43 @@
   - [x] 기존 테스트 160 PASS 유지
 - **패턴 일치**: meal-template.action.ts와 동일 (requireCompanySession + assertPermission + handleActionError + createAuditLog + actionOk)
 
-### Phase 5 — 식단 그룹 UI ⬜
-- **예정일**: 2026-05-17
-- **예상 시간**: 4h
-- **작업**: `meal-plan-group-list.tsx`, `meal-plan-group-form.tsx`
+### Phase 5 — 식단 그룹 UI ✅
+- **날짜**: 2026-05-14
+- **커밋**: `f859c993`
+- **예상 시간**: 4h → **실제 시간: ~2h**
+- **변경 파일**: 1개 (+약 800 lines / -0)
+  - `src/app/(dashboard)/meal-plans/page.tsx` — **신규**: 식단 계획 CRUD 페이지 (목록 뷰 + 상세 뷰)
+- **완료 항목**:
+  - [x] 목록 뷰: MealPlanGroup 테이블 (날짜·라인업·상태·식단 수 컬럼)
+  - [x] 목록 뷰: pagination (page/limit/totalPages), Enter 검색, 상태 필터 (5종)
+  - [x] 목록 뷰: 상태 뱃지 색상 (DRAFT 회색, CONFIRMED 파랑, IN_PROGRESS 초록, COMPLETED 보라, CANCELLED 빨강)
+  - [x] 상세 뷰: MealPlan 카드별 렌더링 (slotType 한글 변환: 조식/중식/석식/간식)
+  - [x] 상세 뷰: 슬롯 테이블 (순서/레시피/인원), 악세서리 뱃지 (subsidiaryMaster.name × quantity)
+  - [x] 그룹 생성 Dialog (planDate + lineupId 직접 입력, Sprint 6에서 Lineup Select 전환 예정)
+  - [x] 그룹 복사 Dialog (source 날짜·라인업 표시, 대상 날짜 선택 → copyMealPlanGroupAction)
+  - [x] 상태 변경 Dialog (현재 상태 제외 옵션 필터링 → updateMealPlanGroupAction)
+  - [x] 식단 추가 Dialog (slotType Select + mealTemplate Select via loadAllPages → createMealPlanAction)
+  - [x] 삭제 AlertDialog (group/meal/slot 3종 분기, cascade 경고 → deleteMealPlanGroupAction/deleteMealPlanAction/deleteMealPlanSlotAction)
+  - [x] Toast 통합: success 6건 (생성/복사/상태변경/식단추가/삭제×3종), error 전 경로 적용
+  - [x] logger.error 적용 (console.log 미사용)
+  - [x] 사이드바 /meal-plans 메뉴 이미 등록 확인 (CalendarDays 아이콘)
+  - [x] AlertDialog 태그 정합성 수정 완료 (</Dialog> → </AlertDialog>)
+  - [x] TypeScript 오류 0건
+  - [x] 기존 테스트 160 PASS 유지
+- **패턴 일치**: meal-templates/page.tsx와 동일 (loadAllPages, AlertDialog, toast, logger.error, pagination, shadcn/ui)
+- **제한사항**: Lineup 모델 미구현 (Sprint 6 Phase 5). 현재 lineupId 수동 입력
+- **Action ↔ UI 매핑**:
+  - getMealPlanGroupsAction → 목록 fetchData ✅
+  - getMealPlanGroupByIdAction → 상세 openDetail ✅
+  - createMealPlanGroupAction → 그룹 생성 handleCreateGroup ✅
+  - updateMealPlanGroupAction → 상태 변경 handleStatusChange ✅
+  - deleteMealPlanGroupAction → 삭제 handleConfirmDelete(group) ✅
+  - copyMealPlanGroupAction → 복사 handleCopyGroup ✅
+  - createMealPlanAction → 식단 추가 handleAddMeal ✅
+  - deleteMealPlanAction → 삭제 handleConfirmDelete(meal) ✅
+  - deleteMealPlanSlotAction → 삭제 handleConfirmDelete(slot) ✅
+  - getMealTemplatesAction → 템플릿 옵션 loadTemplateOptions ✅
+
 
 ### Phase 6 — 식단 캘린더 뷰 ⬜
 - **예정일**: 2026-05-17 ~ 2026-05-18
@@ -829,8 +862,8 @@
 
 | Sprint | 기간 | 주요 내용 | Phase 수 | 예상 공수 | 상태 |
 |--------|------|-----------|----------|-----------|------|
-| Sprint 1 | 5/4 ~ 5/12 | 안정화 + 품질 기반 | 14 | ~37.5h | 🟡 진행 중 (5/14) |
-| Sprint 2 | 5/13 ~ 5/22 | 식단 템플릿 + 식단 계획 | 11 | ~48h | ⬜ 대기 |
+| Sprint 1 | 5/4 ~ 5/12 | 안정화 + 품질 기반 | 14 | ~37.5h | ✅ 완료 |
+| Sprint 2 | 5/12 ~ 5/22 | 식단 템플릿 + 식단 계획 | 11 | ~48h | 🟡 진행 중 (5/11 Phase 5 완료) |
 | Sprint 3 | 5/23 ~ 5/31 | 발주 + 입고 | 9 | ~32h | ⬜ 대기 |
 | Sprint 4 | 6/1 ~ 6/15 | 재고 + 이동 + 실사 + 출고 + 소비 + 조리 | 15 | ~62h | ⬜ 대기 |
 | Sprint 5 | 6/16 ~ 6/28 | 원가 + 간접비 + 월말 + 알림 | 12 | ~52h | ⬜ 대기 |
