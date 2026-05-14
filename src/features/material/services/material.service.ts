@@ -7,15 +7,17 @@ import type {
 
 // ── 자재 코드 자동 생성 (MAT-001, MAT-002, ...) ──
 async function generateMaterialCode(companyId: string): Promise<string> {
-  const lastMaterial = await prisma.materialMaster.findFirst({
-    where: { companyId, deletedAt: null },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
+  const result = await prisma.$queryRaw<{ code: string }[]>`
+    SELECT code FROM material_masters
+    WHERE company_id = ${companyId}
+      AND code ~ '^MAT-[0-9]+$'
+    ORDER BY code DESC
+    LIMIT 1
+  `;
 
-  if (!lastMaterial) return "MAT-001";
+  if (result.length === 0) return "MAT-001";
 
-  const match = lastMaterial.code.match(/^MAT-(\d+)$/);
+  const match = result[0].code.match(/^MAT-(\d+)$/);
   if (!match) return "MAT-001";
 
   const nextNumber = parseInt(match[1], 10) + 1;

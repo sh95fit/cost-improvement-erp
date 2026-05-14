@@ -154,7 +154,8 @@ describe("material.service", () => {
   // ── createMaterial ──
   describe("createMaterial", () => {
     it("should auto-generate code MAT-001 when no materials exist", async () => {
-      mockPrisma.materialMaster.findFirst.mockResolvedValue(null);
+      // $queryRaw는 빈 배열 반환 → MAT-001 채번
+      mockPrisma.$queryRaw.mockResolvedValue([]);
       mockPrisma.materialMaster.create.mockResolvedValue({
         id: "new-id",
         code: "MAT-001",
@@ -175,7 +176,8 @@ describe("material.service", () => {
     });
 
     it("should increment code from last existing material", async () => {
-      mockPrisma.materialMaster.findFirst.mockResolvedValue({ code: "MAT-005" });
+      // $queryRaw는 마지막 코드 반환
+      mockPrisma.$queryRaw.mockResolvedValue([{ code: "MAT-005" }]);
       mockPrisma.materialMaster.create.mockResolvedValue({
         id: "new-id",
         code: "MAT-006",

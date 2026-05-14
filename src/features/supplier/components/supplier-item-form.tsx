@@ -44,17 +44,30 @@ type SupplierItemData = {
   subsidiaryMaster: { id: string; name: string; code: string } | null;
 };
 
+const ITEM_TYPE_LABELS: Record<string, string> = {
+  MATERIAL: "식자재",
+  SUBSIDIARY: "부자재",
+};
+
+const SUPPLIER_TYPE_LABELS: Record<string, string> = {
+  MATERIAL: "식재료",
+  SUBSIDIARY: "부자재",
+};
+
 type Props = {
   supplierId: string;
+  supplierType: string;
   item?: SupplierItemData | null;
   onBack: () => void;
   onSaved: () => void;
 };
 
-export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
+export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSaved }: Props) {
   const isEdit = !!item;
 
-  const [itemType, setItemType] = useState(item?.itemType ?? "MATERIAL");
+  // supplierType에 따라 itemType 자동 결정 (수정 시 기존 값 유지)
+  const itemType = item?.itemType ?? (supplierType === "SUBSIDIARY" ? "SUBSIDIARY" : "MATERIAL");
+
   const [materialMasterId, setMaterialMasterId] = useState(
     item?.materialMaster?.id ?? ""
   );
@@ -138,7 +151,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
           toast.success("공급 품목이 수정되었습니다");
           onSaved();
         } else {
-          toast.error(result.error.message || "저장에 실패했습니다");
+          toast.error(result.error.message || "수정에 실패했습니다");
           setError(result.error.message);
         }
       } else {
@@ -160,7 +173,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
           toast.success("공급 품목이 등록되었습니다");
           onSaved();
         } else {
-          toast.error(result.error.message || "저장에 실패했습니다");
+          toast.error(result.error.message || "등록에 실패했습니다");
           setError(result.error.message);
         }
       }
@@ -197,29 +210,19 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
             </div>
           )}
 
-          {/* 품목 유형 */}
+          {/* 품목 분류 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">품목 유형</h3>
+            <h3 className="text-sm font-semibold text-gray-700">품목 분류</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>품목 유형 *</Label>
-                <Select
-                  value={itemType}
-                  onValueChange={(v) => {
-                    setItemType(v);
-                    setMaterialMasterId("");
-                    setSubsidiaryMasterId("");
-                  }}
-                  disabled={isEdit}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MATERIAL">식자재</SelectItem>
-                    <SelectItem value="SUBSIDIARY">부자재</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>품목 유형</Label>
+                <Input
+                  value={ITEM_TYPE_LABELS[itemType] ?? itemType}
+                  disabled
+                />
+                <p className="text-xs text-gray-500">
+                  공급업체 유형({SUPPLIER_TYPE_LABELS[supplierType] ?? supplierType})에 따라 자동 결정됩니다
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -273,27 +276,27 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                 <Label htmlFor="productName">제품명 *</Label>
                 <Input
                   id="productName"
-                  placeholder="예: 국산 닭가슴살, 일회용 장갑"
+                  placeholder="예: 국내산 쌀, 양조간장"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   required
                   maxLength={100}
                 />
                 <p className="text-xs text-gray-500">
-                  공급업체에서 사용하는 제품명을 입력하세요
+                  공급업체에서 사용하는 실제 제품명
                 </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="spec">규격</Label>
                 <Input
                   id="spec"
-                  placeholder="예: 1.4kg, 500ml, 20매"
+                  placeholder="예: 1.4kg, 500ml, 20개입"
                   value={spec}
                   onChange={(e) => setSpec(e.target.value)}
                   maxLength={50}
                 />
                 <p className="text-xs text-gray-500">
-                  중량, 용량, 수량 등 규격 정보
+                  중량, 용량, 포장 단위 등 규격 정보
                 </p>
               </div>
             </div>
@@ -307,7 +310,7 @@ export function SupplierItemForm({ supplierId, item, onBack, onSaved }: Props) {
                 <Label htmlFor="supplyUnit">공급 단위 *</Label>
                 <Input
                   id="supplyUnit"
-                  placeholder="예: 박스, 봉, 팩"
+                  placeholder="예: 포, 병, 박스"
                   value={supplyUnit}
                   onChange={(e) => setSupplyUnit(e.target.value)}
                   required

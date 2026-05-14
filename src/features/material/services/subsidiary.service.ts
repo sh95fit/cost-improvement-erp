@@ -8,15 +8,19 @@ import type { SubsidiaryType } from "@prisma/client";
 
 // ── 부자재 코드 자동 생성 (SUB-001, SUB-002, ...) ──
 async function generateSubsidiaryCode(companyId: string): Promise<string> {
-  const lastSubsidiary = await prisma.subsidiaryMaster.findFirst({
-    where: { companyId, deletedAt: null },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
+  // soft-delete extension을 우회하여 삭제된 레코드 포함 최대 코드 조회
+  // DB unique constraint는 deletedAt과 무관하므로 전체 행 기준 채번 필수
+  const result = await prisma.$queryRaw<{ code: string }[]>`
+    SELECT code FROM subsidiary_masters
+    WHERE company_id = ${companyId}
+      AND code ~ '^SUB-[0-9]+$'
+    ORDER BY code DESC
+    LIMIT 1
+  `;
 
-  if (!lastSubsidiary) return "SUB-001";
+  if (result.length === 0) return "SUB-001";
 
-  const match = lastSubsidiary.code.match(/^SUB-(\d+)$/);
+  const match = result[0].code.match(/^SUB-(\d+)$/);
   if (!match) return "SUB-001";
 
   const nextNumber = parseInt(match[1], 10) + 1;

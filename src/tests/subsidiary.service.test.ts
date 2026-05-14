@@ -80,7 +80,7 @@ describe("subsidiary.service", () => {
   // ── createSubsidiary ──
   describe("createSubsidiary", () => {
     it("should auto-generate code SUB-001", async () => {
-      mockPrisma.subsidiaryMaster.findFirst.mockResolvedValue(null);
+      mockPrisma.$queryRaw.mockResolvedValue([]);
       mockPrisma.subsidiaryMaster.create.mockResolvedValue({
         id: "new-id",
         code: "SUB-001",
@@ -89,7 +89,7 @@ describe("subsidiary.service", () => {
 
       const result = await createSubsidiary("company-1", {
         name: "젓가락",
-        subsidiaryType: "CONSUMABLE",  // ← 추가
+        subsidiaryType: "CONSUMABLE",
         unit: "개",
         unitCategory: "COUNT",
       });
@@ -98,7 +98,7 @@ describe("subsidiary.service", () => {
     });
 
     it("should increment code from last existing", async () => {
-      mockPrisma.subsidiaryMaster.findFirst.mockResolvedValue({ code: "SUB-003" });
+      mockPrisma.$queryRaw.mockResolvedValue([{ code: "SUB-003" }]);
       mockPrisma.subsidiaryMaster.create.mockResolvedValue({
         id: "new-id",
         code: "SUB-004",
@@ -107,7 +107,7 @@ describe("subsidiary.service", () => {
 
       await createSubsidiary("company-1", {
         name: "물티슈",
-        subsidiaryType: "CONSUMABLE",  // ← 추가
+        subsidiaryType: "CONSUMABLE",
         unit: "개",
         unitCategory: "COUNT",
       });
