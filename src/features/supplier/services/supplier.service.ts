@@ -6,16 +6,20 @@ import type {
 } from "../schemas/supplier.schema";
 
 // ── 공급업체 코드 자동 생성 (SUP-001, SUP-002, ...) ──
+// soft-delete extension을 우회하여 삭제된 레코드 포함 최대 코드 조회
+// DB unique constraint는 deletedAt과 무관하므로 전체 행 기준 채번 필수
 async function generateSupplierCode(companyId: string): Promise<string> {
-  const last = await prisma.supplier.findFirst({
-    where: { companyId },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
+  const result = await prisma.$queryRaw<{ code: string }[]>`
+    SELECT code FROM suppliers
+    WHERE company_id = ${companyId}
+      AND code ~ '^SUP-[0-9]+$'
+    ORDER BY code DESC
+    LIMIT 1
+  `;
 
-  if (!last) return "SUP-001";
+  if (result.length === 0) return "SUP-001";
 
-  const match = last.code.match(/^SUP-(\d+)$/);
+  const match = result[0].code.match(/^SUP-(\d+)$/);
   if (!match) return "SUP-001";
 
   const nextNumber = parseInt(match[1], 10) + 1;
@@ -32,6 +36,7 @@ export async function getSuppliers(
 
   const where = {
     companyId,
+    deletedAt: null,
     ...(supplierType && { supplierType }),
     ...(search && {
       OR: [
@@ -69,7 +74,7 @@ export async function getSuppliers(
 // ── 단건 조회 ──
 export async function getSupplierById(companyId: string, id: string) {
   return prisma.supplier.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
   });
 }
 
@@ -104,12 +109,13 @@ export async function updateSupplier(
 // ── 삭제 (soft-delete) ──
 export async function deleteSupplier(companyId: string, id: string) {
   const supplier = await prisma.supplier.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, deletedAt: null },
   });
 
   if (!supplier) return null;
 
-  return prisma.supplier.delete({
+  return prisma.supplier.update({
     where: { id },
+    data: { deletedAt: new Date() },
   });
 }

@@ -8,8 +8,6 @@ import { SupplierItemForm } from "@/features/supplier/components/supplier-item-f
 import { SupplierBreadcrumb } from "@/features/supplier/components/supplier-breadcrumb";
 import type { Supplier } from "@prisma/client";
 
-type SupplierWithType = Supplier & { supplierType?: string };
-
 type SupplierItemRow = {
   id: string;
   itemType: string;
@@ -28,10 +26,10 @@ type SupplierItemRow = {
 type View =
   | { mode: "list" }
   | { mode: "new" }
-  | { mode: "edit"; supplier: SupplierWithType }
-  | { mode: "items"; supplier: SupplierWithType }
-  | { mode: "newItem"; supplier: SupplierWithType }
-  | { mode: "editItem"; supplier: SupplierWithType; item: SupplierItemRow };
+  | { mode: "edit"; supplier: Supplier }
+  | { mode: "items"; supplier: Supplier }
+  | { mode: "newItem"; supplier: Supplier }
+  | { mode: "editItem"; supplier: Supplier; item: SupplierItemRow };
 
 export default function SuppliersPage() {
   const [view, setView] = useState<View>({ mode: "list" });
@@ -140,7 +138,7 @@ export default function SuppliersPage() {
         <SupplierBreadcrumb items={breadcrumbItems} />
         <SupplierItemForm
           supplierId={view.supplier.id}
-          supplierType={view.supplier.supplierType ?? "MATERIAL"}
+          supplierType={view.supplier.supplierType}
           onBack={() => setView({ mode: "items", supplier: view.supplier })}
           onSaved={() => setView({ mode: "items", supplier: view.supplier })}
         />
@@ -154,7 +152,7 @@ export default function SuppliersPage() {
         <SupplierBreadcrumb items={breadcrumbItems} />
         <SupplierItemForm
           supplierId={view.supplier.id}
-          supplierType={view.supplier.supplierType ?? "MATERIAL"}
+          supplierType={view.supplier.supplierType}
           item={view.item}
           onBack={() => setView({ mode: "items", supplier: view.supplier })}
           onSaved={() => setView({ mode: "items", supplier: view.supplier })}

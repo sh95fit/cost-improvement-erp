@@ -18,7 +18,7 @@ describe("supplier.service", () => {
 
   // ── getSuppliers ──
   describe("getSuppliers", () => {
-    it("should return paginated suppliers", async () => {
+    it("should include deletedAt: null in where clause", async () => {
       const mockItems = [
         { id: "1", name: "테스트업체", code: "SUP-001", companyId: "company-1" },
       ];
@@ -35,6 +35,11 @@ describe("supplier.service", () => {
       expect(result.items).toEqual(mockItems);
       expect(result.pagination.total).toBe(1);
       expect(result.pagination.totalPages).toBe(1);
+
+      // deletedAt: null 조건 확인
+      const whereArg = prismaMock.supplier.findMany.mock.calls[0][0].where;
+      expect(whereArg.deletedAt).toBeNull();
+      expect(whereArg.companyId).toBe("company-1");
     });
 
     it("should apply search filter with OR condition", async () => {
@@ -96,7 +101,7 @@ describe("supplier.service", () => {
 
   // ── getSupplierById ──
   describe("getSupplierById", () => {
-    it("should query with companyId and id", async () => {
+    it("should query with companyId, id, and deletedAt: null", async () => {
       const mockSupplier = { id: "sup-1", name: "테스트업체", companyId: "company-1" };
       prismaMock.supplier.findFirst.mockResolvedValue(mockSupplier);
 
@@ -104,7 +109,7 @@ describe("supplier.service", () => {
 
       expect(result).toEqual(mockSupplier);
       const whereArg = prismaMock.supplier.findFirst.mock.calls[0][0].where;
-      expect(whereArg).toEqual({ id: "sup-1", companyId: "company-1" });
+      expect(whereArg).toEqual({ id: "sup-1", companyId: "company-1", deletedAt: null });
     });
 
     it("should return null when not found", async () => {
@@ -118,8 +123,8 @@ describe("supplier.service", () => {
   // ── createSupplier ──
   describe("createSupplier", () => {
     it("should auto-generate code SUP-001 when no suppliers exist", async () => {
-      // generateSupplierCode 내부: findFirst로 마지막 코드 조회
-      prismaMock.supplier.findFirst.mockResolvedValue(null);
+      // $queryRaw는 빈 배열 반환 → SUP-001 채번
+      prismaMock.$queryRaw.mockResolvedValue([]);
       prismaMock.supplier.create.mockResolvedValue({
         id: "new-id",
         code: "SUP-001",
@@ -128,7 +133,7 @@ describe("supplier.service", () => {
 
       const result = await createSupplier("company-1", {
         name: "신규업체",
-        supplierType: "MATERIAL",  // ← 추가
+        supplierType: "MATERIAL",
       });
 
       expect(result.code).toBe("SUP-001");
@@ -138,7 +143,8 @@ describe("supplier.service", () => {
     });
 
     it("should increment code from last existing supplier", async () => {
-      prismaMock.supplier.findFirst.mockResolvedValue({ code: "SUP-005" });
+      // $queryRaw는 마지막 코드 반환
+      prismaMock.$queryRaw.mockResolvedValue([{ code: "SUP-005" }]);
       prismaMock.supplier.create.mockResolvedValue({
         id: "new-id",
         code: "SUP-006",
@@ -147,7 +153,7 @@ describe("supplier.service", () => {
 
       await createSupplier("company-1", {
         name: "추가업체",
-        supplierType: "MATERIAL",  // ← 추가
+        supplierType: "MATERIAL",
       });
 
       const createArg = prismaMock.supplier.create.mock.calls[0][0].data;
@@ -175,21 +181,24 @@ describe("supplier.service", () => {
     });
   });
 
-  // ── deleteSupplier (soft-delete via extension) ──
+  // ── deleteSupplier (soft-delete) ──
   describe("deleteSupplier", () => {
-    it("should delete supplier when found", async () => {
+    it("should soft-delete with deletedAt timestamp", async () => {
       prismaMock.supplier.findFirst.mockResolvedValue({
         id: "sup-1",
         companyId: "company-1",
+        deletedAt: null,
       });
-      prismaMock.supplier.delete.mockResolvedValue({ id: "sup-1" });
+      prismaMock.supplier.update.mockResolvedValue({ id: "sup-1" });
 
-      const result = await deleteSupplier("company-1", "sup-1");
+      await deleteSupplier("company-1", "sup-1");
 
-      expect(result).toEqual({ id: "sup-1" });
-      expect(prismaMock.supplier.delete).toHaveBeenCalledWith({
+      expect(prismaMock.supplier.update).toHaveBeenCalledWith({
         where: { id: "sup-1" },
+        data: { deletedAt: expect.any(Date) },
       });
+      // hard delete가 호출되지 않았는지 확인
+      expect(prismaMock.supplier.delete).not.toHaveBeenCalled();
     });
 
     it("should return null when supplier not found", async () => {
@@ -197,7 +206,7 @@ describe("supplier.service", () => {
 
       const result = await deleteSupplier("company-1", "non-existent");
       expect(result).toBeNull();
-      expect(prismaMock.supplier.delete).not.toHaveBeenCalled();
+      expect(prismaMock.supplier.update).not.toHaveBeenCalled();
     });
   });
 });
