@@ -509,17 +509,57 @@
 - **해결된 이슈**: Turbopack에서 `export { X as Y }` 패턴이 원래 이름을 숨기는 문제 → `export const Y = X` 패턴으로 수정
 - **테스트**: 12파일 / 160개 PASS
 
-### Phase 2-c — v5 전환 UI·로직 보완 ⬜
-- **예정일**: 2026-05-14
-- **예상 시간**: 5h
-- **v5 의사결정 반영 누락분**:
-  - [ ] 부자재 등록/수정 폼에 `subsidiaryType` 선택 UI 추가 (CONTAINER/ACCESSORY/CONSUMABLE) — 스키마·서비스·폼 전부
-  - [ ] 부자재 목록에 유형 컬럼 + 유형별 필터 추가
-  - [ ] 공급업체 등록/수정 폼에 `supplierType` 선택 UI 추가 (MATERIAL/SUBSIDIARY) — 스키마·서비스·폼 전부
-  - [ ] 공급업체 목록에 유형 컬럼 + 유형별 필터 추가
-  - [ ] 식단 템플릿 악세서리 옵션: ACCESSORY/CONSUMABLE 타입 부자재 별도 로딩 (현재 CONTAINER만 로딩됨)
-  - [ ] 식단 템플릿 악세서리 인라인 편집에 fixedQuantity 입력 추가
-  - [ ] 식단 템플릿 용기 sortOrder 인라인 편집 UI 추가
+### Phase 2-c — v5 UI/로직 보완 + 버그 수정 ✅
+- **날짜**: 2026-05-14
+- **커밋**: `6ca88338` (기능), `268aaa24` (버그 수정)
+- **예상 시간**: 5h → **실제 시간: ~4h**
+- **변경 파일**: 17개 (2커밋 합산)
+  - `src/features/material/schemas/material.schema.ts` — `subsidiaryType` 필드, `subsidiaryListQuerySchema` 신규, `SubsidiaryListQuery` 타입
+  - `src/features/material/services/subsidiary.service.ts` — `SubsidiaryListQuery` 전환, `subsidiaryType` 필터, `getSubsidiariesByType` 신규, `generateSubsidiaryCode` → `$queryRaw`
+  - `src/features/material/services/material.service.ts` — `generateMaterialCode` → `$queryRaw`
+  - `src/features/material/actions/material.action.ts` — `subsidiaryListQuerySchema` 적용, `getSubsidiariesByTypeAction` 신규
+  - `src/features/material/components/subsidiary-form.tsx` — `subsidiaryType` Select (CONTAINER/ACCESSORY/CONSUMABLE)
+  - `src/features/material/components/subsidiary-list.tsx` — 유형 컬럼 + 필터 드롭다운 + 뱃지 스타일
+  - `src/features/supplier/schemas/supplier.schema.ts` — `supplierType` 필드, `supplierListQuerySchema` 신규
+  - `src/features/supplier/components/supplier-form.tsx` — `supplierType` Select (MATERIAL/SUBSIDIARY)
+  - `src/features/supplier/components/supplier-list.tsx` — 유형 컬럼 + 필터 드롭다운 + 뱃지 스타일
+  - `src/features/supplier/components/supplier-item-form.tsx` — `supplierType` 기반 `itemType` 자동 고정, Select→disabled Input
+  - `src/app/(dashboard)/suppliers/page.tsx` — `SupplierWithType` 타입, `supplierType` prop 전달
+  - `src/app/(dashboard)/meal-templates/page.tsx` — ACCESSORY+CONSUMABLE 분리 로딩, 인라인 sortOrder/fixedQuantity 편집
+  - `src/tests/mocks/prisma.ts` — `$queryRaw` mock 추가
+  - `src/tests/material.service.test.ts` — `$queryRaw` mock 전환
+  - `src/tests/subsidiary.service.test.ts` — `$queryRaw` mock + `subsidiaryType` 추가
+  - `src/tests/supplier.service.test.ts` — `supplierType` 추가
+- **완료 항목**:
+  - [x] 부자재: subsidiaryType 스키마/서비스/폼/리스트 추가 (CONTAINER/ACCESSORY/CONSUMABLE)
+  - [x] 부자재: subsidiaryListQuerySchema + subsidiaryType 필터
+  - [x] 부자재: getSubsidiariesByTypeAction 신규 (식단 템플릿 옵션 로딩용)
+  - [x] 공급업체: supplierType 스키마/서비스/폼/리스트 추가 (MATERIAL/SUBSIDIARY)
+  - [x] 공급업체: supplierListQuerySchema + supplierType 필터
+  - [x] 공급 품목: supplierType 기반 itemType 자동 고정 (식재료↔식자재, 부자재↔부자재)
+  - [x] 식단 템플릿: CONTAINER/ACCESSORY+CONSUMABLE 옵션 분리 로딩
+  - [x] 식단 템플릿: 용기 sortOrder 인라인 편집 (blur-save)
+  - [x] 식단 템플릿: 악세서리 고정수량 컬럼 + 인라인 편집
+  - [x] 코드 채번: soft-delete extension 우회 ($queryRaw) — material, subsidiary
+  - [x] 테스트: $queryRaw mock 추가, 관련 테스트 4건 수정
+  - [x] TypeScript 오류 0건
+  - [x] 테스트: 12 파일 / 160 PASS
+- **발견된 이슈**:
+  - supplier.service.ts의 generateSupplierCode 미전환 (findFirst 패턴 유지) → Phase 2-d에서 수정
+  - 부자재 등록 시 공급업체 연결 UI 부재 → Phase 2-d에서 보완
+
+### Phase 2-d — 부자재 등록 UX 개선 + 잔여 버그 수정 (예정)
+- **예상 날짜**: 2026-05-14
+- **예상 시간**: 3h
+- **작업 목록**:
+  - [ ] supplier.service.ts: generateSupplierCode → $queryRaw 전환
+  - [ ] supplier.service.test.ts: $queryRaw mock 전환
+  - [ ] 부자재 등록/수정 폼에 공급업체 연결 섹션 추가
+    - 부자재 공급업체(supplierType=SUBSIDIARY) Select
+    - 제품명, 규격, 공급단위, 단가 입력
+    - 저장 시 SubsidiaryMaster + SupplierItem 트랜잭션 처리
+    - defaultSupplierItemId 자동 설정 (첫 연결 시)
+  - [ ] PROGRESS.md 갱신
 
 ### Phase 3 — MealPlanGroup/MealPlan Zod 스키마 + 서비스 ⬜
 - **예정일**: 2026-05-15 ~ 2026-05-16
