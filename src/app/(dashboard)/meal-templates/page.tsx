@@ -33,6 +33,7 @@ import {
   deleteMealTemplateAccessoryAction,
 } from "@/features/meal-template/actions/meal-template.action";
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
+import { getSubsidiariesByTypeAction } from "@/features/material/actions/material.action";
 import {
   Plus, Trash2, Pencil, Search, ChevronLeft, ChevronRight,
   Loader2, ChevronDown, ChevronUp, Save, X, Package,
@@ -78,7 +79,7 @@ export default function MealTemplatesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ── 부자재 옵션 (CONTAINER / ACCESSORY) ──
+  // ── 부자재 옵션 (CONTAINER / ACCESSORY+CONSUMABLE) ──
   const [containerOptions, setContainerOptions] = useState<SubsidiaryOption[]>([]);
   const [accessoryOptions, setAccessoryOptions] = useState<SubsidiaryOption[]>([]);
 
@@ -158,9 +159,14 @@ export default function MealTemplatesPage() {
       );
       setContainerOptions(cItems);
 
-      // TODO: ACCESSORY/CONSUMABLE 타입 부자재도 별도 action으로 로딩 가능
-      // 현재는 container 옵션을 accessory에서도 사용 (전체 부자재 목록 필요 시 확장)
-      setAccessoryOptions(cItems);
+      // ACCESSORY + CONSUMABLE 타입 부자재 로딩 (악세서리용)
+      const [accResult, conResult] = await Promise.all([
+        getSubsidiariesByTypeAction("ACCESSORY"),
+        getSubsidiariesByTypeAction("CONSUMABLE"),
+      ]);
+      const accItems = (accResult.success ? accResult.data : []) as SubsidiaryOption[];
+      const conItems = (conResult.success ? conResult.data : []) as SubsidiaryOption[];
+      setAccessoryOptions([...accItems, ...conItems]);
     } catch (err) {
       logger.error("[MealTemplatesPage.loadOptions] 실패:", err);
     }
@@ -262,6 +268,17 @@ export default function MealTemplatesPage() {
       toast.error("용기 추가 중 오류가 발생했습니다");
     } finally {
       setContainerSaving(false);
+    }
+  };
+
+  const handleUpdateContainerSort = async (containerId: string, templateId: string, newSort: number, prevSort: number, inputEl: HTMLInputElement) => {
+    const result = await updateMealTemplateContainerAction(containerId, { sortOrder: newSort });
+    if (result.success) {
+      toast.success("순서가 변경되었습니다");
+      await refreshTemplate(templateId);
+    } else {
+      toast.error("순서 변경에 실패했습니다");
+      inputEl.value = String(prevSort);
     }
   };
 
@@ -500,7 +517,7 @@ export default function MealTemplatesPage() {
                                   <Table>
                                     <TableHeader>
                                       <TableRow>
-                                        <TableHead className="w-[60px] text-xs">순서</TableHead>
+                                        <TableHead className="w-[70px] text-xs">순서</TableHead>
                                         <TableHead className="text-xs">용기명</TableHead>
                                         <TableHead className="text-xs">코드</TableHead>
                                         <TableHead className="w-[60px] text-xs text-right">관리</TableHead>
@@ -510,7 +527,21 @@ export default function MealTemplatesPage() {
                                       {item.containers.map((cont) => (
                                         <TableRow key={cont.id}>
                                           <TableCell className="text-xs font-mono text-gray-400">
-                                            {cont.sortOrder}
+                                            <Input
+                                              type="number"
+                                              defaultValue={cont.sortOrder}
+                                              className="h-6 w-14 text-xs text-center"
+                                              min={0}
+                                              onClick={(e) => e.stopPropagation()}
+                                              onBlur={(e) => {
+                                                const newSort = parseInt(e.target.value, 10);
+                                                if (isNaN(newSort) || newSort === cont.sortOrder) return;
+                                                handleUpdateContainerSort(cont.id, item.id, newSort, cont.sortOrder, e.target);
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                              }}
+                                            />
                                           </TableCell>
                                           <TableCell className="text-xs font-medium">
                                             <div className="flex items-center gap-1.5">
@@ -567,7 +598,8 @@ export default function MealTemplatesPage() {
                                       <TableRow>
                                         <TableHead className="text-xs">부자재명</TableHead>
                                         <TableHead className="w-[100px] text-xs">소비 모드</TableHead>
-                                        <TableHead className="w-[80px] text-xs text-center">필수</TableHead>
+                                        <TableHead className="w-[80px] text-xs text-center">고정수량</TableHead>
+                                        <TableHead className="w-[60px] text-xs text-center">필수</TableHead>
                                         <TableHead className="w-[80px] text-xs text-right">관리</TableHead>
                                       </TableRow>
                                     </TableHeader>
@@ -589,6 +621,20 @@ export default function MealTemplatesPage() {
                                                     <SelectItem value="FIXED_QUANTITY">고정수량</SelectItem>
                                                   </SelectContent>
                                                 </Select>
+                                              </TableCell>
+                                              <TableCell className="text-center">
+                                                {editingAccConsumptionType === "FIXED_QUANTITY" ? (
+                                                  <Input
+                                                    type="number"
+                                                    value={editingAccFixedQty}
+                                                    onChange={(e) => setEditingAccFixedQty(e.target.value)}
+                                                    placeholder="수량"
+                                                    className="h-7 w-20 text-xs mx-auto"
+                                                    min={0}
+                                                  />
+                                                ) : (
+                                                  <span className="text-xs text-gray-400">-</span>
+                                                )}
                                               </TableCell>
                                               <TableCell className="text-center">
                                                 <Switch checked={editingAccRequired} onCheckedChange={setEditingAccRequired} />
@@ -613,7 +659,10 @@ export default function MealTemplatesPage() {
                                                 <span className="ml-1 text-gray-400">({acc.subsidiaryMaster.code})</span>
                                               </TableCell>
                                               <TableCell className="text-xs text-gray-500">
-                                                {acc.consumptionType === "PER_MEAL_COUNT" ? "식수당" : `고정 ${acc.fixedQuantity ?? 0}`}
+                                                {acc.consumptionType === "PER_MEAL_COUNT" ? "식수당" : "고정수량"}
+                                              </TableCell>
+                                              <TableCell className="text-xs text-center">
+                                                {acc.consumptionType === "FIXED_QUANTITY" ? (acc.fixedQuantity ?? 0) : "-"}
                                               </TableCell>
                                               <TableCell className="text-center">
                                                 <span className={`text-xs ${acc.isRequired ? "text-green-600 font-medium" : "text-gray-400"}`}>

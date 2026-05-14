@@ -19,6 +19,12 @@ import { toast } from "sonner";
 
 type UnitOption = { id: string; code: string; name: string; unitCategory: string };
 
+const SUBSIDIARY_TYPE_LABELS: Record<string, string> = {
+  CONTAINER: "용기",
+  ACCESSORY: "악세서리",
+  CONSUMABLE: "소모품",
+};
+
 type Props = {
   item?: {
     id: string;
@@ -27,6 +33,7 @@ type Props = {
     unit: string;
     unitCategory?: string;
     stockGrade: string;
+    subsidiaryType?: string;
   } | null;
   onSaved: () => void;
   onCancel: () => void;
@@ -36,6 +43,7 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
   const isEdit = !!item;
 
   const [name, setName] = useState(item?.name ?? "");
+  const [subsidiaryType, setSubsidiaryType] = useState<string>(item?.subsidiaryType ?? "CONSUMABLE");
   const [unitCategory, setUnitCategory] = useState<string>(item?.unitCategory ?? "COUNT");
   const [unit, setUnit] = useState(item?.unit ?? "");
   const [stockGrade, setStockGrade] = useState(item?.stockGrade ?? "C");
@@ -80,6 +88,7 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
 
     const input: Record<string, unknown> = {
       name,
+      subsidiaryType,
       unit,
       unitCategory,
       stockGrade,
@@ -121,6 +130,23 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="name">부자재명 *</Label>
           <Input id="name" placeholder="예: 도시락 용기 (대)" value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+
+        <div className="space-y-2">
+          <Label>부자재 유형 *</Label>
+          <Select value={subsidiaryType} onValueChange={setSubsidiaryType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(SUBSIDIARY_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-gray-500">
+            {subsidiaryType === "CONTAINER" && "배식 용기 — 식단 템플릿의 용기로 사용됩니다"}
+            {subsidiaryType === "ACCESSORY" && "악세서리 — 젓가락, 뚜껑 등 부속품입니다"}
+            {subsidiaryType === "CONSUMABLE" && "소모품 — 기타 소모성 부자재입니다"}
+          </p>
         </div>
 
         <div className="space-y-2">

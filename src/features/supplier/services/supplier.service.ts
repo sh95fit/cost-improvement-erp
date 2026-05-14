@@ -22,16 +22,17 @@ async function generateSupplierCode(companyId: string): Promise<string> {
   return `SUP-${String(nextNumber).padStart(3, "0")}`;
 }
 
-// ── 목록 조회 (페이지네이션 + 검색) ──
+// ── 목록 조회 (페이지네이션 + 검색 + 유형 필터) ──
 export async function getSuppliers(
   companyId: string,
   query: SupplierListQuery
 ) {
-  const { page, limit, search, sortBy, sortOrder } = query;
+  const { page, limit, search, supplierType, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
   const where = {
     companyId,
+    ...(supplierType && { supplierType }),
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },

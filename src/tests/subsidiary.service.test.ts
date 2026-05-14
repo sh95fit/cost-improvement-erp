@@ -89,6 +89,7 @@ describe("subsidiary.service", () => {
 
       const result = await createSubsidiary("company-1", {
         name: "젓가락",
+        subsidiaryType: "CONSUMABLE",  // ← 추가
         unit: "개",
         unitCategory: "COUNT",
       });
@@ -106,7 +107,8 @@ describe("subsidiary.service", () => {
 
       await createSubsidiary("company-1", {
         name: "물티슈",
-        unit: "팩",
+        subsidiaryType: "CONSUMABLE",  // ← 추가
+        unit: "개",
         unitCategory: "COUNT",
       });
 

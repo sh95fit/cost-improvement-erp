@@ -4,23 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   getSubsidiariesAction,
   deleteSubsidiaryAction,
@@ -28,11 +20,7 @@ import {
 import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
 import type { UnitCategory } from "@prisma/client";
 import {
-  Search,
-  Plus,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
+  Search, Plus, Trash2, ChevronLeft, ChevronRight, Filter,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +30,7 @@ export type SubsidiaryRow = {
   code: string;
   unit: string;
   unitCategory: string;
+  subsidiaryType: string;
   stockGrade: string;
   defaultSupplierItemId: string | null;
   defaultSupplierItem: {
@@ -73,6 +62,18 @@ const GRADE_STYLES: Record<string, string> = {
   C: "bg-green-50 text-green-700",
 };
 
+const SUBSIDIARY_TYPE_LABELS: Record<string, string> = {
+  CONTAINER: "용기",
+  ACCESSORY: "악세서리",
+  CONSUMABLE: "소모품",
+};
+
+const SUBSIDIARY_TYPE_STYLES: Record<string, string> = {
+  CONTAINER: "bg-purple-50 text-purple-700",
+  ACCESSORY: "bg-orange-50 text-orange-700",
+  CONSUMABLE: "bg-blue-50 text-blue-700",
+};
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" }).format(value);
 
@@ -85,6 +86,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
     totalPages: 0,
   });
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SubsidiaryRow | null>(null);
 
@@ -96,6 +98,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
           page,
           limit: 20,
           search: search || undefined,
+          subsidiaryType: typeFilter !== "ALL" ? typeFilter : undefined,
           sortBy: "name",
           sortOrder: "asc",
         });
@@ -111,7 +114,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
         setLoading(false);
       }
     },
-    [search, refreshKey]
+    [search, typeFilter, refreshKey] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   useEffect(() => {
@@ -136,7 +139,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 상단: 검색 + 등록 */}
+      {/* 상단: 검색 + 유형 필터 + 등록 */}
       <div className="flex items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -147,6 +150,20 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
             onKeyDown={handleKeyDown}
             className="pl-10"
           />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="h-9 w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">전체 유형</SelectItem>
+              <SelectItem value="CONTAINER">용기</SelectItem>
+              <SelectItem value="ACCESSORY">악세서리</SelectItem>
+              <SelectItem value="CONSUMABLE">소모품</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <Button onClick={onNew} className="ml-auto">
           <Plus className="mr-2 h-4 w-4" />
@@ -161,6 +178,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
             <TableRow>
               <TableHead>코드</TableHead>
               <TableHead>부자재명</TableHead>
+              <TableHead className="text-center">유형</TableHead>
               <TableHead>단위 분류</TableHead>
               <TableHead>단위</TableHead>
               <TableHead className="text-center">재고 등급</TableHead>
@@ -172,13 +190,13 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
                   등록된 부자재가 없습니다
                 </TableCell>
               </TableRow>
@@ -191,6 +209,15 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
                 >
                   <TableCell className="font-mono text-sm">{item.code}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        SUBSIDIARY_TYPE_STYLES[item.subsidiaryType] ?? "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {SUBSIDIARY_TYPE_LABELS[item.subsidiaryType] ?? item.subsidiaryType}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                       {UNIT_CATEGORY_LABELS[item.unitCategory as keyof typeof UNIT_CATEGORY_LABELS] ?? item.unitCategory as string}

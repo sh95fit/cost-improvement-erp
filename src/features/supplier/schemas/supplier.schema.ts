@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { ItemType } from "@prisma/client";
+import { ItemType, SupplierType } from "@prisma/client";
 
 const itemTypeValues = Object.values(ItemType) as [string, ...string[]];
+const supplierTypeValues = Object.values(SupplierType) as [string, ...string[]];
 
 // ── Supplier 생성 스키마 ──
 export const createSupplierSchema = z.object({
@@ -9,6 +10,11 @@ export const createSupplierSchema = z.object({
     .string()
     .min(1, "업체명은 필수입니다")
     .max(100, "업체명은 100자 이내여야 합니다"),
+  supplierType: z
+    .enum(supplierTypeValues)
+    .transform((v) => v as SupplierType)
+    .optional()
+    .default("MATERIAL"),
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   contactEmail: z.email("올바른 이메일 형식이 아닙니다").optional().or(z.literal("")),
@@ -24,6 +30,10 @@ export const supplierListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
+  supplierType: z
+    .enum(supplierTypeValues)
+    .transform((v) => v as SupplierType)
+    .optional(),
   sortBy: z.enum(["name", "code", "createdAt"]).default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });

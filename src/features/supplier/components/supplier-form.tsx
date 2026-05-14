@@ -6,12 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   createSupplierAction,
   updateSupplierAction,
@@ -19,6 +18,11 @@ import {
 import type { Supplier } from "@prisma/client";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+
+const SUPPLIER_TYPE_LABELS: Record<string, string> = {
+  MATERIAL: "식재료",
+  SUBSIDIARY: "부자재",
+};
 
 type Props = {
   supplier?: Supplier | null;
@@ -30,15 +34,12 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
   const isEdit = !!supplier;
 
   const [name, setName] = useState(supplier?.name ?? "");
-  const [contactName, setContactName] = useState(
-    supplier?.contactName ?? ""
+  const [supplierType, setSupplierType] = useState<string>(
+    (supplier as Supplier & { supplierType?: string })?.supplierType ?? "MATERIAL"
   );
-  const [contactPhone, setContactPhone] = useState(
-    supplier?.contactPhone ?? ""
-  );
-  const [contactEmail, setContactEmail] = useState(
-    supplier?.contactEmail ?? ""
-  );
+  const [contactName, setContactName] = useState(supplier?.contactName ?? "");
+  const [contactPhone, setContactPhone] = useState(supplier?.contactPhone ?? "");
+  const [contactEmail, setContactEmail] = useState(supplier?.contactEmail ?? "");
   const [address, setAddress] = useState(supplier?.address ?? "");
   const [note, setNote] = useState(supplier?.note ?? "");
   const [loading, setLoading] = useState(false);
@@ -51,6 +52,7 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
 
     const input = {
       name,
+      supplierType,
       contactName: contactName || undefined,
       contactPhone: contactPhone || undefined,
       contactEmail: contactEmail || undefined,
@@ -105,7 +107,6 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
             </div>
           )}
 
-          {/* 수정 모드: 코드 표시 */}
           {isEdit && (
             <div className="space-y-2">
               <Label>공급업체 코드</Label>
@@ -118,9 +119,7 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
 
           {/* 기본 정보 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">
-              기본 정보
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700">기본 정보</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">공급업체명 *</Label>
@@ -131,6 +130,22 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
                   onChange={(e) => setName(e.target.value)}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>공급업체 유형 *</Label>
+                <Select value={supplierType} onValueChange={setSupplierType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SUPPLIER_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  {supplierType === "MATERIAL"
+                    ? "식재료를 공급하는 업체입니다"
+                    : "용기, 악세서리 등 부자재를 공급하는 업체입니다"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="address">주소</Label>
@@ -146,9 +161,7 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
 
           {/* 담당자 정보 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">
-              담당자 정보
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700">담당자 정보</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="contactName">담당자명</Label>
@@ -183,9 +196,7 @@ export function SupplierForm({ supplier, onBack, onSaved }: Props) {
 
           {/* 비고 */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">
-              비고
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700">비고</h3>
             <div className="space-y-2">
               <Label htmlFor="note">특이사항</Label>
               <Textarea

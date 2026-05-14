@@ -128,6 +128,7 @@ describe("supplier.service", () => {
 
       const result = await createSupplier("company-1", {
         name: "신규업체",
+        supplierType: "MATERIAL",  // ← 추가
       });
 
       expect(result.code).toBe("SUP-001");
@@ -146,6 +147,7 @@ describe("supplier.service", () => {
 
       await createSupplier("company-1", {
         name: "추가업체",
+        supplierType: "MATERIAL",  // ← 추가
       });
 
       const createArg = prismaMock.supplier.create.mock.calls[0][0].data;

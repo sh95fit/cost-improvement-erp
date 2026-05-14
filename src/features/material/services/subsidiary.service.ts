@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import type {
   CreateSubsidiaryInput,
   UpdateSubsidiaryInput,
-  MaterialListQuery,
+  SubsidiaryListQuery,
 } from "../schemas/material.schema";
+import type { SubsidiaryType } from "@prisma/client";
 
 // ── 부자재 코드 자동 생성 (SUB-001, SUB-002, ...) ──
 async function generateSubsidiaryCode(companyId: string): Promise<string> {
@@ -22,17 +23,18 @@ async function generateSubsidiaryCode(companyId: string): Promise<string> {
   return `SUB-${String(nextNumber).padStart(3, "0")}`;
 }
 
-// ── 부자재 목록 조회 (페이지네이션 + 검색) ──
+// ── 부자재 목록 조회 (페이지네이션 + 검색 + 유형 필터) ──
 export async function getSubsidiaries(
   companyId: string,
-  query: MaterialListQuery
+  query: SubsidiaryListQuery
 ) {
-  const { page, limit, search, sortBy, sortOrder } = query;
+  const { page, limit, search, subsidiaryType, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
   const where = {
     companyId,
     deletedAt: null,
+    ...(subsidiaryType && { subsidiaryType }),
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },
@@ -67,6 +69,18 @@ export async function getSubsidiaries(
       totalPages: Math.ceil(total / limit),
     },
   };
+}
+
+// ── 유형별 부자재 옵션 조회 (Select용, 간소화) ──
+export async function getSubsidiariesByType(
+  companyId: string,
+  subsidiaryType: SubsidiaryType
+) {
+  return prisma.subsidiaryMaster.findMany({
+    where: { companyId, deletedAt: null, subsidiaryType },
+    select: { id: true, name: true, code: true },
+    orderBy: { name: "asc" },
+  });
 }
 
 // ── 부자재 단건 조회 ──

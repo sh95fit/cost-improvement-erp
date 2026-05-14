@@ -4,29 +4,31 @@ import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { getSuppliersAction, deleteSupplierAction } from "../actions/supplier.action";
 import type { Supplier } from "@prisma/client";
-import { Search, Plus, Trash2, Pencil, ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { Search, Plus, Trash2, Pencil, ChevronLeft, ChevronRight, Package, Filter } from "lucide-react";
 import { toast } from "sonner";
 
 type SupplierWithCount = Supplier & { _count: { supplierItems: number } };
+
+const SUPPLIER_TYPE_LABELS: Record<string, string> = {
+  MATERIAL: "식재료",
+  SUBSIDIARY: "부자재",
+};
+
+const SUPPLIER_TYPE_STYLES: Record<string, string> = {
+  MATERIAL: "bg-green-50 text-green-700",
+  SUBSIDIARY: "bg-purple-50 text-purple-700",
+};
 
 type Props = {
   onNew: () => void;
@@ -43,6 +45,7 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
     totalPages: 0,
   });
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SupplierWithCount | null>(null);
 
@@ -53,6 +56,7 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
         page,
         limit: 20,
         search: search || undefined,
+        supplierType: typeFilter !== "ALL" ? typeFilter : undefined,
         sortBy: "createdAt",
         sortOrder: "desc",
       });
@@ -68,7 +72,7 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, typeFilter]);
 
   useEffect(() => {
     fetchSuppliers(1);
@@ -97,7 +101,7 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 상단: 검색 + 등록 */}
+      {/* 상단: 검색 + 유형 필터 + 등록 */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -108,6 +112,19 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
             onKeyDown={handleKeyDown}
             className="pl-10"
           />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="h-9 w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">전체 유형</SelectItem>
+              <SelectItem value="MATERIAL">식재료</SelectItem>
+              <SelectItem value="SUBSIDIARY">부자재</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <Button onClick={onNew} className="ml-auto">
           <Plus className="mr-2 h-4 w-4" />
@@ -122,6 +139,7 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
             <TableRow>
               <TableHead className="w-[100px]">코드</TableHead>
               <TableHead>업체명</TableHead>
+              <TableHead className="w-[80px] text-center">유형</TableHead>
               <TableHead className="w-[100px]">담당자</TableHead>
               <TableHead className="w-[130px]">연락처</TableHead>
               <TableHead className="w-[180px]">이메일</TableHead>
@@ -132,55 +150,59 @@ export function SupplierList({ onNew, onEdit, onViewItems }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                   등록된 공급업체가 없습니다
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-sm">{item.code}</TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>{item.contactName || "-"}</TableCell>
-                  <TableCell>{item.contactPhone || "-"}</TableCell>
-                  <TableCell className="text-sm">{item.contactEmail || "-"}</TableCell>
-                  <TableCell className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onViewItems(item)}
-                      className="gap-1"
-                    >
-                      <Package className="h-3.5 w-3.5" />
-                      {item._count.supplierItems}건
-                    </Button>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+              items.map((item) => {
+                const st = (item as SupplierWithCount & { supplierType?: string }).supplierType ?? "MATERIAL";
+                return (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono text-sm">{item.code}</TableCell>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          SUPPLIER_TYPE_STYLES[st] ?? "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {SUPPLIER_TYPE_LABELS[st] ?? st}
+                      </span>
+                    </TableCell>
+                    <TableCell>{item.contactName || "-"}</TableCell>
+                    <TableCell>{item.contactPhone || "-"}</TableCell>
+                    <TableCell className="text-sm">{item.contactEmail || "-"}</TableCell>
+                    <TableCell className="text-center">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(item)}
+                        size="sm"
+                        onClick={() => onViewItems(item)}
+                        className="gap-1"
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Package className="h-3.5 w-3.5" />
+                        {item._count.supplierItems}건
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteTarget(item)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(item)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

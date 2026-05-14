@@ -11,12 +11,13 @@ import {
   createMaterialSchema,
   updateMaterialSchema,
   materialListQuerySchema,
+  subsidiaryListQuerySchema,
   createSubsidiarySchema,
   updateSubsidiarySchema,
 } from "../schemas/material.schema";
 import * as materialService from "../services/material.service";
 import * as subsidiaryService from "../services/subsidiary.service";
-import type { MaterialMaster, SubsidiaryMaster } from "@prisma/client";
+import type { MaterialMaster, SubsidiaryMaster, SubsidiaryType } from "@prisma/client";
 
 // ════════════════════════════════════════
 // MaterialMaster Actions
@@ -134,11 +135,28 @@ export async function getSubsidiariesAction(
   try {
     const session = await requireCompanySession();
     assertPermission(session, "subsidiary", "READ");
-    const query = materialListQuerySchema.parse(rawQuery);
+    const query = subsidiaryListQuerySchema.parse(rawQuery);  // ← 여기만 변경
     const result = await subsidiaryService.getSubsidiaries(session.companyId, query);
     return actionOk(result);
   } catch (error) {
     return handleActionError(error, "부자재 목록 조회에 실패했습니다");
+  }
+}
+
+// ── 신규: 유형별 부자재 옵션 조회 (식단 템플릿에서 사용) ──
+export async function getSubsidiariesByTypeAction(
+  subsidiaryType: string
+): Promise<ActionResult<{ id: string; name: string; code: string }[]>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "subsidiary", "READ");
+    const result = await subsidiaryService.getSubsidiariesByType(
+      session.companyId,
+      subsidiaryType as SubsidiaryType
+    );
+    return actionOk(result);
+  } catch (error) {
+    return handleActionError(error, "부자재 유형별 조회에 실패했습니다");
   }
 }
 

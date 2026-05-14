@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { MaterialType, UnitCategory, StockGrade } from "@prisma/client";
+import { MaterialType, UnitCategory, StockGrade, SubsidiaryType } from "@prisma/client";
 
 // Prisma enum → Zod enum 변환
 const materialTypeValues = Object.values(MaterialType) as [string, ...string[]];
 const unitCategoryValues = Object.values(UnitCategory) as [string, ...string[]];
 const stockGradeValues = Object.values(StockGrade) as [string, ...string[]];
+const subsidiaryTypeValues = Object.values(SubsidiaryType) as [string, ...string[]];
 
 // ── MaterialMaster 생성 스키마 ──
 export const createMaterialSchema = z.object({
@@ -46,6 +47,11 @@ export const createSubsidiarySchema = z.object({
     .string()
     .min(1, "부자재명은 필수입니다")
     .max(100, "부자재명은 100자 이내여야 합니다"),
+  subsidiaryType: z
+    .enum(subsidiaryTypeValues)
+    .transform((v) => v as SubsidiaryType)
+    .optional()
+    .default("CONSUMABLE"),
   unit: z
     .string()
     .min(1, "단위는 필수입니다")
@@ -77,9 +83,27 @@ export const materialListQuerySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
+// ── 부자재 목록 조회용 필터 스키마 ──
+export const subsidiaryListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
+  subsidiaryType: z
+    .enum(subsidiaryTypeValues)
+    .transform((v) => v as SubsidiaryType)
+    .optional(),
+  stockGrade: z
+    .enum(stockGradeValues)
+    .transform((v) => v as StockGrade)
+    .optional(),
+  sortBy: z.enum(["name", "code", "createdAt"]).default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 // ── 타입 추출 ──
 export type CreateMaterialInput = z.output<typeof createMaterialSchema>;
 export type UpdateMaterialInput = z.output<typeof updateMaterialSchema>;
 export type CreateSubsidiaryInput = z.output<typeof createSubsidiarySchema>;
 export type UpdateSubsidiaryInput = z.output<typeof updateSubsidiarySchema>;
 export type MaterialListQuery = z.output<typeof materialListQuerySchema>;
+export type SubsidiaryListQuery = z.output<typeof subsidiaryListQuerySchema>;
