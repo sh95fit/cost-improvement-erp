@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-14 (Sprint 2 Phase 5 완료 — 식단 계획 CRUD UI)
+> 마지막 갱신: 2026-05-21 (기존 Sprint 1~8 히스토리 유지 + Sprint 2 Phase 5 완료 기준 유지 + Phase 3 구조 재정의 보강 작업 정의 추가)
 
 ---
 
@@ -20,9 +20,98 @@
 
 ---
 
+## 📍 현재 상태 요약 / 완료 범위 / 남은 작업 / 보류 범위 / handoff 기준
+
+### 현재 상태 요약
+- **현재 기준 완료 지점**: Sprint 2 / Phase 5 완료
+- **현재 프로젝트 상태**: Sprint 2 진행 중
+- **중요 판단**: Sprint 2의 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 삭제하지 않고 유지한다. 다만 MealPlan 도메인 구조 문제로 인해 해당 Phase들을 그대로 진행하지 않고, 그 전에 **구조 재정의 보강 작업**을 Sprint 2 내부 추가 작업으로 삽입한다.
+- **현재 블로커**:
+  1. `MealPlanGroup`에 `lineupId`가 있어 날짜 그룹과 라인업 책임이 분리되지 않음
+  2. `MealPlan`이 식사타입 × lineup 구조를 안정적으로 표현하기 어려움
+  3. `MealPlanSlot`이 실제 실행 배정 단위에 필요한 `supplierItemId`, `productionLineId` 등의 정보를 담지 못함
+  4. 이 상태로 `MealCount`, `MaterialRequirement`, `CookingPlan`, 자동생성 연결을 진행하면 후속 Sprint 구조가 다시 흔들릴 가능성이 높음
+
+### 완료 범위
+#### Sprint 1 완료 범위
+- Sonner toast 인프라 도입
+- 레시피/BOM/Container 관련 이슈 재현 및 해결
+- UnitMaster 중앙 관리 체계 구축
+- Container 삭제 의존성 검증 및 경고 UI
+- duplicateRecipeBOM 서비스/액션 및 BOM UI 보강
+- Container / Supplier / UnitMaster 테스트 보강
+- handleActionError 패턴 통일
+- Error Boundary 추가
+- CONVENTIONS 12규칙 점검 완료
+- Sprint 1 최종 QA 완료
+
+#### Sprint 2 현재까지 완료 범위
+- MealTemplate schema/service/test
+- MealTemplate action/UI/sidebar
+- v5 Prisma 구조 전환
+- v5 UI/로직 보완 및 supplier 패턴 통일
+- MealPlanGroup / MealPlan / MealPlanSlot 기본 schema/service/action
+- 식단 그룹 CRUD UI
+
+### 남은 작업
+#### Sprint 2 기존 미완료 작업
+- Phase 2-e — 부자재-공급업체 연결 UX
+- Phase 6 — 식단 캘린더 뷰
+- Phase 7 — 슬롯 상세 에디터
+- Phase 8 — MealCount + MealPlanAccessory 서비스/UI
+- Phase 9 — 소요량 자동 산출 서비스
+- Phase 10 — 테스트 작성
+- Phase 11 — 페이지 통합 + Sprint 2 QA
+
+#### Sprint 2 내부 추가 보강 작업
+- MealPlan 도메인 구조 재정의 기준 확정
+- `schema.prisma` / migration 수정
+- `seed.ts` 보강
+- `meal-plan.schema.ts` / `meal-plan.service.ts` / `meal-plan.action.ts` 재정비
+- `/meal-plans/page.tsx` 구조 재구성
+- 자동생성 연결 계약 정리
+- 관련 테스트 보강
+- 문서 동기화 및 Sprint 2 재개 판정
+
+### 보류 범위
+아래는 구조 재정의 보강 완료 전 본격 착수하지 않는다.
+- InventoryReservation
+- InventoryTransfer
+- StockTake
+- ShippingOrder
+- ConsumptionItem
+- CookingPlan 본 구현
+- CostSnapshot / CostCalculation / OverheadCost / MonthEnd*
+- Notification*
+- 조직/권한/초대
+- AuditLog 조회 UI
+- AutoGenLog 조회 UI
+
+### handoff 기준
+다음 모델 또는 개발자는 아래 순서로 읽고 시작한다.
+1. `PROGRESS.md`
+2. `01_개발순서.md`
+3. `02_개발문서.md`
+4. `03_개발가이드문서.md`
+5. `04_전체 구현 체크리스트 및 코드기준안.md`
+6. `05_불일치 정리 및 통합기준 제안.md`
+7. `06_Phase 3. 식단 관리 프로세스.md`
+8. `07_HANDOFF.md`
+
+### 현재 구조 재정의 공식 판단
+- `MealPlanGroup`는 날짜 중심 그룹으로 단순화한다
+- `MealPlan`은 식사타입 × lineup 조합으로 재정의한다
+- `MealPlanSlot`은 실제 실행 배정 단위로 확장한다
+- `MealCount`는 상태가 아니라 데이터 입력값으로 유지한다
+- `MaterialRequirement` / `CookingPlan` / 자동생성 연결의 기준 입력은 `MealPlanSlot`으로 정렬한다
+
+---
+
 ## 📋 Prisma 스키마 모델 커버리지 (68모델 + UnitMaster)
 
 > 아래 표는 schema.prisma v4의 모델이 어느 Sprint의 어느 Phase에서 구현되는지를 추적한다.
+> 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
+> MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -55,9 +144,9 @@
 | 27 | MealTemplate | S2 | P1-2 | ✅ |
 | 28 | MealTemplateContainer | S2 | P1-2 | ✅ (v5: MealTemplateSlot 폐지) |
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
-| 30 | MealPlanGroup | S2 | P3-4 | ✅ |
-| 31 | MealPlan | S2 | P3-4 | ✅ |
-| 32 | MealPlanSlot | S2 | P3-4 | ✅ |
+| 30 | MealPlanGroup | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
+| 31 | MealPlan | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
+| 32 | MealPlanSlot | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
 | 33 | MealCount | S2 | P8 | ⬜ |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
@@ -312,7 +401,6 @@
 - **TypeScript errors**: 0
 - **Tests**: 135건 PASS
 
-
 ### Phase 11 — CONVENTIONS.md 전수 점검 ✅
 - **날짜**: 2026-05-08
 - **커밋**: `90bfee6` (테스트 추가), `770ff4a` (any 제거 포함)
@@ -438,7 +526,6 @@
   - any 타입: 0건
   - actionFail 직접 사용: 0건 (전면 handleActionError 통일)
 
-
 ---
 
 ## 🏗️ Sprint 2: 식단 템플릿·식단 계획 (5/12 ~ 5/22)
@@ -446,6 +533,7 @@
 > 총 예상 공수: ~48h
 > ⚠️ 일정 조정: Sprint 1 Phase 3 확장(+5.5h)으로 Sprint 2 시작일 5/12→5/13
 > ⚠️ v5 마이그레이션(Phase 2-b)으로 ContainerGroup 폐지, MealTemplateSlot→MealTemplateContainer 전환
+> ⚠️ Sprint 2의 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 유지한다. 다만 Phase 5 완료 이후 MealPlan 구조 재정의 보강 작업(Phase 5-R)을 삽입한 뒤 Sprint 2 원래 미완료 작업을 재개한다.
 
 ### Phase 1 — MealTemplate Zod 스키마 + 서비스 + 테스트 ✅
 - **날짜**: 2026-05-12
@@ -665,6 +753,125 @@
   - deleteMealPlanSlotAction → 삭제 handleConfirmDelete(slot) ✅
   - getMealTemplatesAction → 템플릿 옵션 loadTemplateOptions ✅
 
+### Phase 5-R — MealPlan 구조 재정의 보강 작업 ⬜
+- **상태**: Sprint 2 내부 신규 보강 작업
+- **목적**: 기존 Sprint 2 계획과 완료 이력을 삭제하지 않고 유지한 상태에서, Phase 3~5에서 구현된 MealPlan 도메인 구조를 후속 Phase 6~11 및 Sprint 3~5와 안정적으로 연결할 수 있도록 재정렬
+- **배경**:
+  - Phase 3, 4, 5를 통해 MealPlanGroup / MealPlan / MealPlanSlot의 기본 CRUD 및 UI는 구현되었음
+  - 그러나 현재 구조는 `MealPlanGroup.lineupId` 고정, `MealPlan`의 식사타입 × lineup 구조 미정착, `MealPlanSlot`의 실행 배정 정보 부족으로 인해 MealCount / MaterialRequirement / CookingPlan / 자동생성 흐름을 안정적으로 연결하기 어려움
+  - 따라서 Sprint 2의 원래 미완료 작업(Phase 2-e, 6, 7, 8, 9, 10, 11)을 그대로 진행하지 않고, 그 전에 구조 재정의 보강 작업을 삽입해야 함
+- **주의**:
+  - 본 작업은 기존 Sprint 2 계획을 대체하지 않음
+  - 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 그대로 유지함
+  - 본 작업 완료 후 Sprint 2 원래 계획을 재개함
+
+#### Phase 5-R1 — 구조 재정의 기준 문서 확정 ⬜
+- **작업 목록**:
+  - [ ] `MealPlanGroup = 날짜 그룹` 기준 확정
+  - [ ] `MealPlan = 식사타입 × lineup` 기준 확정
+  - [ ] `MealPlanSlot = 실행 배정 단위` 기준 확정
+  - [ ] `MealCount = 상태가 아닌 데이터` 기준 확정
+  - [ ] `MaterialRequirement / CookingPlan / 자동생성` 입력 기준을 `MealPlanSlot` 중심으로 확정
+  - [ ] 관련 문서 보강:
+    - [ ] `PROGRESS.md`
+    - [ ] `01_개발순서.md`
+    - [ ] `02_개발문서.md`
+    - [ ] `03_개발가이드문서.md`
+    - [ ] `04_전체 구현 체크리스트 및 코드기준안.md`
+    - [ ] `05_불일치 정리 및 통합기준 제안.md`
+    - [ ] `06_Phase 3. 식단 관리 프로세스.md`
+    - [ ] `07_HANDOFF.md`
+
+#### Phase 5-R2 — schema.prisma / migration 수정 ⬜
+- **대상 파일**:
+  - `prisma/schema.prisma`
+  - migration 파일
+- **작업 목록**:
+  - [ ] `MealPlanGroup.lineupId` 제거
+  - [ ] `MealPlan.lineupId` 관계 재배치
+  - [ ] `MealPlan` unique / relation 재정의
+  - [ ] `MealPlanSlot` 실행 배정 필드 추가
+    - [ ] `supplierItemId`
+    - [ ] `productionLineId`
+    - [ ] 필요 시 `itemName`, `note`, `sortOrder` 등 보강
+  - [ ] 관련 relation / index / nullable 정책 점검
+  - [ ] migration 생성 및 검증
+- **완료 기준**:
+  - [ ] `prisma validate`
+  - [ ] `prisma generate`
+  - [ ] `prisma migrate dev`
+  - [ ] Prisma Studio 구조 검증 완료
+
+#### Phase 5-R3 — seed / schema / service / action 재정비 ⬜
+- **대상 파일**:
+  - `prisma/seed.ts`
+  - `src/features/meal-plan/schemas/meal-plan.schema.ts`
+  - `src/features/meal-plan/services/meal-plan.service.ts`
+  - `src/features/meal-plan/actions/meal-plan.action.ts`
+- **작업 목록**:
+  - [ ] 날짜 그룹 + 다중 lineup + 슬롯 예시 시드 보강
+  - [ ] create / update / copy / delete / state-change 입력 스키마 재정의
+  - [ ] cascade delete / deep copy / transaction 재정비
+  - [ ] MealCount와 상태 분리 검증
+  - [ ] permission / audit / error mapping 유지
+- **완료 기준**:
+  - [ ] 기존 CRUD 시나리오 유지
+  - [ ] copy 기능 유지
+  - [ ] 상태 전이 유지
+  - [ ] seed 재실행 가능
+
+#### Phase 5-R4 — MealPlan UI 재구성 ⬜
+- **대상 파일**:
+  - `src/app/(dashboard)/meal-plans/page.tsx`
+  - 관련 보조 컴포넌트
+- **작업 목록**:
+  - [ ] 날짜 그룹 중심 목록 유지
+  - [ ] `MealPlan = 식사타입 × lineup` 카드 구조로 전환
+  - [ ] `MealPlanSlot` 실행 배정 편집 UI 추가
+  - [ ] 공급업체 품목 / 생산라인 배정 UX 반영
+  - [ ] 기존 생성 / 복사 / 상태 변경 UX 재연결
+- **완료 기준**:
+  - [ ] 날짜별 그룹 확인 가능
+  - [ ] 같은 날짜에 여러 lineup 표현 가능
+  - [ ] 슬롯 단위 배정 정보 수정 가능
+
+#### Phase 5-R5 — 자동생성 연결 계약 정리 ⬜
+- **작업 목록**:
+  - [ ] MealCount 연결 시점 정의
+  - [ ] MealPlanAccessory 연결 방식 정의
+  - [ ] MaterialRequirement 생성 기준 정의
+  - [ ] CookingPlan 연결 방식 정의
+  - [ ] 자동생성 재실행 / 멱등성 정책 정의
+- **완료 기준**:
+  - [ ] 어떤 시점에 어떤 엔티티가 생성되는지 문서화 완료
+  - [ ] 재실행 시 중복/덮어쓰기 정책 명확화
+
+#### Phase 5-R6 — 테스트 보강 ⬜
+- **작업 목록**:
+  - [ ] meal-plan schema test 보강
+  - [ ] meal-plan service test 작성/갱신
+  - [ ] meal-plan action 통합 검증
+  - [ ] 다중 lineup / slot assignment / copy / state transition / count 분리 테스트
+  - [ ] 필요 시 E2E 시나리오 보강
+- **완료 기준**:
+  - [ ] 기존 테스트 회귀 없음
+  - [ ] 신규 구조 시나리오 PASS
+
+#### Phase 5-R7 — 문서 동기화 및 Sprint 2 재개 판정 ⬜
+- **작업 목록**:
+  - [ ] `PROGRESS.md` 갱신
+  - [ ] 핵심 문서 7종 갱신
+  - [ ] Sprint 2 원래 미완료 Phase 재개 순서 확정
+- **재개 순서**:
+  1. Phase 2-e
+  2. Phase 6
+  3. Phase 7
+  4. Phase 8
+  5. Phase 9
+  6. Phase 10
+  7. Phase 11
+- **완료 기준**:
+  - [ ] 구조 재정의 이후 Sprint 2 나머지 작업을 안전하게 이어갈 수 있다고 판단됨
 
 ### Phase 6 — 식단 캘린더 뷰 ⬜
 - **예정일**: 2026-05-17 ~ 2026-05-18
@@ -702,201 +909,172 @@
 
 ### Phase 1 — PO Zod 스키마 작성 ⬜ (3h)
 - **대상 모델**: PurchaseOrder, PurchaseOrderItem
+
 ### Phase 2 — purchase-order.service.ts ⬜ (5h)
 - **작업**: 발주 CRUD, 자동/수동 발주 생성, 상태 전이, 소요량→발주 변환
-### Phase 3 — purchase-order.action.ts ⬜ (3h)
-### Phase 4 — 발주 UI + /purchasing/page.tsx ⬜ (5h)
-- **작업**: 발주 목록, 발주서 상세, 품목 편집, 승인 워크플로
-### Phase 5 — 입고 Zod 스키마 ⬜ (2h)
-- **대상 모델**: ReceivingNote, ReceivingNoteItem
-### Phase 6 — receiving.service.ts ⬜ (4h)
-- **작업**: 입고 등록, 발주 대비 수량 대조, InventoryLot 자동 생성, InventoryTransaction 기록
-### Phase 7 — receiving.action.ts + 입고 UI ⬜ (4h)
-### Phase 8 — /receiving/page.tsx 통합 ⬜ (2h)
-### Phase 9 — 테스트 + E2E + Sprint 3 QA ⬜ (4h)
 
----
+### Phase 3 — purchase-order.action.ts ⬜ (3h)
+
+### Phase 4 — 발주 UI + /purchasing/page.tsx ⬜ (5h)
+
+### Phase 5 — 입고 Zod 스키마 ⬜ (2h)
+
+### Phase 6 — receiving.service.ts ⬜ (4h)
+
+### Phase 7 — receiving.action.ts + 입고 UI ⬜ (4h)
+
+### Phase 8 — /receiving/page.tsx 통합 ⬜ (2h)
+
+### Phase 9 — 테스트 + E2E + Sprint 3 QA ⬜ (4h)
 
 ## 🏗️ Sprint 4: 재고 + 재고이동 + 재고실사 + 출고 + 소비 + 조리계획 (6/1 ~ 6/15, ~62h)
 
-> ⚠️ 기존 Sprint 4(41h)에 InventoryTransfer, StockTake, CookingPlan 등 누락분 통합
-
 ### Phase 1 — 재고 조회 서비스 ⬜ (4h)
-- **대상 모델**: InventoryLot, InventoryTransaction
-- **작업**: 로트별/자재별 재고 현황 조회, 트랜잭션 이력
-### Phase 2 — 재고 UI + /inventory/page.tsx ⬜ (4h)
-### Phase 3 — InventoryReservation 서비스 ⬜ (3h)
-- **작업**: 예약 생성/해제, 예약 현황 조회, 자동 만료
-### Phase 4 — InventoryTransfer 서비스 + 액션 ⬜ (4h)
-- **대상 모델**: InventoryTransfer, InventoryTransferItem
-- **작업**: 이동 요청(PUSH/PULL), 확인, 수령, 재고 차감/증가 트랜잭션
-### Phase 5 — InventoryTransfer UI + /transfers/page.tsx ⬜ (4h)
-### Phase 6 — StockTake 서비스 + 액션 ⬜ (4h)
-- **대상 모델**: StockTake, StockTakeItem
-- **작업**: 실사 생성, 시스템 수량 자동 로드, 실수량 입력, 차이 계산, 재고 보정 트랜잭션
-### Phase 7 — StockTake UI + /stock-takes/page.tsx ⬜ (3h)
-### Phase 8 — ShippingOrder 서비스 + 액션 ⬜ (4h)
-- **대상 모델**: ShippingOrder, ShippingOrderItem
-- **작업**: 출고 지시서 생성, 상태 관리, 재고 차감
-### Phase 9 — ShippingOrder UI + /shipping/page.tsx ⬜ (3h)
-### Phase 10 — ConsumptionItem 서비스 + 액션 ⬜ (4h)
-- **대상 모델**: ConsumptionItem, ConsumptionLotDetail
-- **작업**: 소비 등록, 로트 차감(FIFO), 소비 확정
-### Phase 11 — ConsumptionItem UI + /consumption/page.tsx ⬜ (3h)
-### Phase 12 — CookingPlan 서비스 + 액션 ⬜ (5h)
-- **대상 모델**: CookingPlan, CookingPlanItem, CookingPlanSlot
-- **작업**: 조리 계획 생성(식단→조리 변환), 슬롯별 레시피/BOM 스냅샷, 소요 자재 산출
-### Phase 13 — CookingPlan UI + /cooking-plans/page.tsx ⬜ (4h)
-### Phase 14 — 테스트 (재고/이동/실사/출고/소비/조리) ⬜ (4h)
-### Phase 15 — Sprint 4 E2E + QA ⬜ (3h)
 
----
+### Phase 2 — 재고 UI + /inventory/page.tsx ⬜ (4h)
+
+### Phase 3 — InventoryReservation 서비스 ⬜ (3h)
+
+### Phase 4 — InventoryTransfer 서비스 + 액션 ⬜ (4h)
+
+### Phase 5 — InventoryTransfer UI + /transfers/page.tsx ⬜ (4h)
+
+### Phase 6 — StockTake 서비스 + 액션 ⬜ (4h)
+
+### Phase 7 — StockTake UI + /stock-takes/page.tsx ⬜ (3h)
+
+### Phase 8 — ShippingOrder 서비스 + 액션 ⬜ (4h)
+
+### Phase 9 — ShippingOrder UI + /shipping/page.tsx ⬜ (3h)
+
+### Phase 10 — ConsumptionItem 서비스 + 액션 ⬜ (4h)
+
+### Phase 11 — ConsumptionItem UI + /consumption/page.tsx ⬜ (3h)
+
+### Phase 12 — CookingPlan 서비스 + 액션 ⬜ (5h)
+
+### Phase 13 — CookingPlan UI + /cooking-plans/page.tsx ⬜ (4h)
+
+### Phase 14 — 테스트 (재고/이동/실사/출고/소비/조리) ⬜ (4h)
+
+### Phase 15 — Sprint 4 E2E + QA ⬜ (3h)
 
 ## 🏗️ Sprint 5: 원가 + 간접비 + 월말 마감 + 알림 (6/16 ~ 6/28, ~52h)
 
-> ⚠️ OverheadCost, CostCalculation, NotificationTemplate/Rule/TagDef 관리 UI 추가 반영
-
 ### Phase 1 — 원가 스냅샷 서비스 ⬜ (4h)
-- **대상 모델**: CostSnapshot, CostSnapshotItem
-- **작업**: 기간별 스냅샷 생성, 자재별 평균단가/수량/금액 집계
-### Phase 2 — 원가 스냅샷 UI ⬜ (3h)
-### Phase 3 — CostCalculation 서비스 ⬜ (5h)
-- **대상 모델**: CostCalculation, CostCalculationItem
-- **작업**: 예상/발주/실적 원가 계산 엔진, 레시피·식단 단위 원가 산출
-### Phase 4 — CostCalculation UI + /cost/page.tsx ⬜ (4h)
-### Phase 5 — OverheadCost 서비스 + 액션 ⬜ (3h)
-- **대상 모델**: OverheadCost
-- **작업**: 간접비(인건비, 광열비 등) 월별 등록/수정/삭제, 원가 배부
-### Phase 6 — OverheadCost UI + /overhead-costs/page.tsx ⬜ (3h)
-### Phase 7 — MonthEndSnapshot 서비스 ⬜ (5h)
-- **대상 모델**: MonthEndSnapshot, MonthEndAdjustment, MonthEndAdjustmentItem
-- **작업**: 월말 마감(스냅샷 생성, 잠금), 조정 내역 관리
-### Phase 8 — MonthEnd UI + /month-end/page.tsx ⬜ (4h)
-### Phase 9 — NotificationTemplate/Rule 서비스 ⬜ (4h)
-- **대상 모델**: NotificationTagDef, NotificationRule, NotificationTemplate, NotificationLog
-- **작업**: 태그 정의 CRUD, 템플릿 CRUD, 규칙 CRUD, 발송 엔진(IN_APP/EMAIL)
-### Phase 10 — Notification UI + /notifications/page.tsx ⬜ (4h)
-- **작업**: 알림 규칙 관리, 템플릿 편집, 알림 로그 조회
-### Phase 11 — 테스트 (원가/간접비/월말/알림) ⬜ (4h)
-### Phase 12 — Sprint 5 E2E + QA ⬜ (3h)
 
----
+### Phase 2 — 원가 스냅샷 UI ⬜ (3h)
+
+### Phase 3 — CostCalculation 서비스 ⬜ (5h)
+
+### Phase 4 — CostCalculation UI + /cost/page.tsx ⬜ (4h)
+
+### Phase 5 — OverheadCost 서비스 + 액션 ⬜ (3h)
+
+### Phase 6 — OverheadCost UI + /overhead-costs/page.tsx ⬜ (3h)
+
+### Phase 7 — MonthEndSnapshot 서비스 ⬜ (5h)
+
+### Phase 8 — MonthEnd UI + /month-end/page.tsx ⬜ (4h)
+
+### Phase 9 — NotificationTemplate/Rule 서비스 ⬜ (4h)
+
+### Phase 10 — Notification UI + /notifications/page.tsx ⬜ (4h)
+
+### Phase 11 — 테스트 (원가/간접비/월말/알림) ⬜ (4h)
+
+### Phase 12 — Sprint 5 E2E + QA ⬜ (3h)
 
 ## 🏗️ Sprint 6: 조직 관리 — 회사·거점·라인·라인업 (6/29 ~ 7/7, ~38h)
 
-> ⚠️ 신규 Sprint — 기존 일정에서 완전히 누락되었던 조직 계층 구조 + 권한 관리 포함
-
 ### Phase 1 — Company 서비스 + 액션 ⬜ (3h)
-- **대상 모델**: Company
-- **작업**: 회사 CRUD, 회사 정보 수정 (SYSTEM_ADMIN/COMPANY_ADMIN 전용)
-### Phase 2 — Company UI + /companies/page.tsx ⬜ (3h)
-- **작업**: 회사 목록 (SYSTEM_ADMIN), 회사 설정 (COMPANY_ADMIN)
-### Phase 3 — Location 서비스 + 액션 ⬜ (3h)
-- **대상 모델**: Location
-- **작업**: 거점(주방/창고) CRUD, 계층 구조(Company→Location)
-### Phase 4 — ProductionLine 서비스 + 액션 ⬜ (3h)
-- **대상 모델**: ProductionLine
-- **작업**: 제조라인 CRUD, 상태 관리(ACTIVE/INACTIVE/MAINTENANCE), 계층(Company→Location→ProductionLine)
-### Phase 5 — Lineup 서비스 + 액션 ⬜ (3h)
-- **대상 모델**: Lineup, LineupLocationMap
-- **작업**: 라인업 CRUD, 라인업↔거점 매핑 관리
-### Phase 6 — Location/ProductionLine/Lineup UI ⬜ (5h)
-- **작업**: `/locations/page.tsx`, `/production-lines/page.tsx`, `/lineups/page.tsx`
-- **계층 네비게이션**: 회사 → 거점 → 라인 트리 구조 UI
-### Phase 7 — 테스트 (조직 관리 전체) ⬜ (3h)
-### Phase 8 — Sprint 6 E2E + QA ⬜ (2h)
-### Phase 9 — 사이드바 재구성 (조직 메뉴 추가) ⬜ (2h)
-- **작업**: sidebar.tsx에 "조직 관리" 그룹(회사, 거점, 제조라인, 라인업) 추가
 
----
+### Phase 2 — Company UI + /companies/page.tsx ⬜ (3h)
+
+### Phase 3 — Location 서비스 + 액션 ⬜ (3h)
+
+### Phase 4 — ProductionLine 서비스 + 액션 ⬜ (3h)
+
+### Phase 5 — Lineup 서비스 + 액션 ⬜ (3h)
+
+### Phase 6 — Location/ProductionLine/Lineup UI ⬜ (5h)
+
+### Phase 7 — 테스트 (조직 관리 전체) ⬜ (3h)
+
+### Phase 8 — Sprint 6 E2E + QA ⬜ (2h)
+
+### Phase 9 — 사이드바 재구성 (조직 메뉴 추가) ⬜ (2h)
 
 ## 🏗️ Sprint 7: 권한 관리 + 사용자 + 초대 (7/8 ~ 7/16, ~42h)
 
-> ⚠️ 신규 Sprint — 권한셋 설정을 통한 계층별 권한 분리, 초대 프로세스 전체
-
 ### Phase 1 — User/UserScope 관리 서비스 ⬜ (4h)
-- **대상 모델**: User, UserScope
-- **작업**: 사용자 목록 (회사별), 사용자 상태 관리(ACTIVE/INACTIVE/SUSPENDED), UserScope 변경(역할 변경, 권한셋 할당)
-- **계층별 권한 분리**: SYSTEM_ADMIN(전체), COMPANY_ADMIN(소속 회사), MEMBER(본인만)
-### Phase 2 — User 관리 UI + /users/page.tsx ⬜ (4h)
-### Phase 3 — PermissionSet 서비스 + 액션 ⬜ (5h)
-- **대상 모델**: PermissionSet, PermissionSetItem
-- **작업**: 권한셋 CRUD, 권한 아이템 관리 (리소스×액션 매트릭스)
-### Phase 4 — PermissionSet UI + /permission-sets/page.tsx ⬜ (5h)
-- **작업**: 권한셋 목록, 권한 매트릭스 편집기(리소스×액션 체크박스), 사용자 연결 현황
-### Phase 5 — Invitation 서비스 + 액션 ⬜ (5h)
-- **대상 모델**: Invitation
-- **작업**: 초대 생성, 초대 메일 발송, 초대 수락 (토큰 검증 → User+UserScope 생성), 만료/취소/재발송
-### Phase 6 — Invitation UI + /invitations/page.tsx ⬜ (4h)
-- **작업**: 초대 목록, 수락 페이지 (`/invite/[token]/page.tsx`)
-### Phase 7 — 사이드바 재구성 (사용자/권한 메뉴 추가) ⬜ (2h)
-### Phase 8 — 테스트 (사용자/권한셋/초대) ⬜ (4h)
-### Phase 9 — Sprint 7 E2E + QA ⬜ (3h)
-- **검증**: 초대→수락→권한셋 할당→접근 제한 확인
 
----
+### Phase 2 — User 관리 UI + /users/page.tsx ⬜ (4h)
+
+### Phase 3 — PermissionSet 서비스 + 액션 ⬜ (5h)
+
+### Phase 4 — PermissionSet UI + /permission-sets/page.tsx ⬜ (5h)
+
+### Phase 5 — Invitation 서비스 + 액션 ⬜ (5h)
+
+### Phase 6 — Invitation UI + /invitations/page.tsx ⬜ (4h)
+
+### Phase 7 — 사이드바 재구성 (사용자/권한 메뉴 추가) ⬜ (2h)
+
+### Phase 8 — 테스트 (사용자/권한셋/초대) ⬜ (4h)
+
+### Phase 9 — Sprint 7 E2E + QA ⬜ (3h)
 
 ## 🏗️ Sprint 8: 대시보드 + 감사로그 + UX 통일 + 최종 QA (7/17 ~ 7/25, ~38h)
 
-> 기존 Sprint 6 내용을 확장 + AutoGenLog 추가
-
 ### Phase 1 — 메인 대시보드 서비스 ⬜ (4h)
-- **작업**: 오늘의 식단 요약, 재고 경고, 미처리 발주/입고, 원가 추이 차트 데이터
+
 ### Phase 2 — 메인 대시보드 UI + /(dashboard)/page.tsx ⬜ (5h)
+
 ### Phase 3 — AuditLog 조회 서비스 ⬜ (2h)
-- **대상 모델**: AuditLog
+
 ### Phase 4 — AuditLog UI + /audit-logs/page.tsx ⬜ (3h)
+
 ### Phase 5 — CONVENTIONS.md 최종 점검 ⬜ (3h)
+
 ### Phase 6 — UI/UX 통일 ⬜ (4h)
-- **작업**: 전체 페이지 일관성, 반응형, 접근성, 로딩 상태
+
 ### Phase 7 — AutoGenLog 조회 UI ⬜ (2h)
-- **대상 모델**: AutoGenLog
+
 ### Phase 8 — 사이드바 최종 정리 ⬜ (2h)
+
 ### Phase 9 — 전체 E2E 풀 플로우 검증 ⬜ (5h)
-- **검증**: 초대→로그인→식단→발주→입고→재고→출고→소비→원가→마감 전체 흐름
+
 ### Phase 10 — 문서화 + 배포 설정 + 최종 QA ⬜ (4h)
 
 ---
 
-## 📊 전체 요약
+## 📚 핵심 문서 연결 / 기준선 / 다음 시작 파일
 
-| Sprint | 기간 | 주요 내용 | Phase 수 | 예상 공수 | 상태 |
-|--------|------|-----------|----------|-----------|------|
-| Sprint 1 | 5/4 ~ 5/12 | 안정화 + 품질 기반 | 14 | ~37.5h | ✅ 완료 |
-| Sprint 2 | 5/12 ~ 5/22 | 식단 템플릿 + 식단 계획 | 11 | ~48h | 🟡 진행 중 (5/11 Phase 5 완료) |
-| Sprint 3 | 5/23 ~ 5/31 | 발주 + 입고 | 9 | ~32h | ⬜ 대기 |
-| Sprint 4 | 6/1 ~ 6/15 | 재고 + 이동 + 실사 + 출고 + 소비 + 조리 | 15 | ~62h | ⬜ 대기 |
-| Sprint 5 | 6/16 ~ 6/28 | 원가 + 간접비 + 월말 + 알림 | 12 | ~52h | ⬜ 대기 |
-| Sprint 6 | 6/29 ~ 7/7 | 조직 관리 (회사·거점·라인·라인업) | 9 | ~38h | ⬜ 대기 |
-| Sprint 7 | 7/8 ~ 7/16 | 권한 관리 + 사용자 + 초대 | 9 | ~42h | ⬜ 대기 |
-| Sprint 8 | 7/17 ~ 7/25 | 대시보드 + 감사로그 + UX + 최종 QA | 10 | ~38h | ⬜ 대기 |
-| **총계** | **5/4 ~ 7/25** | | **89** | **≈349.5h** | |
+### 문서 역할
+- `PROGRESS.md` — 전체 진행 이력 + 현재 상태 + 남은 작업
+- `01_개발순서.md` — 전체 실행 순서
+- `02_개발문서.md` — 구조 설계와 계층 규칙
+- `03_개발가이드문서.md` — 현재 라운드 실행 절차
+- `04_전체 구현 체크리스트 및 코드기준안.md` — 검증 기준 / 파일별 TODO / DoD
+- `05_불일치 정리 및 통합기준 제안.md` — 공식 변경 이력
+- `06_Phase 3. 식단 관리 프로세스.md` — 현재 작업 현황과 실제 단계
+- `07_HANDOFF.md` — 다음 작업자 인수인계 패키지
 
----
+### 현재 개발 기준선
+- Sprint 1 완료
+- Sprint 2는 Phase 5까지 완료
+- Sprint 2는 아직 종료되지 않았음
+- Sprint 2 원래 계획은 유지
+- 단, Sprint 2 후속 Phase 진행 전 구조 재정의 보강이 선행됨
 
-## 📋 Sprint 1 이슈 추적
+### 다음 시작 파일
+1. `prisma/schema.prisma`
+2. `prisma/seed.ts`
+3. `src/features/meal-plan/schemas/meal-plan.schema.ts`
+4. `src/features/meal-plan/services/meal-plan.service.ts`
+5. `src/features/meal-plan/actions/meal-plan.action.ts`
+6. `src/app/(dashboard)/meal-plans/page.tsx`
+7. 관련 테스트 파일
 
-| # | 이슈 | 심각도 | 상태 | 해소 Phase |
-|---|------|--------|------|-----------|
-| 1 | 단위 자유입력 → DB Select 전환 필요 | 🔴 | ✅ 해소 | Phase 3 |
-| 2 | 용기 삭제 의존성 미검증 | 🔴 | ✅ 해소 | Phase 4 |
-| 3 | 재료 추가 모달 즉시 닫힘 | 🟡 | ⬜ 미해소 | Phase 6 예정 |
-| 4 | Select Box 사용성 | 🟡 | 🟡 부분 해소 | Phase 3 (DB Select), Phase 6 (combobox) |
-| 5 | BOM 등록 후 수정 불가 | 🔴 | 🟡 부분 해소 | Phase 5 (서비스/액션), Phase 6 (UI 연동) |
-| 6 | 슬롯 이름 미표시 | 🟡 | ⬜ 미해소 | Phase 6 예정 |
-| 7 | 레시피 기본정보 용기/슬롯 요약 없음 | 🟢 | ⬜ 미해소 | Phase 6 예정 |
 
----
-
-## 🔄 변경 이력
-
-| 날짜 | 변경 내용 | 사유 |
-|------|-----------|------|
-| 2026-05-04 | 최초 작성 | Sprint 1 Phase 1 완료 시점 |
-| 2026-05-04 | Sprint 1에 Phase 3~4 추가 (BOM 편집 보강) | BOM 등록 후 수정 불가 이슈 발견 |
-| 2026-05-04 | 작업 프로세스 6단계 규칙 추가 | 검증 누락 방지 |
-| 2026-05-06 | Phase 2 완료, 이슈 7건 등록, Sprint 1 일정 +2일 확장 | E2E 검증 결과 반영 |
-| 2026-05-06 | 전체 일정 재산정 — 68모델 전수 대조, Sprint 6-8 신규 | 누락 모델 발견 |
-| 2026-05-07 | Phase 3 완료 — 단위 관리 중앙화 | 4커밋 대규모 작업. `/units` 독립 페이지, UnitMaster 모델, DB Select 전환. 이슈 #1 해소, #4 부분 해소 |
-| 2026-05-07 | Phase 4 완료 — 컨테이너 의존성 체크 | 3파일 수정. 삭제 전 MealTemplate/RecipeBOMSlot 참조 확인, UI "삭제 불가" 모달. 이슈 #2 해소 |
-| 2026-05-07 | Phase 5 완료 — RecipeBOM 복제 서비스 | 2파일 수정. `duplicateRecipeBOM` (트랜잭션 복사), `duplicateRecipeBOMAction`. 이슈 #5 부분 해소 (서비스 완료, UI는 Phase 6) |
