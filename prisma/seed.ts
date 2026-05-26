@@ -986,22 +986,50 @@ async function main() {
   }
   console.log("✅ MealCount: 8개 생성 (라인업별 예상/확정 식수)");
 
-  // ---- 22-5. MealPlanAccessory ----
-  // planA_LunchHome 에 수저세트·뚜껑·포장비닐 3종 부착
+  // ---- 22-5. MealPlanAccessory ---- // ★ Phase 5-R Step 1.1: consumptionMode/fixedQuantity/required/note 추가
+  // planA_LunchHome 에 수저세트(식수비례) · 뚜껑(식수비례) · 포장비닐(고정수량) 3종 부착
   const accessoryData = [
-    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-003"], quantity: 3000 }, // 수저세트
-    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-004"], quantity: 3000 }, // 뚜껑
-    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-006"], quantity: 50 },   // 포장비닐 (고정)
+    {
+      mealPlanId: planA_LunchHome.id,
+      subsidiaryMasterId: subsidiaryRecords["SUB-003"],   // 수저세트
+      consumptionMode: "PER_MEAL_COUNT" as const,
+      fixedQuantity: null,
+      required: true,
+      quantity: 3000,                                      // 식수 캐시 (= LUNCH HOME 예상식수)
+      note: "1인 1개 — 식수에 비례",
+    },
+    {
+      mealPlanId: planA_LunchHome.id,
+      subsidiaryMasterId: subsidiaryRecords["SUB-004"],   // 뚜껑
+      consumptionMode: "PER_MEAL_COUNT" as const,
+      fixedQuantity: null,
+      required: true,
+      quantity: 3000,
+      note: "용기 뚜껑 — 식수에 비례",
+    },
+    {
+      mealPlanId: planA_LunchHome.id,
+      subsidiaryMasterId: subsidiaryRecords["SUB-006"],   // 포장비닐
+      consumptionMode: "FIXED_QUANTITY" as const,
+      fixedQuantity: 50,
+      required: false,
+      quantity: 50,                                        // 고정 수량 = fixedQuantity
+      note: "묶음 포장용 — 식수와 무관 (고정 50개)",
+    },
   ];
   for (const acc of accessoryData) {
     const existing = await prisma.mealPlanAccessory.findFirst({
-      where: { mealPlanId: acc.mealPlanId, subsidiaryMasterId: acc.subsidiaryMasterId },
+      where: {
+        mealPlanId: acc.mealPlanId,
+        subsidiaryMasterId: acc.subsidiaryMasterId,
+        deletedAt: null,
+      },
     });
     if (!existing) {
       await prisma.mealPlanAccessory.create({ data: acc });
     }
   }
-  console.log("✅ MealPlanAccessory: 3개 생성");
+  console.log("✅ MealPlanAccessory: 3개 생성 (PER_MEAL_COUNT 2 + FIXED_QUANTITY 1)");
 
   // ---- 요약 ----
   console.log("\n🎉 시드 데이터 투입 완료!");
