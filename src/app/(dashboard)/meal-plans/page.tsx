@@ -1,10 +1,12 @@
 // src/app/(dashboard)/meal-plans/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -40,16 +42,14 @@ import {
 import {
   Plus,
   Trash2,
-  Pencil,
   Search,
   ChevronLeft,
   ChevronRight,
   Loader2,
-  ChevronDown,
-  ChevronUp,
   Copy,
   Eye,
-  CalendarDays,
+  Package,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
@@ -62,41 +62,61 @@ import {
   copyMealPlanGroupAction,
   createMealPlanAction,
   deleteMealPlanAction,
-  createMealPlanSlotAction,
-  updateMealPlanSlotAction,
   deleteMealPlanSlotAction,
 } from "@/features/meal-plan/actions/meal-plan.action";
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
 
-// ── 타입 ──
+// ══════════════════════════════════════════════════════════════
+// 타입 (Phase 5-R v2 도메인 — service의 GROUP_DETAIL_INCLUDE 응답에 맞춤)
+// ══════════════════════════════════════════════════════════════
 
 type LineupInfo = { id: string; name: string; code: string };
 type RecipeInfo = { id: string; name: string; code: string };
 type SubsidiaryInfo = { id: string; name: string; code: string };
+type SupplierItemInfo = {
+  id: string;
+  productName: string;
+  supplierItemCode: string | null;
+  supplier: { id: string; name: string };
+};
+type ProductionLineInfo = { id: string; name: string };
+type MealTemplateInfo = { id: string; name: string };
 
+// SlotKind에 따라 표시되는 필드가 다름 — 둘 다 옵셔널로 받음
 type MealPlanSlotRow = {
   id: string;
-  slotIndex: number;
-  recipeId: string | null;
-  recipeBomId: string | null;
+  kind: "CONTAINER" | "DIRECT";
+  sortOrder: number;
   quantity: number;
   note: string | null;
+  containerSlotIndex: number | null;
   recipe: RecipeInfo | null;
+  subsidiaryMaster: SubsidiaryInfo | null;
+  supplierItem: SupplierItemInfo | null;
+  productionLine: ProductionLineInfo | null;
 };
 
 type MealPlanAccessoryRow = {
   id: string;
   subsidiaryMasterId: string;
+  consumptionMode: "PER_MEAL_COUNT" | "FIXED_QUANTITY";
+  fixedQuantity: number | null;
+  required: boolean;
   quantity: number;
+  note: string | null;
   subsidiaryMaster: SubsidiaryInfo;
 };
 
 type MealPlanRow = {
   id: string;
-  slotType: string;
+  slotType: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | "EVENT";
+  lineupId: string;
   mealTemplateId: string | null;
+  note: string | null;
+  lineup: LineupInfo;
+  mealTemplate: MealTemplateInfo | null;
   slots: MealPlanSlotRow[];
   accessories: MealPlanAccessoryRow[];
 };
@@ -104,27 +124,34 @@ type MealPlanRow = {
 type MealCountRow = {
   id: string;
   slotType: string;
+  lineupId: string;
   estimatedCount: number | null;
   finalCount: number | null;
+  lineup: LineupInfo;
 };
 
 type MealPlanGroupRow = {
   id: string;
   planDate: string;
   status: string;
-  lineup: LineupInfo;
+  note: string | null;
   mealPlans?: MealPlanRow[];
   mealCounts?: MealCountRow[];
-  _count?: { mealPlans: number };
+  _count?: { mealPlans: number; mealCounts: number };
 };
 
 type TemplateOption = { id: string; name: string };
+
+// ══════════════════════════════════════════════════════════════
+// 표시 라벨/색상
+// ══════════════════════════════════════════════════════════════
 
 const SLOT_TYPE_LABEL: Record<string, string> = {
   BREAKFAST: "조식",
   LUNCH: "중식",
   DINNER: "석식",
   SNACK: "간식",
+  EVENT: "이벤트",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -143,6 +170,13 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: "bg-red-100 text-red-700",
 };
 
+const CONSUMPTION_MODE_LABEL: Record<string, string> = {
+  PER_MEAL_COUNT: "식수 비례",
+  FIXED_QUANTITY: "고정수량",
+};
+
+// ══════════════════════════════════════════════════════════════
+
 export default function MealPlansPage() {
   // ── 목록 상태 ──
   const [items, setItems] = useState<MealPlanGroupRow[]>([]);
@@ -156,25 +190,30 @@ export default function MealPlansPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  // ── 상세 보기 ──
+  // ── 상세 ──
   const [detailGroup, setDetailGroup] = useState<MealPlanGroupRow | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // ── 생성 다이얼로그 ──
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [formLineupId, setFormLineupId] = useState("");
   const [formPlanDate, setFormPlanDate] = useState("");
+  const [formNote, setFormNote] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
   // ── 복사 다이얼로그 ──
   const [copySource, setCopySource] = useState<MealPlanGroupRow | null>(null);
   const [copyDate, setCopyDate] = useState("");
+  const [copyAccessories, setCopyAccessories] = useState(true);
+  const [copyMealCounts, setCopyMealCounts] = useState(false);
   const [copySaving, setCopySaving] = useState(false);
 
   // ── 식단(MealPlan) 추가 다이얼로그 ──
   const [addMealGroupId, setAddMealGroupId] = useState<string | null>(null);
-  const [addMealSlotType, setAddMealSlotType] = useState("LUNCH");
+  const [addMealSlotType, setAddMealSlotType] =
+    useState<MealPlanRow["slotType"]>("LUNCH");
+  const [addMealLineupId, setAddMealLineupId] = useState(""); // 임시: ID 직접 입력
   const [addMealTemplateId, setAddMealTemplateId] = useState("");
+  const [addMealNote, setAddMealNote] = useState("");
   const [mealSaving, setMealSaving] = useState(false);
 
   // ── 템플릿 옵션 ──
@@ -205,7 +244,7 @@ export default function MealPlansPage() {
         const result = await getMealPlanGroupsAction({
           page,
           limit: 20,
-          search: search.trim() || undefined,
+          search: search.trim() || undefined, // service에서 note 검색으로 매핑
           status: statusFilter || undefined,
           sortBy: "planDate",
           sortOrder: "desc",
@@ -245,7 +284,7 @@ export default function MealPlansPage() {
     loadTemplateOptions();
   }, [fetchData, loadTemplateOptions]);
 
-  // ── 상세 로딩 ──
+  // ── 상세 ──
   const openDetail = async (groupId: string) => {
     setDetailLoading(true);
     try {
@@ -273,18 +312,18 @@ export default function MealPlansPage() {
   // ══════════════════════════════════════
 
   const handleCreateGroup = async () => {
-    if (!formLineupId || !formPlanDate) return;
+    if (!formPlanDate) return;
     setFormSaving(true);
     try {
       const result = await createMealPlanGroupAction({
-        lineupId: formLineupId,
         planDate: formPlanDate,
+        note: formNote.trim() || undefined,
       });
       if (result.success) {
         toast.success("식단 그룹이 생성되었습니다");
         setShowCreateDialog(false);
-        setFormLineupId("");
         setFormPlanDate("");
+        setFormNote("");
         fetchData(1);
       } else {
         toast.error(result.error?.message ?? "생성에 실패했습니다");
@@ -304,12 +343,15 @@ export default function MealPlansPage() {
       const result = await copyMealPlanGroupAction({
         sourceMealPlanGroupId: copySource.id,
         targetPlanDate: copyDate,
-        // copyAccessories는 스키마 기본값 true, copyMealCounts는 기본값 false
+        copyAccessories,
+        copyMealCounts,
       });
       if (result.success) {
         toast.success("식단이 복사되었습니다");
         setCopySource(null);
         setCopyDate("");
+        setCopyAccessories(true);
+        setCopyMealCounts(false);
         fetchData(1);
       } else {
         toast.error(result.error?.message ?? "복사에 실패했습니다");
@@ -345,12 +387,14 @@ export default function MealPlansPage() {
 
   // ── 식단(MealPlan) 추가 ──
   const handleAddMeal = async () => {
-    if (!addMealGroupId || !addMealSlotType) return;
+    if (!addMealGroupId || !addMealSlotType || !addMealLineupId.trim()) return;
     setMealSaving(true);
     try {
       const result = await createMealPlanAction(addMealGroupId, {
         slotType: addMealSlotType,
+        lineupId: addMealLineupId.trim(),
         mealTemplateId: addMealTemplateId || undefined,
+        note: addMealNote.trim() || undefined,
       });
       if (result.success) {
         toast.success(
@@ -358,7 +402,9 @@ export default function MealPlansPage() {
         );
         setAddMealGroupId(null);
         setAddMealSlotType("LUNCH");
+        setAddMealLineupId("");
         setAddMealTemplateId("");
+        setAddMealNote("");
         await refreshDetail();
       } else {
         toast.error(result.error?.message ?? "식단 추가에 실패했습니다");
@@ -408,13 +454,18 @@ export default function MealPlansPage() {
   };
 
   // ══════════════════════════════════════
-  // 렌더링 — 상세 뷰
+  // 상세 뷰
   // ══════════════════════════════════════
 
   if (detailGroup) {
+    const groupDateLabel = new Date(detailGroup.planDate).toLocaleDateString(
+      "ko-KR",
+      { year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" },
+    );
+
     return (
       <div className="space-y-6">
-        {/* 헤더 + 뒤로가기 */}
+        {/* 헤더 */}
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
@@ -424,13 +475,12 @@ export default function MealPlansPage() {
             <ChevronLeft className="mr-1 h-4 w-4" /> 목록으로
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">
-              {new Date(detailGroup.planDate).toLocaleDateString("ko-KR")} —{" "}
-              {detailGroup.lineup.name}
-            </h1>
+            <h1 className="text-2xl font-bold">{groupDateLabel}</h1>
             <div className="mt-1 flex items-center gap-2">
               <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[detailGroup.status] ?? ""}`}
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                  STATUS_COLOR[detailGroup.status] ?? ""
+                }`}
               >
                 {STATUS_LABEL[detailGroup.status] ?? detailGroup.status}
               </span>
@@ -447,18 +497,70 @@ export default function MealPlansPage() {
               >
                 상태 변경
               </Button>
+              {detailGroup.note && (
+                <span className="text-sm text-gray-500">
+                  · {detailGroup.note}
+                </span>
+              )}
             </div>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              setAddMealGroupId(detailGroup.id);
-            }}
+            onClick={() => setAddMealGroupId(detailGroup.id)}
           >
             <Plus className="mr-1 h-4 w-4" /> 식단 추가
           </Button>
         </div>
+
+        {/* 식수 섹션 (6-3a: 읽기 전용) */}
+        <section className="rounded-lg border bg-gray-50/50 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold">식수 현황</h2>
+            <span className="text-xs text-gray-400">
+              ※ 입력 UI는 다음 단계(6-3c)에서 제공됩니다
+            </span>
+          </div>
+          {!detailGroup.mealCounts || detailGroup.mealCounts.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              아직 등록된 식수가 없습니다.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">식사</TableHead>
+                  <TableHead>라인업</TableHead>
+                  <TableHead className="w-[100px] text-right">예상</TableHead>
+                  <TableHead className="w-[100px] text-right">확정</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {detailGroup.mealCounts.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      {SLOT_TYPE_LABEL[c.slotType] ?? c.slotType}
+                    </TableCell>
+                    <TableCell>
+                      {c.lineup?.name ?? "—"}{" "}
+                      {c.lineup?.code && (
+                        <span className="text-xs text-gray-400">
+                          ({c.lineup.code})
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {c.estimatedCount ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {c.finalCount ?? "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </section>
 
         {/* 식단 목록 */}
         {detailLoading ? (
@@ -469,16 +571,36 @@ export default function MealPlansPage() {
           <div className="space-y-4">
             {!detailGroup.mealPlans || detailGroup.mealPlans.length === 0 ? (
               <div className="rounded-lg border border-dashed p-8 text-center text-gray-500">
-                등록된 식단이 없습니다. "식단 추가" 버튼을 눌러
-                조식/중식/석식/간식을 추가하세요.
+                등록된 식단이 없습니다. &ldquo;식단 추가&rdquo; 버튼으로 라인업
+                × 식사타입 조합 식단을 추가하세요.
               </div>
             ) : (
               detailGroup.mealPlans.map((mp) => (
                 <div key={mp.id} className="rounded-lg border p-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">
-                      {SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType}
-                    </h3>
+                    <div>
+                      <h3 className="text-lg font-semibold">
+                        {SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType}{" "}
+                        <span className="text-base font-normal text-gray-600">
+                          · {mp.lineup?.name ?? "—"}
+                          {mp.lineup?.code && (
+                            <span className="ml-1 text-sm text-gray-400">
+                              ({mp.lineup.code})
+                            </span>
+                          )}
+                        </span>
+                      </h3>
+                      {mp.mealTemplate && (
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          템플릿: {mp.mealTemplate.name}
+                        </p>
+                      )}
+                      {mp.note && (
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          비고: {mp.note}
+                        </p>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -487,7 +609,7 @@ export default function MealPlansPage() {
                         setDeleteTarget({
                           type: "meal",
                           id: mp.id,
-                          name: SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType,
+                          name: `${SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType} · ${mp.lineup?.name ?? ""}`,
                         })
                       }
                     >
@@ -497,17 +619,19 @@ export default function MealPlansPage() {
 
                   {/* 슬롯 테이블 */}
                   {mp.slots.length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-400">
+                    <p className="mt-3 text-sm text-gray-400">
                       배정된 슬롯이 없습니다.
                     </p>
                   ) : (
-                    <Table className="mt-2">
+                    <Table className="mt-3">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[60px]">순서</TableHead>
-                          <TableHead>레시피</TableHead>
-                          <TableHead className="w-[80px] text-center">
-                            인원
+                          <TableHead className="w-[100px]">종류</TableHead>
+                          <TableHead>내용</TableHead>
+                          <TableHead className="w-[120px]">생산라인</TableHead>
+                          <TableHead className="w-[80px] text-right">
+                            수량
                           </TableHead>
                           <TableHead className="w-[60px]" />
                         </TableRow>
@@ -516,14 +640,65 @@ export default function MealPlansPage() {
                         {mp.slots.map((slot) => (
                           <TableRow key={slot.id}>
                             <TableCell className="text-center">
-                              {slot.slotIndex + 1}
+                              {slot.sortOrder + 1}
                             </TableCell>
                             <TableCell>
-                              {slot.recipe?.name ?? (
-                                <span className="text-gray-400">미배정</span>
+                              {slot.kind === "CONTAINER" ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                  <Package className="h-3 w-3" /> 용기
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                  <Truck className="h-3 w-3" /> 직배송
+                                </span>
                               )}
                             </TableCell>
-                            <TableCell className="text-center">
+                            <TableCell>
+                              {slot.kind === "CONTAINER" ? (
+                                <div>
+                                  <div className="text-sm">
+                                    {slot.recipe?.name ?? (
+                                      <span className="text-gray-400">
+                                        레시피 미배정
+                                      </span>
+                                    )}
+                                  </div>
+                                  {slot.subsidiaryMaster && (
+                                    <div className="text-xs text-gray-500">
+                                      {slot.subsidiaryMaster.name}
+                                      {slot.containerSlotIndex !== null &&
+                                        ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="text-sm">
+                                    {slot.supplierItem?.productName ?? (
+                                      <span className="text-gray-400">
+                                        품목 미배정
+                                      </span>
+                                    )}
+                                  </div>
+                                  {slot.supplierItem?.supplier && (
+                                    <div className="text-xs text-gray-500">
+                                      {slot.supplierItem.supplier.name}
+                                      {slot.supplierItem.supplierItemCode &&
+                                        ` · ${slot.supplierItem.supplierItemCode}`}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {slot.note && (
+                                <div className="mt-0.5 text-xs text-gray-400">
+                                  {slot.note}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-gray-600">
+                              {slot.productionLine?.name ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
                               {slot.quantity}
                             </TableCell>
                             <TableCell className="text-right">
@@ -535,7 +710,7 @@ export default function MealPlansPage() {
                                   setDeleteTarget({
                                     type: "slot",
                                     id: slot.id,
-                                    name: `슬롯 ${slot.slotIndex + 1}`,
+                                    name: `슬롯 ${slot.sortOrder + 1}`,
                                   })
                                 }
                               >
@@ -548,17 +723,35 @@ export default function MealPlansPage() {
                     </Table>
                   )}
 
-                  {/* 악세서리 요약 */}
+                  {/* 부자재 */}
                   {mp.accessories.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {mp.accessories.map((acc) => (
-                        <span
-                          key={acc.id}
-                          className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-xs text-orange-700"
-                        >
-                          {acc.subsidiaryMaster.name} × {acc.quantity}
-                        </span>
-                      ))}
+                    <div className="mt-3 border-t pt-3">
+                      <p className="mb-2 text-xs font-semibold text-gray-600">
+                        부자재
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {mp.accessories.map((acc) => (
+                          <div
+                            key={acc.id}
+                            className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-orange-700"
+                          >
+                            <span className="font-medium">
+                              {acc.subsidiaryMaster.name}
+                            </span>
+                            <span className="text-orange-500">
+                              {CONSUMPTION_MODE_LABEL[acc.consumptionMode]}
+                              {acc.consumptionMode === "FIXED_QUANTITY" &&
+                                acc.fixedQuantity != null &&
+                                ` · ${acc.fixedQuantity}`}
+                            </span>
+                            {acc.required && (
+                              <span className="rounded bg-orange-200 px-1 text-[10px] text-orange-800">
+                                필수
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -576,7 +769,7 @@ export default function MealPlansPage() {
             <DialogHeader>
               <DialogTitle>식단 추가</DialogTitle>
               <DialogDescription>
-                식사 타입과 템플릿을 선택하세요.
+                같은 그룹 안에서 (식사타입, 라인업) 조합은 1개만 허용됩니다.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -584,7 +777,9 @@ export default function MealPlansPage() {
                 <Label>식사 타입</Label>
                 <Select
                   value={addMealSlotType}
-                  onValueChange={setAddMealSlotType}
+                  onValueChange={(v) =>
+                    setAddMealSlotType(v as MealPlanRow["slotType"])
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -594,20 +789,35 @@ export default function MealPlansPage() {
                     <SelectItem value="LUNCH">중식</SelectItem>
                     <SelectItem value="DINNER">석식</SelectItem>
                     <SelectItem value="SNACK">간식</SelectItem>
+                    <SelectItem value="EVENT">이벤트</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
+                <Label>라인업 ID</Label>
+                <Input
+                  placeholder="라인업 ID 입력"
+                  value={addMealLineupId}
+                  onChange={(e) => setAddMealLineupId(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  ※ Lineup Select UI는 다음 단계에서 제공됩니다. 현재는 ID를
+                  직접 입력하세요.
+                </p>
+              </div>
+              <div>
                 <Label>식단 템플릿 (선택)</Label>
                 <Select
-                  value={addMealTemplateId}
-                  onValueChange={setAddMealTemplateId}
+                  value={addMealTemplateId || "NONE"}
+                  onValueChange={(v) =>
+                    setAddMealTemplateId(v === "NONE" ? "" : v)
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="템플릿 선택" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">없음</SelectItem>
+                    <SelectItem value="NONE">없음</SelectItem>
                     {templateOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.name}
@@ -616,6 +826,14 @@ export default function MealPlansPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label>비고 (선택)</Label>
+                <Textarea
+                  rows={2}
+                  value={addMealNote}
+                  onChange={(e) => setAddMealNote(e.target.value)}
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
@@ -623,7 +841,12 @@ export default function MealPlansPage() {
                 >
                   취소
                 </Button>
-                <Button onClick={handleAddMeal} disabled={mealSaving}>
+                <Button
+                  onClick={handleAddMeal}
+                  disabled={
+                    mealSaving || !addMealSlotType || !addMealLineupId.trim()
+                  }
+                >
                   {mealSaving && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
@@ -634,7 +857,7 @@ export default function MealPlansPage() {
           </DialogContent>
         </Dialog>
 
-        {/* 상태 변경 다이얼로그 */}
+        {/* 상태 변경 */}
         <Dialog
           open={!!statusChangeTarget}
           onOpenChange={(open) => !open && setStatusChangeTarget(null)}
@@ -702,7 +925,7 @@ export default function MealPlansPage() {
   }
 
   // ══════════════════════════════════════
-  // 렌더링 — 목록 뷰
+  // 목록 뷰
   // ══════════════════════════════════════
 
   return (
@@ -710,8 +933,8 @@ export default function MealPlansPage() {
       <div>
         <h1 className="text-2xl font-bold">식단 계획</h1>
         <p className="text-sm text-gray-500">
-          라인업별·날짜별 식단 그룹을 관리합니다. 각 그룹 안에
-          조식/중식/석식/간식 식단을 구성할 수 있습니다.
+          날짜별 식단 그룹을 관리합니다. 각 그룹 안에 (식사타입 × 라인업) 조합
+          식단을 구성할 수 있습니다.
         </p>
       </div>
 
@@ -720,7 +943,7 @@ export default function MealPlansPage() {
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="라인업명으로 검색"
+            placeholder="비고로 검색"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
@@ -728,10 +951,8 @@ export default function MealPlansPage() {
           />
         </div>
         <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v === "ALL" ? "" : v);
-          }}
+          value={statusFilter || "ALL"}
+          onValueChange={(v) => setStatusFilter(v === "ALL" ? "" : v)}
         >
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="상태" />
@@ -759,16 +980,17 @@ export default function MealPlansPage() {
           <TableHeader>
             <TableRow>
               <TableHead>날짜</TableHead>
-              <TableHead>라인업</TableHead>
+              <TableHead>비고</TableHead>
               <TableHead className="w-[80px] text-center">상태</TableHead>
               <TableHead className="w-[80px] text-center">식단 수</TableHead>
+              <TableHead className="w-[80px] text-center">식수 행</TableHead>
               <TableHead className="w-[140px] text-right">관리</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-gray-500">
                     <Loader2 className="h-5 w-5 animate-spin" /> 불러오는 중...
                   </div>
@@ -777,7 +999,7 @@ export default function MealPlansPage() {
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="h-24 text-center text-gray-500"
                 >
                   {search.trim()
@@ -796,12 +1018,14 @@ export default function MealPlansPage() {
                       weekday: "short",
                     })}
                   </TableCell>
-                  <TableCell>
-                    {item.lineup.name} ({item.lineup.code})
+                  <TableCell className="max-w-[300px] truncate text-sm text-gray-600">
+                    {item.note ?? <span className="text-gray-300">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[item.status] ?? ""}`}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        STATUS_COLOR[item.status] ?? ""
+                      }`}
                     >
                       {STATUS_LABEL[item.status] ?? item.status}
                     </span>
@@ -809,6 +1033,11 @@ export default function MealPlansPage() {
                   <TableCell className="text-center">
                     <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                       {item._count?.mealPlans ?? 0}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      {item._count?.mealCounts ?? 0}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
@@ -830,6 +1059,8 @@ export default function MealPlansPage() {
                         onClick={() => {
                           setCopySource(item);
                           setCopyDate("");
+                          setCopyAccessories(true);
+                          setCopyMealCounts(false);
                         }}
                       >
                         <Copy className="h-3.5 w-3.5 text-blue-500" />
@@ -843,7 +1074,9 @@ export default function MealPlansPage() {
                           setDeleteTarget({
                             type: "group",
                             id: item.id,
-                            name: `${new Date(item.planDate).toLocaleDateString("ko-KR")} ${item.lineup.name}`,
+                            name: new Date(item.planDate).toLocaleDateString(
+                              "ko-KR",
+                            ),
                           })
                         }
                       >
@@ -895,7 +1128,10 @@ export default function MealPlansPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>식단 그룹 생성</DialogTitle>
-            <DialogDescription>날짜와 라인업을 선택하세요.</DialogDescription>
+            <DialogDescription>
+              날짜와 비고를 입력하세요. 라인업은 그룹 안의 각 식단마다 별도로
+              지정합니다.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -907,16 +1143,13 @@ export default function MealPlansPage() {
               />
             </div>
             <div>
-              <Label>라인업 ID</Label>
-              <Input
-                placeholder="라인업 ID 입력 (추후 Select 전환)"
-                value={formLineupId}
-                onChange={(e) => setFormLineupId(e.target.value)}
+              <Label>비고 (선택)</Label>
+              <Textarea
+                rows={2}
+                placeholder="예) 중식 2라인업 / 석식 1라인업"
+                value={formNote}
+                onChange={(e) => setFormNote(e.target.value)}
               />
-              <p className="mt-1 text-xs text-gray-400">
-                ※ Lineup 모델은 Sprint 6에서 구현 예정. 현재는 ID를 직접
-                입력합니다.
-              </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button
@@ -927,7 +1160,7 @@ export default function MealPlansPage() {
               </Button>
               <Button
                 onClick={handleCreateGroup}
-                disabled={formSaving || !formPlanDate || !formLineupId}
+                disabled={formSaving || !formPlanDate}
               >
                 {formSaving && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -944,13 +1177,13 @@ export default function MealPlansPage() {
         open={!!copySource}
         onOpenChange={(open) => !open && setCopySource(null)}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>식단 복사</DialogTitle>
             <DialogDescription>
               {copySource &&
-                `${new Date(copySource.planDate).toLocaleDateString("ko-KR")} ${copySource.lineup.name}`}
-              의 식단을 복사합니다.
+                new Date(copySource.planDate).toLocaleDateString("ko-KR")}{" "}
+              식단을 다른 날짜로 복사합니다.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -961,6 +1194,29 @@ export default function MealPlansPage() {
                 value={copyDate}
                 onChange={(e) => setCopyDate(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>복사 옵션</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="copy-accessories"
+                  checked={copyAccessories}
+                  onCheckedChange={(v) => setCopyAccessories(v === true)}
+                />
+                <label htmlFor="copy-accessories" className="text-sm">
+                  부자재 복사 (권장)
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="copy-meal-counts"
+                  checked={copyMealCounts}
+                  onCheckedChange={(v) => setCopyMealCounts(v === true)}
+                />
+                <label htmlFor="copy-meal-counts" className="text-sm">
+                  식수도 복사
+                </label>
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCopySource(null)}>
@@ -990,7 +1246,7 @@ export default function MealPlansPage() {
             <AlertDialogTitle>삭제 확인</AlertDialogTitle>
             <AlertDialogDescription>
               &ldquo;{deleteTarget?.name}&rdquo;을(를) 삭제하시겠습니까? 하위
-              식단과 슬롯이 모두 삭제됩니다.
+              식단/슬롯/부자재/식수가 모두 삭제됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
