@@ -687,147 +687,167 @@ async function main() {
   console.log("✅ MealPlanGroup: 2개 생성");
 
   // ---- 22-2. MealPlan (식사타입 × 라인업) ----
+  // ★ Phase 5-R Step 1.2: @@unique 제거 후 partial unique index 사용으로
+  //    upsert(복합키) 불가 → findFirst + 조건부 create 패턴으로 전환.
+  //    findFirst에는 deletedAt: null 조건을 포함해 soft-deleted 행과 충돌 방지.
+
   // groupA: LUNCH × HOME-A, LUNCH × FRESH-B, DINNER × HOME-A
-  const planA_LunchHome = await prisma.mealPlan.upsert({
+  let planA_LunchHome = await prisma.mealPlan.findFirst({
     where: {
-      mealPlanGroupId_slotType_lineupId: {
-        mealPlanGroupId: groupA.id,
-        slotType: "LUNCH",
-        lineupId: lineupHome.id,
-      },
-    },
-    update: {},
-    create: {
       mealPlanGroupId: groupA.id,
       slotType: "LUNCH",
       lineupId: lineupHome.id,
-      mealTemplateId: mealTemplate.id,
-      note: "점심 가정간편식",
+      deletedAt: null,
     },
   });
-
-  const planA_LunchFresh = await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!planA_LunchHome) {
+    planA_LunchHome = await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupA.id,
         slotType: "LUNCH",
-        lineupId: lineupFresh.id,
+        lineupId: lineupHome.id,
+        mealTemplateId: mealTemplate.id,
+        note: "점심 가정간편식",
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  let planA_LunchFresh = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupA.id,
       slotType: "LUNCH",
       lineupId: lineupFresh.id,
-      mealTemplateId: mealTemplate.id,
-      note: "점심 신선식품",
+      deletedAt: null,
     },
   });
-
-  const planA_DinnerHome = await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!planA_LunchFresh) {
+    planA_LunchFresh = await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupA.id,
-        slotType: "DINNER",
-        lineupId: lineupHome.id,
+        slotType: "LUNCH",
+        lineupId: lineupFresh.id,
+        mealTemplateId: mealTemplate.id,
+        note: "점심 신선식품",
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  let planA_DinnerHome = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupA.id,
       slotType: "DINNER",
       lineupId: lineupHome.id,
-      mealTemplateId: mealTemplate.id,
-      note: "석식 가정간편식",
+      deletedAt: null,
     },
   });
+  if (!planA_DinnerHome) {
+    planA_DinnerHome = await prisma.mealPlan.create({
+      data: {
+        mealPlanGroupId: groupA.id,
+        slotType: "DINNER",
+        lineupId: lineupHome.id,
+        mealTemplateId: mealTemplate.id,
+        note: "석식 가정간편식",
+      },
+    });
+  }
 
   // groupB: LUNCH × HOME-A, LUNCH × FRESH-B, DINNER × HOME-A, DINNER × FRESH-B, EVENT × HOME-A
-  const planB_LunchHome = await prisma.mealPlan.upsert({
+  let planB_LunchHome = await prisma.mealPlan.findFirst({
     where: {
-      mealPlanGroupId_slotType_lineupId: {
-        mealPlanGroupId: groupB.id,
-        slotType: "LUNCH",
-        lineupId: lineupHome.id,
-      },
-    },
-    update: {},
-    create: {
       mealPlanGroupId: groupB.id,
       slotType: "LUNCH",
       lineupId: lineupHome.id,
-      mealTemplateId: mealTemplate.id,
+      deletedAt: null,
     },
   });
-
-  await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!planB_LunchHome) {
+    planB_LunchHome = await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupB.id,
         slotType: "LUNCH",
-        lineupId: lineupFresh.id,
+        lineupId: lineupHome.id,
+        mealTemplateId: mealTemplate.id,
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  const existingPlanB_LunchFresh = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupB.id,
       slotType: "LUNCH",
       lineupId: lineupFresh.id,
-      mealTemplateId: mealTemplate.id,
+      deletedAt: null,
     },
   });
-
-  await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!existingPlanB_LunchFresh) {
+    await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupB.id,
-        slotType: "DINNER",
-        lineupId: lineupHome.id,
+        slotType: "LUNCH",
+        lineupId: lineupFresh.id,
+        mealTemplateId: mealTemplate.id,
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  const existingPlanB_DinnerHome = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupB.id,
       slotType: "DINNER",
       lineupId: lineupHome.id,
-      mealTemplateId: mealTemplate.id,
+      deletedAt: null,
     },
   });
-
-  await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!existingPlanB_DinnerHome) {
+    await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupB.id,
         slotType: "DINNER",
-        lineupId: lineupFresh.id,
+        lineupId: lineupHome.id,
+        mealTemplateId: mealTemplate.id,
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  const existingPlanB_DinnerFresh = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupB.id,
       slotType: "DINNER",
       lineupId: lineupFresh.id,
-      mealTemplateId: mealTemplate.id,
+      deletedAt: null,
     },
   });
-
-  const planB_EventHome = await prisma.mealPlan.upsert({
-    where: {
-      mealPlanGroupId_slotType_lineupId: {
+  if (!existingPlanB_DinnerFresh) {
+    await prisma.mealPlan.create({
+      data: {
         mealPlanGroupId: groupB.id,
-        slotType: "EVENT",
-        lineupId: lineupHome.id,
+        slotType: "DINNER",
+        lineupId: lineupFresh.id,
+        mealTemplateId: mealTemplate.id,
       },
-    },
-    update: {},
-    create: {
+    });
+  }
+
+  let planB_EventHome = await prisma.mealPlan.findFirst({
+    where: {
       mealPlanGroupId: groupB.id,
       slotType: "EVENT",
       lineupId: lineupHome.id,
-      // EVENT는 템플릿 없이 DIRECT 슬롯만 사용
-      note: "제휴 이벤트: 공급업체 완제품 직접 배정",
+      deletedAt: null,
     },
   });
+  if (!planB_EventHome) {
+    planB_EventHome = await prisma.mealPlan.create({
+      data: {
+        mealPlanGroupId: groupB.id,
+        slotType: "EVENT",
+        lineupId: lineupHome.id,
+        // EVENT는 템플릿 없이 DIRECT 슬롯만 사용
+        note: "제휴 이벤트: 공급업체 완제품 직접 배정",
+      },
+    });
+  }
   console.log("✅ MealPlan: 8개 생성 (groupA: 3, groupB: 5)");
 
   // ---- 22-3. MealPlanSlot ----

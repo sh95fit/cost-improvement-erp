@@ -774,15 +774,15 @@ export default function MealPlansPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label>식사 타입</Label>
+              <div className="space-y-2">
+                <Label htmlFor="add-meal-slot-type">식사 타입</Label>
                 <Select
                   value={addMealSlotType}
                   onValueChange={(v) =>
                     setAddMealSlotType(v as MealPlanRow["slotType"])
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="add-meal-slot-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -801,15 +801,15 @@ export default function MealPlansPage() {
                   onChange={(lineupId) => setAddMealLineupId(lineupId)}
                 />
               </div>
-              <div>
-                <Label>식단 템플릿 (선택)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="add-meal-template">식단 템플릿 (선택)</Label>
                 <Select
                   value={addMealTemplateId || "NONE"}
                   onValueChange={(v) =>
                     setAddMealTemplateId(v === "NONE" ? "" : v)
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="add-meal-template">
                     <SelectValue placeholder="템플릿 선택" />
                   </SelectTrigger>
                   <SelectContent>
@@ -822,8 +822,8 @@ export default function MealPlansPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>비고 (선택)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="add-meal-note">비고 (선택)</Label>
                 <Textarea
                   rows={2}
                   value={addMealNote}
@@ -863,20 +863,23 @@ export default function MealPlansPage() {
               <DialogTitle>상태 변경</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Select value={newStatus} onValueChange={setNewStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="상태 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(STATUS_LABEL)
-                    .filter(([k]) => k !== statusChangeTarget?.currentStatus)
-                    .map(([k, v]) => (
-                      <SelectItem key={k} value={k}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label htmlFor="new-status">새 상태</Label> 
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger id="new-status">
+                    <SelectValue placeholder="상태 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(STATUS_LABEL)
+                      .filter(([k]) => k !== statusChangeTarget?.currentStatus)
+                      .map(([k, v]) => (
+                        <SelectItem key={k} value={k}>
+                          {v}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
@@ -1130,17 +1133,19 @@ export default function MealPlansPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>날짜</Label>
+            <div className="space-y-2">
+              <Label htmlFor="form-plan-date">날짜</Label>
               <Input
+                id="form-plan-date"
                 type="date"
                 value={formPlanDate}
                 onChange={(e) => setFormPlanDate(e.target.value)}
               />
             </div>
-            <div>
-              <Label>비고 (선택)</Label>
+            <div className="space-y-2">
+              <Label htmlFor="form-note">비고 (선택)</Label>
               <Textarea
+                id="form-note"
                 rows={2}
                 placeholder="예) 중식 2라인업 / 석식 1라인업"
                 value={formNote}
@@ -1183,9 +1188,10 @@ export default function MealPlansPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>복사 대상 날짜</Label>
+            <div className="space-y-2">
+              <Label htmlFor="copy-date">복사 대상 날짜</Label>
               <Input
+                id="copy-date"
                 type="date"
                 value={copyDate}
                 onChange={(e) => setCopyDate(e.target.value)}

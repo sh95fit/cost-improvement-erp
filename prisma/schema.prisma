@@ -968,7 +968,11 @@ model MealPlan {
   slots         MealPlanSlot[]
   accessories   MealPlanAccessory[]
 
-  @@unique([mealPlanGroupId, slotType, lineupId])
+  // ★ Phase 5-R Step 1.2: soft delete 데이터 보존을 위해 일반 unique 제거.
+  //    migration 20260526030000_phase5r_step1_2_meal_plan_partial_unique 에서
+  //    deleted_at IS NULL 조건의 partial unique index로 대체함.
+  //    아래 라인은 의도적으로 주석 처리 — 절대 해제하지 말 것.
+  // @@unique([mealPlanGroupId, slotType, lineupId])
   @@index([mealPlanGroupId])
   @@index([lineupId])
   @@index([mealTemplateId])
