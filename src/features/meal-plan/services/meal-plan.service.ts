@@ -39,7 +39,7 @@ const SLOT_INCLUDE = {
     },
   },
   productionLine: { select: { id: true, name: true, code: true } },
-} as const;
+} satisfies Prisma.MealPlanSlotInclude;
 
 const MEAL_PLAN_INCLUDE = {
   lineup: { select: { id: true, name: true, code: true } },
@@ -47,32 +47,41 @@ const MEAL_PLAN_INCLUDE = {
   slots: {
     where: { deletedAt: null },
     include: SLOT_INCLUDE,
-    orderBy: { sortOrder: "asc" as const },
+    orderBy: { sortOrder: "asc" } as Prisma.MealPlanSlotOrderByWithRelationInput,
   },
   accessories: {
     where: { deletedAt: null },
     include: {
       subsidiaryMaster: { select: { id: true, name: true, code: true } },
     },
+    orderBy: { createdAt: "asc" } as Prisma.MealPlanAccessoryOrderByWithRelationInput,
   },
-} as const;
+} satisfies Prisma.MealPlanInclude;
+
+const GROUP_LIST_INCLUDE = {
+  _count: { select: { mealPlans: true, mealCounts: true } },
+} satisfies Prisma.MealPlanGroupInclude;
 
 const GROUP_DETAIL_INCLUDE = {
   mealPlans: {
     where: { deletedAt: null },
     include: MEAL_PLAN_INCLUDE,
     orderBy: [
-      { slotType: "asc" as const },
-      { lineup: { name: "asc" as const } },
-    ],
+      { slotType: "asc" },
+      { lineup: { name: "asc" } },
+    ] as Prisma.MealPlanOrderByWithRelationInput[],
   },
   mealCounts: {
     where: { deletedAt: null },
     include: {
       lineup: { select: { id: true, name: true, code: true } },
     },
+    orderBy: [
+      { slotType: "asc" },
+      { lineup: { name: "asc" } },
+    ] as Prisma.MealCountOrderByWithRelationInput[],
   },
-} as const;
+} satisfies Prisma.MealPlanGroupInclude;
 
 // ══════════════════════════════════════════════════════════════
 // Helpers
@@ -85,7 +94,7 @@ const GROUP_DETAIL_INCLUDE = {
 async function assertLineupBelongsToCompany(
   tx: Prisma.TransactionClient | typeof prisma,
   companyId: string,
-  lineupId: string
+  lineupId: string,
 ) {
   const lineup = await tx.lineup.findFirst({
     where: { id: lineupId, companyId, deletedAt: null },
@@ -102,7 +111,7 @@ async function assertLineupBelongsToCompany(
 async function assertMealPlanInCompany(
   tx: Prisma.TransactionClient | typeof prisma,
   companyId: string,
-  mealPlanId: string
+  mealPlanId: string,
 ) {
   const plan = await tx.mealPlan.findFirst({
     where: {
@@ -122,7 +131,7 @@ async function assertMealPlanInCompany(
 
 export async function getMealPlanGroups(
   companyId: string,
-  query: MealPlanGroupListQuery
+  query: MealPlanGroupListQuery,
 ) {
   const {
     page,
@@ -147,8 +156,10 @@ export async function getMealPlanGroups(
   // 날짜 범위 필터
   if (dateFrom || dateTo) {
     where.planDate = {};
-    if (dateFrom) (where.planDate as Prisma.DateTimeFilter).gte = new Date(dateFrom);
-    if (dateTo) (where.planDate as Prisma.DateTimeFilter).lte = new Date(dateTo);
+    if (dateFrom)
+      (where.planDate as Prisma.DateTimeFilter).gte = new Date(dateFrom);
+    if (dateTo)
+      (where.planDate as Prisma.DateTimeFilter).lte = new Date(dateTo);
   }
 
   // 검색: note에 대한 부분 일치
@@ -189,7 +200,7 @@ export async function getMealPlanGroupById(companyId: string, id: string) {
 
 export async function createMealPlanGroup(
   companyId: string,
-  input: CreateMealPlanGroupInput
+  input: CreateMealPlanGroupInput,
 ) {
   try {
     return await prisma.mealPlanGroup.create({
@@ -215,7 +226,7 @@ export async function createMealPlanGroup(
 export async function updateMealPlanGroup(
   companyId: string,
   id: string,
-  input: UpdateMealPlanGroupInput
+  input: UpdateMealPlanGroupInput,
 ) {
   const existing = await prisma.mealPlanGroup.findFirst({
     where: { id, companyId, deletedAt: null },
@@ -291,7 +302,7 @@ export async function deleteMealPlanGroup(companyId: string, id: string) {
  */
 export async function copyMealPlanGroup(
   companyId: string,
-  input: CopyMealPlanGroupInput
+  input: CopyMealPlanGroupInput,
 ) {
   const source = await prisma.mealPlanGroup.findFirst({
     where: { id: input.sourceMealPlanGroupId, companyId, deletedAt: null },
@@ -356,6 +367,7 @@ export async function copyMealPlanGroup(
               fixedQuantity: a.fixedQuantity,
               required: a.required,
               note: a.note,
+              quantity: a.quantity, // ← 추가 (Prisma 모델에서 required)
             })),
           });
         }
