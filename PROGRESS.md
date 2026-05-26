@@ -753,7 +753,7 @@
   - deleteMealPlanSlotAction → 삭제 handleConfirmDelete(slot) ✅
   - getMealTemplatesAction → 템플릿 옵션 loadTemplateOptions ✅
 
-### Phase 5-R — MealPlan 구조 재정의 보강 작업 ⬜
+### Phase 5-R — MealPlan 구조 재정의 보강 작업 🔄 (진행 중)
 - **상태**: Sprint 2 내부 신규 보강 작업
 - **목적**: 기존 Sprint 2 계획과 완료 이력을 삭제하지 않고 유지한 상태에서, Phase 3~5에서 구현된 MealPlan 도메인 구조를 후속 Phase 6~11 및 Sprint 3~5와 안정적으로 연결할 수 있도록 재정렬
 - **배경**:
@@ -764,6 +764,42 @@
   - 본 작업은 기존 Sprint 2 계획을 대체하지 않음
   - 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 그대로 유지함
   - 본 작업 완료 후 Sprint 2 원래 계획을 재개함
+- **구조 재정의 공식 결정 사항**:
+  - `MealPlanGroup`: 날짜 중심 그룹으로 단순화, `lineupId` 제거, `note`/`deletedAt` 추가, 유니크 `(companyId, planDate)`
+  - `MealPlan`: 식사타입 × lineup 조합으로 재정의, `lineupId`(필수) + `mealTemplateId`(선택) 관계 추가, 유니크 `(mealPlanGroupId, slotType, lineupId)` — 라인업 N개 자유 확장 가능
+  - `MealPlanSlot`: 실행 배정 단위로 확장, `slotIndex` → `sortOrder`, `kind: SlotKind` discriminator 추가, `subsidiaryMasterId`/`containerSlotIndex`/`supplierItemId`/`productionLineId`/`recipeBomId` 관계 추가, 유니크 제거 (공장 분할 허용)
+  - `MealCount`: 라인업별 식수 독립 추적, `lineupId` 추가, 유니크 `(mealPlanGroupId, slotType, lineupId)`
+  - 신규 enum: `SlotKind { CONTAINER, DIRECT }` (케이스 분류), `MealSlotType.EVENT` (제휴이벤트)
+  - 안정성 정책: DB는 nullable 허용, 애플리케이션 레벨 (Zod + service)에서 `kind`에 따라 필수 필드 검증
+
+#### Step 1 — schema.prisma 재설계 + 마이그레이션 ✅
+- **날짜**: 2026-05-26
+- **커밋**: `688633c`
+- **변경 파일**:
+  - `prisma/schema.prisma` — MealPlanGroup/MealPlan/MealPlanSlot/MealCount 재설계, `MealSlotType.EVENT` 추가, `SlotKind` enum 신규, 역참조 관계 정리 (Lineup, MealTemplate, SubsidiaryMaster, Recipe, RecipeBOM, SupplierItem, ProductionLine)
+  - `prisma/migrations/<timestamp>_phase5r_step1_meal_plan_restructure/migration.sql` — DB 스키마 마이그레이션
+- **변경 내용**:
+  - 신규 enum: `SlotKind { CONTAINER, DIRECT }` 추가
+  - `MealSlotType` enum에 `EVENT` 값 추가
+  - `MealPlanGroup`: `lineupId` 제거, `note`/`deletedAt` 추가, 유니크 `(companyId, planDate)` 로 단순화
+  - `MealPlan`: `lineupId`(필수) + `mealTemplateId`(선택) FK 관계 추가, `note`/`deletedAt` 추가, 유니크 `(mealPlanGroupId, slotType, lineupId)` 로 변경
+  - `MealPlanSlot`: `slotIndex` → `sortOrder`, `kind: SlotKind` discriminator 추가, `subsidiaryMasterId`/`containerSlotIndex`/`supplierItemId`/`productionLineId`/`recipeBomId` 관계 추가, 기존 `@@unique([mealPlanId, slotIndex])` 제거 (공장 분할 허용), `deletedAt` 추가, 인덱스 7개로 확장
+  - `MealCount`: `lineupId`(필수) 추가, 유니크 `(mealPlanGroupId, slotType, lineupId)` 로 변경
+- **검증**: `prisma format`, `prisma validate`, `prisma migrate dev --name phase5r_step1_meal_plan_restructure`, `prisma generate` 성공
+- **알려진 상태** (의도된 보류):
+  - `npx tsc --noEmit` 17개 에러 (`src/features/meal-plan/services/meal-plan.service.ts`): `lineupId` 추가·`slotIndex`→`sortOrder` 등 schema 변경으로 인한 service 시그니처 불일치
+  - 위 에러는 Step 3 (Zod) → Step 4 (Service) → Step 5 (Action) 에서 순차적으로 해소 예정
+  - Step 1 단계 종료 시점의 tsc 에러는 정상이며, Step 5 완료 시점에 0 errors로 복귀
+- **계획 대비 변경**: 없음 (이전 합의된 변경 ①~⑦ 그대로 적용)
+- **다음 단계**: Step 2 — seed.ts 식단 샘플 추가
+
+#### Step 2 — seed.ts 식단 샘플 추가 ⬜
+#### Step 3 — meal-plan Zod 스키마 재작성 ⬜
+#### Step 4 — meal-plan.service.ts 재작성 ⬜
+#### Step 5 — meal-plan.action.ts 재작성 ⬜
+#### Step 6 — meal-plan.service.test.ts 재작성 + 전체 테스트 통과 ⬜
+#### Step 7 — /meal-plans/page.tsx UI 재구성 ⬜
+#### Step 8 — 자동생성 연결 계약 문서화 + Phase 5-R 종합 검증 ⬜
 
 #### Phase 5-R1 — 구조 재정의 기준 문서 확정 ⬜
 - **작업 목록**:
