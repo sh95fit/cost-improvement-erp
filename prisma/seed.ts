@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
@@ -76,7 +77,8 @@ async function main() {
   // ---- 2-1. PermissionSetItems ----
   const sysAdminResources = [
     "company", "user", "material", "subsidiary", "supplier",
-    "recipe", "bom", "meal-plan", "inventory", "purchasing",
+    "recipe", "bom", "meal-plan", "meal-template", "lineup",
+    "inventory", "purchasing",
     "shipping", "cost", "month-end", "notification", "audit-log",
   ];
   const sysAdminActions = ["CREATE", "READ", "UPDATE", "DELETE", "APPROVE", "EXPORT"] as const;

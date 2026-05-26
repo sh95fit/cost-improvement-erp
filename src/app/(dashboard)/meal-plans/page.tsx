@@ -67,6 +67,7 @@ import {
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
+import { LineupSelect } from "@/components/lineup/lineup-select";
 
 // ══════════════════════════════════════════════════════════════
 // 타입 (Phase 5-R v2 도메인 — service의 GROUP_DETAIL_INCLUDE 응답에 맞춤)
@@ -793,17 +794,12 @@ export default function MealPlansPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>라인업 ID</Label>
-                <Input
-                  placeholder="라인업 ID 입력"
+              <div className="space-y-2">
+                <Label>라인업 *</Label>
+                <LineupSelect
                   value={addMealLineupId}
-                  onChange={(e) => setAddMealLineupId(e.target.value)}
+                  onChange={(lineupId) => setAddMealLineupId(lineupId)}
                 />
-                <p className="mt-1 text-xs text-gray-400">
-                  ※ Lineup Select UI는 다음 단계에서 제공됩니다. 현재는 ID를
-                  직접 입력하세요.
-                </p>
               </div>
               <div>
                 <Label>식단 템플릿 (선택)</Label>
