@@ -644,6 +644,365 @@ async function main() {
   }
   console.log("✅ NotificationRules: 3개");
 
+
+  // ---- 22. MealPlan 샘플 ---- // ★ Phase 5-R: 구조 검증용 샘플
+  // 기존 ProductionLine ID 조회 (시드 ID는 cuid라 이름으로 lookup)
+  const lineA = await prisma.productionLine.findFirst({
+    where: { companyId: company.id, name: "A라인 (한식)" },
+  });
+  const lineB = await prisma.productionLine.findFirst({
+    where: { companyId: company.id, name: "B라인 (양식)" },
+  });
+  const lineD = await prisma.productionLine.findFirst({
+    where: { companyId: company.id, name: "D라인 (경기)" },
+  });
+  if (!lineA || !lineB || !lineD) {
+    throw new Error("ProductionLine 조회 실패: A/B/D 라인이 존재해야 합니다.");
+  }
+
+  // ---- 22-1. MealPlanGroup (날짜 그룹 2개) ----
+  const groupA = await prisma.mealPlanGroup.upsert({
+    where: { companyId_planDate: { companyId: company.id, planDate: new Date("2026-06-01") } },
+    update: {},
+    create: {
+      companyId: company.id,
+      planDate: new Date("2026-06-01"),
+      status: "DRAFT",
+      note: "케이스1: 점심 2라인업 / 석식 1라인업",
+    },
+  });
+
+  const groupB = await prisma.mealPlanGroup.upsert({
+    where: { companyId_planDate: { companyId: company.id, planDate: new Date("2026-06-02") } },
+    update: {},
+    create: {
+      companyId: company.id,
+      planDate: new Date("2026-06-02"),
+      status: "CONFIRMED",
+      note: "케이스3: 점심·석식 모두 2라인업 + 제휴이벤트",
+    },
+  });
+  console.log("✅ MealPlanGroup: 2개 생성");
+
+  // ---- 22-2. MealPlan (식사타입 × 라인업) ----
+  // groupA: LUNCH × HOME-A, LUNCH × FRESH-B, DINNER × HOME-A
+  const planA_LunchHome = await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupA.id,
+        slotType: "LUNCH",
+        lineupId: lineupHome.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupA.id,
+      slotType: "LUNCH",
+      lineupId: lineupHome.id,
+      mealTemplateId: mealTemplate.id,
+      note: "점심 가정간편식",
+    },
+  });
+
+  const planA_LunchFresh = await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupA.id,
+        slotType: "LUNCH",
+        lineupId: lineupFresh.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupA.id,
+      slotType: "LUNCH",
+      lineupId: lineupFresh.id,
+      mealTemplateId: mealTemplate.id,
+      note: "점심 신선식품",
+    },
+  });
+
+  const planA_DinnerHome = await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupA.id,
+        slotType: "DINNER",
+        lineupId: lineupHome.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupA.id,
+      slotType: "DINNER",
+      lineupId: lineupHome.id,
+      mealTemplateId: mealTemplate.id,
+      note: "석식 가정간편식",
+    },
+  });
+
+  // groupB: LUNCH × HOME-A, LUNCH × FRESH-B, DINNER × HOME-A, DINNER × FRESH-B, EVENT × HOME-A
+  const planB_LunchHome = await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupB.id,
+        slotType: "LUNCH",
+        lineupId: lineupHome.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupB.id,
+      slotType: "LUNCH",
+      lineupId: lineupHome.id,
+      mealTemplateId: mealTemplate.id,
+    },
+  });
+
+  await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupB.id,
+        slotType: "LUNCH",
+        lineupId: lineupFresh.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupB.id,
+      slotType: "LUNCH",
+      lineupId: lineupFresh.id,
+      mealTemplateId: mealTemplate.id,
+    },
+  });
+
+  await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupB.id,
+        slotType: "DINNER",
+        lineupId: lineupHome.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupB.id,
+      slotType: "DINNER",
+      lineupId: lineupHome.id,
+      mealTemplateId: mealTemplate.id,
+    },
+  });
+
+  await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupB.id,
+        slotType: "DINNER",
+        lineupId: lineupFresh.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupB.id,
+      slotType: "DINNER",
+      lineupId: lineupFresh.id,
+      mealTemplateId: mealTemplate.id,
+    },
+  });
+
+  const planB_EventHome = await prisma.mealPlan.upsert({
+    where: {
+      mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId: groupB.id,
+        slotType: "EVENT",
+        lineupId: lineupHome.id,
+      },
+    },
+    update: {},
+    create: {
+      mealPlanGroupId: groupB.id,
+      slotType: "EVENT",
+      lineupId: lineupHome.id,
+      // EVENT는 템플릿 없이 DIRECT 슬롯만 사용
+      note: "제휴 이벤트: 공급업체 완제품 직접 배정",
+    },
+  });
+  console.log("✅ MealPlan: 8개 생성 (groupA: 3, groupB: 5)");
+
+  // ---- 22-3. MealPlanSlot ----
+  // planA_LunchHome: 공장 분할 케이스 (밥 2000 A라인 + 밥 1000 D라인 + 메인 3000 A라인)
+  // 기존 슬롯 정리 후 재삽입 (deletedAt 없는 것만 카운트)
+  const existingSlotsLunchHome = await prisma.mealPlanSlot.count({
+    where: { mealPlanId: planA_LunchHome.id, deletedAt: null },
+  });
+  if (existingSlotsLunchHome === 0) {
+    await prisma.mealPlanSlot.createMany({
+      data: [
+        {
+          mealPlanId: planA_LunchHome.id,
+          kind: "CONTAINER",
+          sortOrder: 0,
+          subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+          containerSlotIndex: 0,
+          recipeId: recipeA.id,
+          recipeBomId: recipeBomA.id,
+          productionLineId: lineA.id,
+          quantity: 2000,
+          note: "밥 (A라인)",
+        },
+        {
+          mealPlanId: planA_LunchHome.id,
+          kind: "CONTAINER",
+          sortOrder: 1,
+          subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+          containerSlotIndex: 0,
+          recipeId: recipeA.id,
+          recipeBomId: recipeBomA.id,
+          productionLineId: lineD.id,
+          quantity: 1000,
+          note: "밥 (D라인 공장 분할)",
+        },
+        {
+          mealPlanId: planA_LunchHome.id,
+          kind: "CONTAINER",
+          sortOrder: 2,
+          subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+          containerSlotIndex: 1,
+          recipeId: recipeA.id,
+          recipeBomId: recipeBomA.id,
+          productionLineId: lineA.id,
+          quantity: 3000,
+          note: "메인반찬 (A라인)",
+        },
+      ],
+    });
+  }
+
+  // planA_LunchFresh: 단일 공장 케이스 (메인 1000 B라인)
+  const existingSlotsLunchFresh = await prisma.mealPlanSlot.count({
+    where: { mealPlanId: planA_LunchFresh.id, deletedAt: null },
+  });
+  if (existingSlotsLunchFresh === 0) {
+    await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId: planA_LunchFresh.id,
+        kind: "CONTAINER",
+        sortOrder: 0,
+        subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+        containerSlotIndex: 1,
+        recipeId: recipeA.id,
+        recipeBomId: recipeBomA.id,
+        productionLineId: lineB.id,
+        quantity: 1000,
+        note: "메인반찬 (B라인)",
+      },
+    });
+  }
+
+  // planA_DinnerHome: 만두국 (B라인)
+  const existingSlotsDinnerHome = await prisma.mealPlanSlot.count({
+    where: { mealPlanId: planA_DinnerHome.id, deletedAt: null },
+  });
+  if (existingSlotsDinnerHome === 0) {
+    await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId: planA_DinnerHome.id,
+        kind: "CONTAINER",
+        sortOrder: 0,
+        subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+        containerSlotIndex: 1,
+        recipeId: recipeB.id,
+        productionLineId: lineB.id,
+        quantity: 2500,
+        note: "만두국 (B라인)",
+      },
+    });
+  }
+
+  // planB_LunchHome: 기본 슬롯 (테스트용 1행)
+  const existingSlotsBLunchHome = await prisma.mealPlanSlot.count({
+    where: { mealPlanId: planB_LunchHome.id, deletedAt: null },
+  });
+  if (existingSlotsBLunchHome === 0) {
+    await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId: planB_LunchHome.id,
+        kind: "CONTAINER",
+        sortOrder: 0,
+        subsidiaryMasterId: subsidiaryRecords["SUB-001"],
+        containerSlotIndex: 0,
+        recipeId: recipeA.id,
+        recipeBomId: recipeBomA.id,
+        productionLineId: lineA.id,
+        quantity: 3000,
+        note: "밥",
+      },
+    });
+  }
+
+  // planB_EventHome: DIRECT 케이스 (공급업체 품목 직접 배정)
+  const existingSlotsEventHome = await prisma.mealPlanSlot.count({
+    where: { mealPlanId: planB_EventHome.id, deletedAt: null },
+  });
+  if (existingSlotsEventHome === 0 && supplierItemRecords.length > 0) {
+    await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId: planB_EventHome.id,
+        kind: "DIRECT",
+        sortOrder: 0,
+        supplierItemId: supplierItemRecords[5], // 고향냉동만두 (완제품 직판 가정)
+        productionLineId: null, // 직매입이므로 제조라인 없음
+        quantity: 200,
+        note: "제휴 이벤트 완제품 직접 배정",
+      },
+    });
+  }
+  console.log("✅ MealPlanSlot: 7개 생성 (CONTAINER 6 + DIRECT 1, 공장 분할 포함)");
+
+  // ---- 22-4. MealCount (라인업별 예상/확정 식수) ----
+  const mealCountData = [
+    // groupA
+    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: 2950 },
+    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, lineupId: lineupFresh.id, estimatedCount: 1000, finalCount: 1020 },
+    { mealPlanGroupId: groupA.id, slotType: "DINNER" as const, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    // groupB
+    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, lineupId: lineupFresh.id, estimatedCount: 1200, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, lineupId: lineupFresh.id, estimatedCount: 800, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "EVENT" as const, lineupId: lineupHome.id, estimatedCount: 200, finalCount: null },
+  ];
+  for (const mc of mealCountData) {
+    await prisma.mealCount.upsert({
+      where: {
+        mealPlanGroupId_slotType_lineupId: {
+          mealPlanGroupId: mc.mealPlanGroupId,
+          slotType: mc.slotType,
+          lineupId: mc.lineupId,
+        },
+      },
+      update: {},
+      create: mc,
+    });
+  }
+  console.log("✅ MealCount: 8개 생성 (라인업별 예상/확정 식수)");
+
+  // ---- 22-5. MealPlanAccessory ----
+  // planA_LunchHome 에 수저세트·뚜껑·포장비닐 3종 부착
+  const accessoryData = [
+    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-003"], quantity: 3000 }, // 수저세트
+    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-004"], quantity: 3000 }, // 뚜껑
+    { mealPlanId: planA_LunchHome.id, subsidiaryMasterId: subsidiaryRecords["SUB-006"], quantity: 50 },   // 포장비닐 (고정)
+  ];
+  for (const acc of accessoryData) {
+    const existing = await prisma.mealPlanAccessory.findFirst({
+      where: { mealPlanId: acc.mealPlanId, subsidiaryMasterId: acc.subsidiaryMasterId },
+    });
+    if (!existing) {
+      await prisma.mealPlanAccessory.create({ data: acc });
+    }
+  }
+  console.log("✅ MealPlanAccessory: 3개 생성");
+
   // ---- 요약 ----
   console.log("\n🎉 시드 데이터 투입 완료!");
   console.log("────────────────────────────");
@@ -670,6 +1029,11 @@ async function main() {
   console.log("NotificationTagDefs:  14");
   console.log("NotificationTemplates:3");
   console.log("NotificationRules:    3");
+  console.log("MealPlanGroup:        2");
+  console.log("MealPlan:             8 (LUNCH/DINNER × 라인업 + EVENT)");
+  console.log("MealPlanSlot:         7 (CONTAINER 6 + DIRECT 1, 공장 분할 포함)");
+  console.log("MealCount:            8 (라인업별 예상/확정)");
+  console.log("MealPlanAccessory:    3");
   console.log("────────────────────────────");
 }
 
