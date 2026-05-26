@@ -80,6 +80,7 @@ enum MealSlotType {
   LUNCH
   DINNER
   SNACK
+  EVENT
   @@map("meal_slot_type")
 }
 
@@ -256,6 +257,11 @@ enum SupplierType {
   @@map("supplier_type")
 }
 
+enum SlotKind {
+  CONTAINER
+  DIRECT
+  @@map("slot_kind")
+}
 
 // ============================================================
 // MODELS
@@ -352,6 +358,7 @@ model ProductionLine {
   company      Company  @relation(fields: [companyId], references: [id])
   location     Location @relation(fields: [locationId], references: [id])
   cookingPlans CookingPlan[]
+  mealPlanSlots MealPlanSlot[]
 
   @@index([companyId])
   @@index([locationId])
@@ -524,6 +531,7 @@ model SubsidiaryMaster {
   mealTemplateAccessories MealTemplateAccessory[]
   // ★ 신규: 레시피 BOM 슬롯 연결
   recipeBomSlots       RecipeBOMSlot[]
+  mealPlanSlots MealPlanSlot[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -581,6 +589,7 @@ model SupplierItem {
   purchaseOrderItems PurchaseOrderItem[]
   defaultForMaterial    MaterialMaster?    @relation("DefaultMaterialSupplierItem")
   defaultForSubsidiary  SubsidiaryMaster?  @relation("DefaultSubsidiarySupplierItem")
+  mealPlanSlots MealPlanSlot[]
 
   @@unique([supplierId, itemType, materialMasterId, productName], map: "uq_supplier_material_product")
   @@unique([supplierId, itemType, subsidiaryMasterId, productName], map: "uq_supplier_subsidiary_product")
@@ -682,6 +691,7 @@ model RecipeBOM {
   company Company       @relation(fields: [companyId], references: [id])
   recipe  Recipe        @relation(fields: [recipeId], references: [id])
   slots   RecipeBOMSlot[]
+  mealPlanSlots MealPlanSlot[]
 
   @@index([companyId])
   @@index([recipeId])
@@ -841,6 +851,7 @@ model MealTemplate {
   company     Company                 @relation(fields: [companyId], references: [id])
   containers  MealTemplateContainer[]
   accessories MealTemplateAccessory[]
+  mealPlans MealPlan[]
 
   // ★ 삭제: containerGroupId, slots (MealTemplateSlot 모델 폐지)
   @@index([companyId])
@@ -888,23 +899,22 @@ model MealTemplateAccessory {
 model MealPlanGroup {
   id        String         @id @default(cuid())
   companyId String         @map("company_id")
-  lineupId  String         @map("lineup_id")
   planDate  DateTime       @map("plan_date") @db.Date
   status    MealPlanStatus @default(DRAFT)
+  note      String?
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
+  deletedAt DateTime?      @map("deleted_at")
 
-  company              Company              @relation(fields: [companyId], references: [id])
-  lineup               Lineup               @relation(fields: [lineupId], references: [id])
+  company              Company               @relation(fields: [companyId], references: [id])
   mealPlans            MealPlan[]
   mealCounts           MealCount[]
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[]
   shippingOrders       ShippingOrder[]
 
-  @@unique([companyId, lineupId, planDate])
+  @@unique([companyId, planDate])
   @@index([companyId])
-  @@index([lineupId])
   @@index([planDate])
   @@map("meal_plan_groups")
 }
@@ -913,36 +923,57 @@ model MealPlan {
   id              String       @id @default(cuid())
   mealPlanGroupId String       @map("meal_plan_group_id")
   slotType        MealSlotType @map("slot_type")
+  lineupId        String       @map("lineup_id")
   mealTemplateId  String?      @map("meal_template_id")
+  note            String?
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
 
-  mealPlanGroup MealPlanGroup     @relation(fields: [mealPlanGroupId], references: [id])
+  mealPlanGroup MealPlanGroup       @relation(fields: [mealPlanGroupId], references: [id])
+  lineup        Lineup              @relation(fields: [lineupId], references: [id])
+  mealTemplate  MealTemplate?       @relation(fields: [mealTemplateId], references: [id])
   slots         MealPlanSlot[]
   accessories   MealPlanAccessory[]
 
-  @@unique([mealPlanGroupId, slotType])
+  @@unique([mealPlanGroupId, slotType, lineupId])
   @@index([mealPlanGroupId])
+  @@index([lineupId])
+  @@index([mealTemplateId])
   @@map("meal_plans")
 }
 
 model MealPlanSlot {
-  id          String   @id @default(cuid())
-  mealPlanId  String   @map("meal_plan_id")
-  slotIndex   Int      @map("slot_index")
-  recipeId    String?  @map("recipe_id")
-  recipeBomId String?  @map("recipe_bom_id")
-  quantity    Int      @default(0)
-  note        String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  mealPlanId         String   @map("meal_plan_id")
+  kind               SlotKind @default(CONTAINER)
+  sortOrder          Int      @default(0) @map("sort_order")
+  subsidiaryMasterId String?  @map("subsidiary_master_id")
+  containerSlotIndex Int?     @map("container_slot_index")
+  recipeId           String?  @map("recipe_id")
+  recipeBomId        String?  @map("recipe_bom_id")
+  supplierItemId     String?  @map("supplier_item_id")
+  productionLineId   String?  @map("production_line_id")
+  quantity           Int      @default(0)
+  note               String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
 
-  mealPlan  MealPlan   @relation(fields: [mealPlanId], references: [id])
-  recipe    Recipe?    @relation(fields: [recipeId], references: [id])
+  mealPlan         MealPlan          @relation(fields: [mealPlanId], references: [id])
+  subsidiaryMaster SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
+  recipe           Recipe?           @relation(fields: [recipeId], references: [id])
+  recipeBom        RecipeBOM?        @relation(fields: [recipeBomId], references: [id])
+  supplierItem     SupplierItem?     @relation(fields: [supplierItemId], references: [id])
+  productionLine   ProductionLine?   @relation(fields: [productionLineId], references: [id])
 
-  @@unique([mealPlanId, slotIndex])
   @@index([mealPlanId])
+  @@index([kind])
   @@index([recipeId])
+  @@index([recipeBomId])
+  @@index([subsidiaryMasterId])
+  @@index([supplierItemId])
+  @@index([productionLineId])
   @@map("meal_plan_slots")
 }
 
@@ -950,15 +981,18 @@ model MealCount {
   id              String       @id @default(cuid())
   mealPlanGroupId String       @map("meal_plan_group_id")
   slotType        MealSlotType @map("slot_type")
+  lineupId        String       @map("lineup_id")
   estimatedCount  Int?         @map("estimated_count")
   finalCount      Int?         @map("final_count")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
   mealPlanGroup MealPlanGroup @relation(fields: [mealPlanGroupId], references: [id])
+  lineup        Lineup        @relation(fields: [lineupId], references: [id])
 
-  @@unique([mealPlanGroupId, slotType])
+  @@unique([mealPlanGroupId, slotType, lineupId])
   @@index([mealPlanGroupId])
+  @@index([lineupId])
   @@map("meal_counts")
 }
 
@@ -992,7 +1026,8 @@ model Lineup {
 
   company        Company            @relation(fields: [companyId], references: [id])
   locationMaps   LineupLocationMap[]
-  mealPlanGroups MealPlanGroup[]
+  mealPlans  MealPlan[]
+  mealCounts MealCount[]
   shippingOrders ShippingOrder[]
 
   @@unique([companyId, code])
