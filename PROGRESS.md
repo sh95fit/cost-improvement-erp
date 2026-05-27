@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-21 (기존 Sprint 1~8 히스토리 유지 + Sprint 2 Phase 5 완료 기준 유지 + Phase 3 구조 재정의 보강 작업 정의 추가)
+> 마지막 갱신: 2026-05-27 (Phase 5-R Step 1.2 완료 — MealPlan soft delete 호환 partial unique index 적용 + deleteMealPlan MealCount 동반 처리)
 
 ---
 
@@ -147,7 +147,7 @@
 | 30 | MealPlanGroup | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
 | 31 | MealPlan | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
 | 32 | MealPlanSlot | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
-| 33 | MealCount | S2 | P8 | ⬜ |
+| 33 | MealCount | S2 | P8 | ⬜ (Phase 5-R Step 1.3 백로그: partial unique index 통일) |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
@@ -792,6 +792,38 @@
   - Step 1 단계 종료 시점의 tsc 에러는 정상이며, Step 5 완료 시점에 0 errors로 복귀
 - **계획 대비 변경**: 없음 (이전 합의된 변경 ①~⑦ 그대로 적용)
 - **다음 단계**: Step 2 — seed.ts 식단 샘플 추가
+
+### Phase 5-R Step 1.2 — MealPlan partial unique index + deleteMealPlan MealCount 동반 처리 ✅
+- **날짜**: 2026-05-27
+- **커밋**: (마이그레이션 + schema + seed) / (service 패치) ← git push 후 해시 기입
+- **배경**:
+  - `MealPlan`에 `deletedAt`이 있고 `@@unique([mealPlanGroupId, slotType, lineupId])`가 함께 걸려 있어, soft delete된 행과 동일한 (그룹, 식사타입, 라인업) 조합의 새 행 생성이 차단되는 버그 발생
+  - 사용자 시나리오: 식단 카드 삭제 → 동일 조합으로 재등록 시도 → `Unique constraint failed` 에러
+  - 추가 발견: `deleteMealPlan`이 연관 `MealCount`를 soft delete하지 않아, 식단 카드를 지워도 식수 현황 표에는 행이 남는 비대칭 동작
+- **변경 파일**: 4개 (신규 1 + 수정 3)
+  - `prisma/migrations/20260526030000_phase5r_step1_2_meal_plan_partial_unique/migration.sql` — **신규**: 기존 unique index DROP + `deleted_at IS NULL` 조건 partial unique index 생성 (`meal_plans_meal_plan_group_id_slot_type_lineup_id_active`)
+  - `prisma/schema.prisma` — `MealPlan` 모델의 `@@unique([mealPlanGroupId, slotType, lineupId])`를 주석 처리하고 의도 주석 추가 ("절대 해제하지 말 것")
+  - `prisma/seed.ts` — MealPlan upsert 8곳을 `findFirst({ ..., deletedAt: null }) + 조건부 create` 패턴으로 전환 (복합 unique key 제거로 upsert 불가)
+  - `src/features/meal-plan/services/meal-plan.service.ts` — `deleteMealPlan`에 `tx.mealCount.updateMany` 추가, 동일 (그룹, 식사타입, 라인업) MealCount 동반 soft delete
+- **완료 항목**:
+  - [x] DB 인덱스 이름을 컨벤션(`{table}_{cols}_active`)에 맞춰 rename — `meal_plans_active_unique` → `meal_plans_meal_plan_group_id_slot_type_lineup_id_active`
+  - [x] partial unique index 마이그레이션 파일 생성 및 push
+  - [x] schema.prisma `@@unique` 주석 처리 + 의도 주석 명시
+  - [x] `prisma migrate status` → "Database schema is up to date" 확인
+  - [x] seed.ts 8개 upsert → findFirst+create 패턴 전환 (다른 도메인의 기존 컨벤션과 동일)
+  - [x] deleteMealPlan에 MealCount 동반 soft delete 추가 (deleteMealPlanGroup과 정책 통일)
+  - [x] `npx tsc --noEmit` 0 errors
+  - [x] e2e 시나리오 통과: 식단 삭제 → 동일 (식사타입, 라인업) 조합 재등록 성공
+- **아키텍처 결정**:
+  - **데이터 보존 정책**: soft-deleted MealPlan 행은 재활성화하지 않고 항상 새 행 생성 → 이력 보존 우선
+  - **인덱스 명명**: 기존 `20260423074023_add_partial_unique_indexes`와 동일한 `{table}_{cols}_active` 패턴 통일
+  - **마이그레이션 안전장치**: `DROP INDEX IF EXISTS` + `CREATE UNIQUE INDEX IF NOT EXISTS` 사용으로 재실행 시 충돌 없음
+  - **삭제 정책 통일**: `deleteMealPlanGroup`(그룹 단위)과 `deleteMealPlan`(단일 단위) 모두 연관 MealCount를 함께 soft delete
+- **남은 백로그 (Phase 5-R Step 1.3 이후로 분리)**:
+  - `MealCount`도 동일한 partial unique index 패턴으로 통일 필요 (현재 `upsertMealCount`가 soft-deleted 행을 재활성화하는 방식으로 우회 중 — 이력이 덮어쓰이는 비대칭 상태)
+  - `MealTemplate`, `MealTemplateContainer`, `MealTemplateAccessory`, `SupplierItem`에 `deletedAt` 추가 (CONVENTIONS 규칙 6 일관성 회복)
+  - 두 항목 모두 현재 동작에는 영향 없으며, Lineup 모듈(Step A) 이후 별도 Step에서 처리
+- **다음 단계**: Phase 5-R Step 2 — Lineup feature 모듈(read-only) 신설 → /meal-plans 다이얼로그의 라인업 ID 수동 입력을 LineupSelect 컴포넌트로 전환
 
 #### Step 2 — seed.ts 식단 샘플 추가 ⬜
 #### Step 3 — meal-plan Zod 스키마 재작성 ⬜

@@ -463,7 +463,8 @@ export async function updateMealPlan(
 }
 
 export async function deleteMealPlan(companyId: string, id: string) {
-  await assertMealPlanInCompany(prisma, companyId, id);
+  // assertMealPlanInCompany는 { id, mealPlanGroupId, lineupId, slotType }을 반환
+  const plan = await assertMealPlanInCompany(prisma, companyId, id);
 
   const now = new Date();
 
@@ -476,12 +477,25 @@ export async function deleteMealPlan(companyId: string, id: string) {
       where: { mealPlanId: id, deletedAt: null },
       data: { deletedAt: now },
     });
+    // ★ Phase 5-R Step 1.2: MealPlan 삭제 시 동일 (group, slotType, lineup) 조합의
+    //   MealCount도 함께 soft delete. deleteMealPlanGroup과 정책 일관성 유지.
+    //   사용자가 식단을 삭제했을 때 식수 현황도 함께 사라지도록 한다.
+    await tx.mealCount.updateMany({
+      where: {
+        mealPlanGroupId: plan.mealPlanGroupId,
+        slotType: plan.slotType,
+        lineupId: plan.lineupId,
+        deletedAt: null,
+      },
+      data: { deletedAt: now },
+    });
     return tx.mealPlan.update({
       where: { id },
       data: { deletedAt: now },
     });
   });
 }
+
 
 // ══════════════════════════════════════════════════════════════
 // MealPlanSlot CRUD (SlotKind 분기)
