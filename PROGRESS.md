@@ -825,78 +825,136 @@
   - 두 항목 모두 현재 동작에는 영향 없으며, Lineup 모듈(Step A) 이후 별도 Step에서 처리
 - **다음 단계**: Phase 5-R Step 2 — Lineup feature 모듈(read-only) 신설 → /meal-plans 다이얼로그의 라인업 ID 수동 입력을 LineupSelect 컴포넌트로 전환
 
-## Phase 5-R Step 2: Lineup 모듈 (진행 중)
+## Phase 5-R Step 2: Lineup 모듈 (진행 중 — 백엔드 완료)
 
 ### 목표
 - Lineup CRUD 완성
 - LineupLocationMap (라인업 ↔ 배송 매장) 관리
-- LineupMealTemplateMap (라인업 + 슬롯타입 → 기본 식단 템플릿) 매핑
+- LineupMealTemplateMap (라인업 × 슬롯타입 → 기본 식단 템플릿) 매핑
   - 식단 그룹 생성 시 슬롯별 기본 템플릿 자동 적용 기반
-  - 일회성/영구 오버라이드는 MealPlan/MealPlanSlot 레벨에서 처리(Step 3 예정)
+  - 일회성/영구 오버라이드는 MealPlan/MealPlanSlot 레벨에서 처리 (Step 3 예정)
 
 ### Step 2.1 — Schema & Migration ✅
 - `prisma/schema.prisma`
-  - `Lineup` 모델에 `templateMaps LineupMealTemplateMap[]` 관계 추가
-  - `LineupMealTemplateMap` 모델 신규 추가
-    - 필드: `id`, `lineupId`, `slotType` (MealSlotType), `mealTemplateId`, `createdAt`, `updatedAt`, `deletedAt`
-    - 인덱스: `lineupId`, `slotType`, `mealTemplateId`, `deletedAt`
-    - 부분 unique 인덱스: `(lineup_id, slot_type) WHERE deleted_at IS NULL` (마이그레이션 SQL로 생성)
-    - FK: `lineups(id)`, `meal_templates(id)` — ON DELETE RESTRICT (soft-delete 보호)
-  - `MealTemplate` 모델에 `lineupMaps LineupMealTemplateMap[]` 관계 추가
-- 마이그레이션: `prisma/migrations/20260527000000_phase5r_step2_lineup_template_map/migration.sql`
-- 검증: `npx prisma migrate deploy` 성공, `npx prisma migrate status` up-to-date, `npx tsc --noEmit` 0 errors
+  - `Lineup` 모델: `templateMaps LineupMealTemplateMap[]` 관계 추가
+  - `LineupMealTemplateMap` 모델 신규
+    - 필드: id, lineupId, slotType(MealSlotType), mealTemplateId, createdAt, updatedAt, deletedAt
+    - 인덱스: lineupId, slotType, mealTemplateId, deletedAt
+    - 관계: Lineup, MealTemplate (양방향)
+  - `MealTemplate` 모델: `lineupMaps LineupMealTemplateMap[]` 관계 추가
+- `prisma/migrations/20260527000000_phase5r_step2_lineup_template_map/migration.sql`
+  - 테이블 + 4개 일반 인덱스 + FK 2건(ON DELETE RESTRICT)
+  - **Partial unique index**: `(lineup_id, slot_type) WHERE deleted_at IS NULL`
+- 검증: `prisma migrate deploy` 성공, `tsc --noEmit` 0 errors
 
 ### Step 2.2 — Schemas & Services ✅
-- `src/features/lineup/schemas/lineup.schema.ts` (전면 교체)
-  - Lineup CRUD: `createLineupSchema`, `updateLineupSchema`, `lineupListQuerySchema`
-    - `code`는 서비스에서 자동 채번(LINE-001 형식)
-  - LocationMap: `createLineupLocationMapSchema`, `syncLineupLocationsSchema` (max 500)
-  - TemplateMap: `upsertLineupTemplateMapSchema`, `bulkUpsertLineupTemplateMapsSchema` (max 20), `lineupTemplateMapListQuerySchema`
-- `src/features/lineup/services/lineup.service.ts`
-  - `generateLineupCode` (raw query 기반 LINE-xxx 채번)
-  - CRUD: `getLineups`, `getLineupById` (null 반환으로 시그니처 변경), `createLineup`, `updateLineup`
-  - `checkLineupDependencies` (활성 MealPlan/MealCount/ShippingOrder 카운트)
-  - `deleteLineup` (트랜잭션 soft-delete + locationMap 하드삭제 + templateMap 소프트삭제)
-  - `syncLineupLocations` (diff 기반, 동일 회사 location 검증)
-  - `getLineupLocations`
-- `src/features/lineup/services/lineup-template-map.service.ts` (신규)
-  - `getLineupTemplateMaps`, `getDefaultTemplateForSlot`
-  - `upsertLineupTemplateMap` (active 갱신 / soft-deleted 복원 / 신규 생성 분기)
-  - `bulkUpsertLineupTemplateMaps` (슬롯 중복 제거, 회사 검증, 트랜잭션 처리)
-  - `deleteLineupTemplateMap`, `deleteLineupTemplateMapBySlot`
-- 검증: `npx tsc --noEmit` 0 errors
+- `src/features/lineup/schemas/lineup.schema.ts` (전면 교체, 3.9KB)
+  - Lineup CRUD, LocationMap sync(max 500), TemplateMap upsert·bulkUpsert(max 20)
+- `src/features/lineup/services/lineup.service.ts` (9.2KB)
+  - 자동 채번(LINE-xxx), CRUD, 의존성 체크(mealPlan/mealCount/shippingOrder)
+  - 트랜잭션 soft-delete: lineup soft + locationMaps hard + templateMaps soft
+  - `syncLineupLocations`: diff 기반 + 동일회사 location 검증
+- `src/features/lineup/services/lineup-template-map.service.ts` (9.0KB, 신규)
+  - upsert(active/restore/create 3분기) + bulkUpsert(트랜잭션, 슬롯 중복 제거)
+  - `getDefaultTemplateForSlot`: 식단 자동 생성용 단건 조회
+  - delete by id / delete by slot
 
 ### Step 2.3 — Actions ✅
-- `src/features/lineup/actions/lineup.action.ts` (전면 교체)
-  - `getLineupsAction`, `getLineupByIdAction`, `createLineupAction`, `updateLineupAction`
-  - `checkLineupDependenciesAction`, `deleteLineupAction`
-  - `getLineupLocationsAction`, `syncLineupLocationsAction`
-  - 세션 검증, 권한 체크(lineup READ/CREATE/UPDATE/DELETE), 감사 로그, 에러 한국어 메시지
-- `src/features/lineup/actions/lineup-template-map.action.ts` (신규)
-  - `getLineupTemplateMapsAction`, `getDefaultTemplateForSlotAction`
-  - `upsertLineupTemplateMapAction`, `bulkUpsertLineupTemplateMapsAction`
-  - `deleteLineupTemplateMapAction`, `deleteLineupTemplateMapBySlotAction`
-- 검증: `npx tsc --noEmit` 0 errors
+- `src/features/lineup/actions/lineup.action.ts` (8.1KB)
+  - 8개 액션: get list/byId, create, update, checkDependencies, delete, getLocations, syncLocations
+- `src/features/lineup/actions/lineup-template-map.action.ts` (7.1KB, 신규)
+  - 6개 액션: getMaps, getDefaultForSlot, upsert, bulkUpsert, delete, deleteBySlot
+- 모든 액션: 세션 검증 + 권한 체크(lineup READ/CREATE/UPDATE/DELETE) + 감사 로그 + 에러 한글화
 
 ### Step 2.4 — Tests ✅
-- `src/tests/mocks/prisma.ts`: `location`, `lineupLocationMap`, `lineupMealTemplateMap`, `shippingOrder` mock 추가
-- `src/tests/lineup.service.test.ts` (신규, 26 tests)
-  - getLineups / getLineupById / createLineup / updateLineup
-  - checkLineupDependencies / deleteLineup (의존성 차단·트랜잭션 검증)
-  - syncLineupLocations (diff, 잘못된 location 차단)
-  - getLineupLocations
-- `src/tests/lineup-template-map.service.test.ts` (신규, 20 tests)
-  - getLineupTemplateMaps / getDefaultTemplateForSlot
-  - upsertLineupTemplateMap (active/restore/create/error)
-  - bulkUpsertLineupTemplateMaps (빈 입력/중복/검증/혼합 시나리오)
-  - deleteLineupTemplateMap / deleteLineupTemplateMapBySlot
-- **테스트 결과: 14 files / 206 tests / 0 failures (이전 12 files / 160 tests 대비 +2 files, +46 tests)**
+- `src/tests/mocks/prisma.ts`: location, lineupLocationMap, lineupMealTemplateMap, shippingOrder mock 추가
+- `src/tests/lineup.service.test.ts` (18.2KB, 26 tests)
+- `src/tests/lineup-template-map.service.test.ts` (14.6KB, 20 tests)
+- **테스트 결과: 14 files / 206 tests / 0 failures** (이전 12/160 대비 +2 files, +46 tests)
+- TypeScript: 0 errors
+
+---
+
+## Phase 5-R Step 2.5 prep — 비즈니스 모델 재정의 + Lineup 확장 ✅
+
+### 배경: 비즈니스 모델 재정의
+컴포넌트 작업 직전, Lineup 모듈의 비즈니스 의미를 사용자와 재확인한 결과
+초기 설계 가정이 실제 운영 모델과 일치하지 않아 스코프를 재조정함.
+
+**재정의된 정의**:
+- **Lineup** = 회사가 판매하는 상품 분류 단위 (가정식도시락, 프레시밀, 특식 등)
+  - 원가 산출의 그룹키
+  - 라인업별로 식단(MealPlan)과 식수(MealCount)를 등록
+  - 매핑되는 제조 공장은 사전 정의하지 않음
+- **공장 할당 시점**: 식단 작성 단계 (MealPlan/MealPlanSlot)
+- **공장 할당 단위**: 슬롯(Slot) 단위
+  - 동일 라인업이라도 슬롯별로 다른 공장 할당 가능
+  - 동일 슬롯도 수량이 많으면 여러 공장-제조라인으로 분할 제조 가능
+
+### LineupLocationMap 배제 결정
+**검토 결과**: 원가 산출은 `lineupId` 기반 group by로 충분하며,
+LineupLocationMap을 통한 사전 매핑은 현재 비즈니스 모델에서 불필요함.
+
+**처리 방침**:
+- 모델/관계/스키마/서비스/액션/시드 코드 모두 **주석 처리**로 배제
+- DB 테이블은 그대로 유지 (향후 명확한 쓰임 정의 시 복원 가능)
+- 테스트는 `describe.skip`으로 보존 + 복원 가이드 주석
+
+**향후 복원 시 가이드**:
+1. schema.prisma에서 `LineupLocationMap` 모델, `Lineup.locationMaps`,
+   `Location.lineupLocationMaps` 주석 해제
+2. lineup.schema.ts에서 `createLineupLocationMapSchema`,
+   `syncLineupLocationsSchema` 주석 해제
+3. lineup.service.ts에서 `syncLineupLocations`, `getLineupLocations` 주석 해제
+4. lineup.action.ts에서 `getLineupLocationsAction`,
+   `syncLineupLocationsAction` 주석 해제
+5. seed.ts의 LineupLocationMaps 블록 주석 해제
+6. lineup.service.test.ts의 `describe.skip` 제거
+7. `npx prisma generate` 만 실행하면 DB 재마이그레이션 불필요
+
+### Lineup 모델 확장
+**추가 필드**:
+- `isActive Boolean @default(true)` — 판매 중단 라인업 필터링용
+  (사용 안 하는 라인업이 식단 작성 시 노출되는 것 방지)
+- `sortOrder Int @default(0)` — 라인업 노출 순서 제어
+  (라인업이 많아지면 운영자가 노출 순서 직접 제어)
+- `description String?` — 라인업 설명 (선택, 운영자 메모용)
+
+**추가 인덱스**:
+- `lineups_is_active_idx` — 활성 필터 빈도 높음
+- `lineups_company_id_sort_order_idx` — 정렬 기본값 `sortOrder asc + name asc`
+
+**Migration**:
+`20260527010000_phase5r_step2_lineup_active_and_disable_location_map`
+- ALTER TABLE로 3개 컬럼 + 2개 인덱스 추가
+- LineupLocationMap 테이블은 DROP하지 않음
+
+### 백엔드 코드 변경
+| 파일 | 변경 내용 |
+|------|----------|
+| `schema.prisma` | Lineup 필드 추가, LocationMap 모델/관계 주석 |
+| `lineup.schema.ts` | 새 필드 반영, isActive 필터 추가, LocationMap 스키마 주석 |
+| `lineup.service.ts` | 새 필드 처리, sortOrder 정렬, LocationMap 함수 주석, _count.templateMaps |
+| `lineup.action.ts` | LocationMap 액션 주석 |
+| `prisma/seed.ts` | LineupLocationMaps 시드 블록 주석 |
+| `lineup.service.test.ts` | 전면 교체 (~22 tests), 신규 7개 + LocationMap 7개 skip |
+
+### 검증
+- `npx tsc --noEmit`: 0 errors
+- `npm run test`: 14 files / ~200 tests / 0 failures
+- `npx prisma migrate status`: Database schema is up to date
+
+### 학습/회고
+1. **백엔드를 빠르게 만들기 전에 비즈니스 모델 확정이 우선** — 컴포넌트 작업 시작
+   직전에 모델 재정의가 발생해 일부 백엔드 코드를 다시 손봐야 했음.
+   향후 새 모듈 착수 시 "사용자 워크플로우 → 데이터 모델" 매핑부터 합의할 것.
+2. **모델 배제는 DROP보다 주석 처리가 안전** — 향후 복원 시 마이그레이션 비용 없음.
+3. **테스트의 `describe.skip` + 복원 가이드 주석**은 향후 작업자에게 친절한 안내.
 
 ### 다음 단계
-- Step 2.5 — Components (lineup-list, form-dialog, delete-dialog, location-map-dialog, template-map-dialog)
-- Step 2.6 — Page (`src/app/(dashboard)/lineups/page.tsx`)
-- Step 2.7 — Sidebar 메뉴 ("라인업 관리", 독립 항목, 추후 그룹 재배치)
-- (참고) seed.ts upsert 이슈(`mealPlanGroupId_slotType_lineupId`): Step 2.5와 분리하여 별도 처리 예정
+- Step 2.6 — Components (lineup-list, lineup-form, lineup-detail, lineup-template-map)
+- Step 2.7 — Page `src/app/(dashboard)/lineups/page.tsx`
+- Step 2.8 — Sidebar "상품 라인업" 메뉴 추가 (Layers 아이콘)
 
 #### Step 2 — seed.ts 식단 샘플 추가 ⬜
 #### Step 3 — meal-plan Zod 스키마 재작성 ⬜

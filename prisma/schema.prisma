@@ -366,7 +366,8 @@ model Location {
 
   company               Company                @relation(fields: [companyId], references: [id])
   productionLines       ProductionLine[]
-  lineupLocationMaps    LineupLocationMap[]
+  // ⚠️ Step 2.5에서 LineupLocationMap 배제 — 향후 복원 시 주석 해제
+  // lineupLocationMaps LineupLocationMap[]
   inventoryLots         InventoryLot[]
   inventoryTransactions InventoryTransaction[]
   stockTakes            StockTake[]
@@ -1060,40 +1061,56 @@ model MealPlanAccessory {
 // ---- 8. 라인업 ----
 
 model Lineup {
-  id        String    @id @default(cuid())
-  companyId String    @map("company_id")
-  name      String
-  code      String
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  name        String
+  code        String
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
-  company        Company             @relation(fields: [companyId], references: [id])
-  locationMaps   LineupLocationMap[]
-  mealPlans      MealPlan[]
-  mealCounts     MealCount[]
+  company Company @relation(fields: [companyId], references: [id])
+
+  // ⚠️ LineupLocationMap: 현재 비즈니스 모델상 쓰임이 명확하지 않아 코드 레벨 배제
+  //    원가 산출은 lineupId 기반 group by로 충분하며,
+  //    슬롯별 공장 할당은 MealPlanSlot에서 직접 처리.
+  //    향후 명확한 쓰임이 정의되면 주석 해제하여 복원.
+  // locationMaps LineupLocationMap[]
+
+  templateMaps LineupMealTemplateMap[]
+  mealPlans    MealPlan[]
+  mealCounts   MealCount[]
   shippingOrders ShippingOrder[]
-  templateMaps   LineupMealTemplateMap[]
 
-  @@unique([companyId, code])
+  @@unique([companyId, code]) // 또는 partial unique index — 기존 정의 유지
   @@index([companyId])
+  @@index([isActive])
+  @@index([companyId, sortOrder])
+  @@index([deletedAt])
   @@map("lineups")
 }
 
-model LineupLocationMap {
-  id         String   @id @default(cuid())
-  lineupId   String   @map("lineup_id")
-  locationId String   @map("location_id")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  lineup   Lineup   @relation(fields: [lineupId], references: [id])
-  location Location @relation(fields: [locationId], references: [id])
-
-  @@unique([lineupId, locationId])
-  @@index([lineupId])
-  @@index([locationId])
-  @@map("lineup_location_maps")
-}
+// ⚠️ LineupLocationMap: 현재 비즈니스 모델상 쓰임이 명확하지 않아 코드 레벨 배제
+//    (테이블은 DB에 그대로 유지 — 향후 복원을 위함)
+//    원가 산출 관점에서도 lineupId 기준 group by로 충분하다고 판단.
+//
+// model LineupLocationMap {
+//   id         String   @id @default(cuid())
+//   lineupId   String   @map("lineup_id")
+//   locationId String   @map("location_id")
+//   createdAt  DateTime @default(now()) @map("created_at")
+//
+//   lineup   Lineup   @relation(fields: [lineupId], references: [id])
+//   location Location @relation(fields: [locationId], references: [id])
+//
+//   @@unique([lineupId, locationId])
+//   @@index([lineupId])
+//   @@index([locationId])
+//   @@map("lineup_location_maps")
+// }
 
 // ★ 신규 (Phase 5-R Step 2): 라인업 × 슬롯타입 → 기본 식단 템플릿 매핑
 //   - "기본값" 의미: MealPlan 자동 생성 시 mealTemplateId 채우는 출처

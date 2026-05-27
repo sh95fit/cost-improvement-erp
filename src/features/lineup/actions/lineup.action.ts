@@ -11,7 +11,7 @@ import {
   createLineupSchema,
   updateLineupSchema,
   lineupListQuerySchema,
-  syncLineupLocationsSchema,
+  // syncLineupLocationsSchema,  // ⚠️ 주석 처리
 } from "../schemas/lineup.schema";
 import * as lineupService from "../services/lineup.service";
 import type { Lineup } from "@prisma/client";
@@ -121,10 +121,6 @@ export async function updateLineupAction(
   }
 }
 
-/**
- * 라인업 의존성 체크 (삭제 가능 여부 + 사유)
- *  - UI에서 "삭제" 버튼 누르기 전에 호출하여 안내 다이얼로그에 활용
- */
 export async function checkLineupDependenciesAction(
   id: string
 ): Promise<
@@ -180,67 +176,9 @@ export async function deleteLineupAction(
 }
 
 // ════════════════════════════════════════
-// LineupLocationMap (배송지 매핑)
+// LineupLocationMap 관련 액션 — 배제됨
+// 향후 모델 복원 시 함께 주석 해제
 // ════════════════════════════════════════
 
-export async function getLineupLocationsAction(
-  lineupId: string
-): Promise<
-  ActionResult<
-    Awaited<ReturnType<typeof lineupService.getLineupLocations>>
-  >
-> {
-  try {
-    const session = await requireCompanySession();
-    assertPermission(session, "lineup", "READ");
-    const result = await lineupService.getLineupLocations(
-      session.companyId,
-      lineupId
-    );
-    return actionOk(result);
-  } catch (error) {
-    return handleActionError(error, "배송지 매핑 조회에 실패했습니다", {
-      NOT_FOUND: "라인업을 찾을 수 없습니다",
-    });
-  }
-}
-
-export async function syncLineupLocationsAction(
-  lineupId: string,
-  rawInput: Record<string, unknown>
-): Promise<
-  ActionResult<
-    Awaited<ReturnType<typeof lineupService.syncLineupLocations>>
-  >
-> {
-  try {
-    const session = await requireCompanySession();
-    assertPermission(session, "lineup", "UPDATE");
-    const input = syncLineupLocationsSchema.parse(rawInput);
-
-    // before 스냅샷 (audit)
-    const before = await lineupService.getLineupLocations(
-      session.companyId,
-      lineupId
-    );
-    const result = await lineupService.syncLineupLocations(
-      session.companyId,
-      lineupId,
-      input
-    );
-    await createAuditLog({
-      session,
-      action: "UPDATE",
-      entityType: "LineupLocationMap",
-      entityId: lineupId,
-      before: { items: before } as unknown as Record<string, unknown>,
-      after: { items: result } as unknown as Record<string, unknown>,
-    });
-    return actionOk(result);
-  } catch (error) {
-    return handleActionError(error, "배송지 매핑 동기화에 실패했습니다", {
-      NOT_FOUND: "라인업을 찾을 수 없습니다",
-      INVALID_LOCATION: "선택된 배송지 중 잘못된 항목이 있습니다",
-    });
-  }
-}
+// export async function getLineupLocationsAction(...) { ... }
+// export async function syncLineupLocationsAction(...) { ... }

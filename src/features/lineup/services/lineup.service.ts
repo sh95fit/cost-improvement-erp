@@ -4,7 +4,7 @@ import type {
   CreateLineupInput,
   UpdateLineupInput,
   LineupListQuery,
-  SyncLineupLocationsInput,
+  // SyncLineupLocationsInput,  // ⚠️ 주석 처리
 } from "../schemas/lineup.schema";
 
 // ============================================================
@@ -15,20 +15,23 @@ const LINEUP_LIST_SELECT = {
   id: true,
   name: true,
   code: true,
+  isActive: true,
+  sortOrder: true,
+  description: true,
   createdAt: true,
   updatedAt: true,
   _count: {
     select: {
-      locationMaps: true,
-      // 활성 매핑만 카운트되도록 별도 쿼리는 필요 시 추가
+      // ⚠️ locationMaps 카운트 제거 (모델 배제)
+      // ⚠️ templateMaps는 활성 매핑만 카운트하고 싶지만,
+      //    Prisma _count는 단순 카운트만 지원하므로 별도 쿼리 필요 시 추가
+      templateMaps: true,
     },
   },
 } as const;
 
 // ============================================================
 // 코드 자동 채번 (LINE-001, LINE-002, ...)
-// soft-delete extension 우회 위해 raw query 사용
-// (suppliers의 generateSupplierCode 패턴 준수)
 // ============================================================
 
 async function generateLineupCode(companyId: string): Promise<string> {
@@ -53,14 +56,13 @@ async function generateLineupCode(companyId: string): Promise<string> {
 // Lineup CRUD
 // ============================================================
 
-/**
- * 회사 소속 라인업 목록 조회 (페이지네이션 + 검색)
- */
 export async function getLineups(companyId: string, query: LineupListQuery) {
-  const { page, limit, search, sortBy, sortOrder } = query;
+  const { page, limit, search, sortBy, sortOrder, isActive } = query;
+
   const where = {
     companyId,
     deletedAt: null,
+    ...(isActive !== undefined ? { isActive } : {}),
     ...(search
       ? {
           OR: [
@@ -71,11 +73,17 @@ export async function getLineups(companyId: string, query: LineupListQuery) {
       : {}),
   };
 
+  // sortBy=sortOrder일 때 name asc를 보조 정렬로 사용해 결정적 정렬 보장
+  const orderBy =
+    sortBy === "sortOrder"
+      ? [{ sortOrder: sortOrder }, { name: "asc" as const }]
+      : [{ [sortBy]: sortOrder }];
+
   const [items, total] = await Promise.all([
     prisma.lineup.findMany({
       where,
       select: LINEUP_LIST_SELECT,
-      orderBy: { [sortBy]: sortOrder },
+      orderBy,
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -88,18 +96,11 @@ export async function getLineups(companyId: string, query: LineupListQuery) {
   };
 }
 
-/**
- * 라인업 단건 조회 (locationMaps + templateMaps 포함)
- */
 export async function getLineupById(companyId: string, id: string) {
   return prisma.lineup.findFirst({
     where: { id, companyId, deletedAt: null },
     include: {
-      locationMaps: {
-        include: {
-          location: { select: { id: true, name: true, code: true } },
-        },
-      },
+      // ⚠️ locationMaps include 제거
       templateMaps: {
         where: { deletedAt: null },
         include: {
@@ -111,9 +112,6 @@ export async function getLineupById(companyId: string, id: string) {
   });
 }
 
-/**
- * 라인업 생성 (코드 자동 채번)
- */
 export async function createLineup(
   companyId: string,
   input: CreateLineupInput
@@ -124,19 +122,18 @@ export async function createLineup(
       companyId,
       name: input.name,
       code,
+      isActive: input.isActive,
+      sortOrder: input.sortOrder,
+      description: input.description ?? null,
     },
   });
 }
 
-/**
- * 라인업 수정
- */
 export async function updateLineup(
   companyId: string,
   id: string,
   input: UpdateLineupInput
 ) {
-  // companyId 일치 확인 (보안)
   const existing = await prisma.lineup.findFirst({
     where: { id, companyId, deletedAt: null },
     select: { id: true },
@@ -145,7 +142,14 @@ export async function updateLineup(
 
   return prisma.lineup.update({
     where: { id },
-    data: input,
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+      ...(input.description !== undefined
+        ? { description: input.description }
+        : {}),
+    },
   });
 }
 
@@ -163,11 +167,6 @@ export type LineupDependencyCheck = {
   };
 };
 
-/**
- * 라인업이 다른 활성 데이터에서 참조되는지 확인
- *  - 활성 MealPlan / MealCount / ShippingOrder가 있으면 삭제 불가
- *  - LineupLocationMap, LineupMealTemplateMap은 cascade로 함께 정리되므로 무관
- */
 export async function checkLineupDependencies(
   companyId: string,
   id: string
@@ -191,8 +190,10 @@ export async function checkLineupDependencies(
   ]);
 
   const reasons: string[] = [];
-  if (mealPlans > 0) reasons.push(`식단 ${mealPlans}건이 이 라인업을 사용 중입니다`);
-  if (mealCounts > 0) reasons.push(`식수 ${mealCounts}건이 이 라인업을 사용 중입니다`);
+  if (mealPlans > 0)
+    reasons.push(`식단 ${mealPlans}건이 이 라인업을 사용 중입니다`);
+  if (mealCounts > 0)
+    reasons.push(`식수 ${mealCounts}건이 이 라인업을 사용 중입니다`);
   if (shippingOrders > 0)
     reasons.push(`출고 ${shippingOrders}건이 이 라인업을 사용 중입니다`);
 
@@ -205,10 +206,8 @@ export async function checkLineupDependencies(
 
 /**
  * 라인업 삭제 (soft-delete)
- *  - 의존성이 있으면 DEPENDENCY_EXISTS 에러
- *  - 트랜잭션으로 lineup + locationMaps + templateMaps 동시 처리
- *    · locationMaps: hard delete (감사 가치 낮음, FK 정리 목적)
- *    · templateMaps: soft delete (정책 일관성)
+ *  - locationMaps 처리는 LineupLocationMap 배제로 제거
+ *  - templateMaps만 soft delete
  */
 export async function deleteLineup(companyId: string, id: string) {
   const check = await checkLineupDependencies(companyId, id);
@@ -217,10 +216,8 @@ export async function deleteLineup(companyId: string, id: string) {
   return prisma.$transaction(async (tx) => {
     const now = new Date();
 
-    // locationMaps hard delete
-    await tx.lineupLocationMap.deleteMany({
-      where: { lineupId: id },
-    });
+    // ⚠️ locationMaps hard delete 제거 (모델 배제)
+    // await tx.lineupLocationMap.deleteMany({ where: { lineupId: id } });
 
     // templateMaps soft delete
     await tx.lineupMealTemplateMap.updateMany({
@@ -236,93 +233,81 @@ export async function deleteLineup(companyId: string, id: string) {
 }
 
 // ============================================================
-// LineupLocationMap — 일괄 동기화
+// LineupLocationMap 관련 함수 — 현재 비즈니스 모델상 쓰임이 명확하지 않아 배제
+// 향후 명확한 쓰임이 정의되면 주석 해제하여 복원.
 // ============================================================
 
-/**
- * 라인업에 매핑된 배송지를 입력 배열과 동일하게 만든다.
- *  - 빠진 매핑은 hard delete
- *  - 새 매핑은 create
- *  - 기존 매핑은 그대로 유지
- *  - locationIds는 모두 같은 companyId 소속이어야 함 (검증)
- */
-export async function syncLineupLocations(
-  companyId: string,
-  lineupId: string,
-  input: SyncLineupLocationsInput
-) {
-  // 1) 라인업 소속 확인
-  const lineup = await prisma.lineup.findFirst({
-    where: { id: lineupId, companyId, deletedAt: null },
-    select: { id: true },
-  });
-  if (!lineup) throw new Error("NOT_FOUND");
+// export async function syncLineupLocations(
+//   companyId: string,
+//   lineupId: string,
+//   input: SyncLineupLocationsInput
+// ) {
+//   const lineup = await prisma.lineup.findFirst({
+//     where: { id: lineupId, companyId, deletedAt: null },
+//     select: { id: true },
+//   });
+//   if (!lineup) throw new Error("NOT_FOUND");
+//
+//   const uniqueLocationIds = Array.from(new Set(input.locationIds));
+//   if (uniqueLocationIds.length > 0) {
+//     const validLocations = await prisma.location.findMany({
+//       where: {
+//         id: { in: uniqueLocationIds },
+//         companyId,
+//         deletedAt: null,
+//       },
+//       select: { id: true },
+//     });
+//     if (validLocations.length !== uniqueLocationIds.length) {
+//       throw new Error("INVALID_LOCATION");
+//     }
+//   }
+//
+//   return prisma.$transaction(async (tx) => {
+//     const existing = await tx.lineupLocationMap.findMany({
+//       where: { lineupId },
+//       select: { id: true, locationId: true },
+//     });
+//     const existingSet = new Set(existing.map((m) => m.locationId));
+//     const desiredSet = new Set(uniqueLocationIds);
+//
+//     const toRemove = existing
+//       .filter((m) => !desiredSet.has(m.locationId))
+//       .map((m) => m.id);
+//     const toAdd = uniqueLocationIds.filter((id) => !existingSet.has(id));
+//
+//     if (toRemove.length > 0) {
+//       await tx.lineupLocationMap.deleteMany({
+//         where: { id: { in: toRemove } },
+//       });
+//     }
+//     if (toAdd.length > 0) {
+//       await tx.lineupLocationMap.createMany({
+//         data: toAdd.map((locationId) => ({ lineupId, locationId })),
+//       });
+//     }
+//
+//     return tx.lineupLocationMap.findMany({
+//       where: { lineupId },
+//       include: {
+//         location: { select: { id: true, name: true, code: true } },
+//       },
+//     });
+//   });
+// }
 
-  // 2) location 소속 검증 (중복 제거)
-  const uniqueLocationIds = Array.from(new Set(input.locationIds));
-  if (uniqueLocationIds.length > 0) {
-    const validLocations = await prisma.location.findMany({
-      where: {
-        id: { in: uniqueLocationIds },
-        companyId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    if (validLocations.length !== uniqueLocationIds.length) {
-      throw new Error("INVALID_LOCATION");
-    }
-  }
-
-  // 3) 트랜잭션: 현재 매핑 조회 → diff → 적용
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.lineupLocationMap.findMany({
-      where: { lineupId },
-      select: { id: true, locationId: true },
-    });
-    const existingSet = new Set(existing.map((m) => m.locationId));
-    const desiredSet = new Set(uniqueLocationIds);
-
-    const toRemove = existing
-      .filter((m) => !desiredSet.has(m.locationId))
-      .map((m) => m.id);
-    const toAdd = uniqueLocationIds.filter((id) => !existingSet.has(id));
-
-    if (toRemove.length > 0) {
-      await tx.lineupLocationMap.deleteMany({
-        where: { id: { in: toRemove } },
-      });
-    }
-    if (toAdd.length > 0) {
-      await tx.lineupLocationMap.createMany({
-        data: toAdd.map((locationId) => ({ lineupId, locationId })),
-      });
-    }
-
-    return tx.lineupLocationMap.findMany({
-      where: { lineupId },
-      include: {
-        location: { select: { id: true, name: true, code: true } },
-      },
-    });
-  });
-}
-
-/**
- * 라인업의 현재 배송지 매핑 조회
- */
-export async function getLineupLocations(companyId: string, lineupId: string) {
-  const lineup = await prisma.lineup.findFirst({
-    where: { id: lineupId, companyId, deletedAt: null },
-    select: { id: true },
-  });
-  if (!lineup) throw new Error("NOT_FOUND");
-
-  return prisma.lineupLocationMap.findMany({
-    where: { lineupId },
-    include: {
-      location: { select: { id: true, name: true, code: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
-}
+// export async function getLineupLocations(companyId: string, lineupId: string) {
+//   const lineup = await prisma.lineup.findFirst({
+//     where: { id: lineupId, companyId, deletedAt: null },
+//     select: { id: true },
+//   });
+//   if (!lineup) throw new Error("NOT_FOUND");
+//
+//   return prisma.lineupLocationMap.findMany({
+//     where: { lineupId },
+//     include: {
+//       location: { select: { id: true, name: true, code: true } },
+//     },
+//     orderBy: { createdAt: "asc" },
+//   });
+// }

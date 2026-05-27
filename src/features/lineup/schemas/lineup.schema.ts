@@ -14,6 +14,13 @@ export const createLineupSchema = z.object({
     .string()
     .min(1, "라인업명은 필수입니다")
     .max(100, "라인업명은 100자 이내여야 합니다"),
+  isActive: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).default(0),
+  description: z
+    .string()
+    .max(500, "설명은 500자 이내여야 합니다")
+    .optional()
+    .nullable(),
 });
 
 // ── 수정 ──
@@ -23,6 +30,13 @@ export const updateLineupSchema = z.object({
     .min(1, "라인업명은 필수입니다")
     .max(100, "라인업명은 100자 이내여야 합니다")
     .optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).optional(),
+  description: z
+    .string()
+    .max(500, "설명은 500자 이내여야 합니다")
+    .optional()
+    .nullable(),
 });
 
 // ── 목록 조회 쿼리 ──
@@ -30,35 +44,42 @@ export const lineupListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   search: z.string().optional(),
-  sortBy: z.enum(["name", "code", "createdAt"]).default("name"),
+  // ★ 활성 필터 추가 — UI 기본값은 "활성만"
+  isActive: z
+    .union([z.boolean(), z.enum(["true", "false", "all"])])
+    .transform((v) => {
+      if (v === "all") return undefined;
+      if (typeof v === "boolean") return v;
+      return v === "true";
+    })
+    .optional(),
+  // ★ 정렬에 sortOrder 추가
+  sortBy: z
+    .enum(["name", "code", "createdAt", "sortOrder"])
+    .default("sortOrder"),
   sortOrder: z.enum(["asc", "desc"]).default("asc"),
 });
 
 // ============================================================
-// 2. LineupLocationMap (라인업 ↔ 배송지)
+// 2. LineupLocationMap — 현재 비즈니스 모델상 쓰임이 명확하지 않아 코드 배제
+//    원가 산출은 lineupId 기반 group by로 충분.
+//    향후 명확한 쓰임이 정의되면 주석 해제하여 복원.
 // ============================================================
 
-// ── 단건 생성 (드물게 사용) ──
-export const createLineupLocationMapSchema = z.object({
-  locationId: z.string().min(1, "배송지를 선택해야 합니다"),
-});
+// export const createLineupLocationMapSchema = z.object({
+//   locationId: z.string().min(1, "공장을 선택해야 합니다"),
+// });
 
-// ── 일괄 동기화 (UI에서 체크박스 다중 선택 후 저장) ──
-//   - locationIds 배열을 받아 현재 매핑을 해당 배열과 동일하게 만듦
-//   - 빠진 매핑은 hard delete (이 매핑 자체는 audit 가치가 낮음)
-export const syncLineupLocationsSchema = z.object({
-  locationIds: z
-    .array(z.string().min(1))
-    .max(500, "배송지는 한 번에 500개까지 매핑 가능합니다"),
-});
+// export const syncLineupLocationsSchema = z.object({
+//   locationIds: z
+//     .array(z.string().min(1))
+//     .max(500, "공장은 한 번에 500개까지 매핑 가능합니다"),
+// });
 
 // ============================================================
 // 3. LineupMealTemplateMap (라인업 × 슬롯타입 → 기본 식단 템플릿)
 // ============================================================
 
-// ── 단건 생성/업서트 ──
-//   - 같은 (lineupId, slotType) 조합이 활성 상태로 존재하면 update,
-//     soft-deleted 상태면 복원 + update, 없으면 create
 export const upsertLineupTemplateMapSchema = z.object({
   slotType: z
     .enum(mealSlotTypeValues)
@@ -66,16 +87,12 @@ export const upsertLineupTemplateMapSchema = z.object({
   mealTemplateId: z.string().min(1, "식단 템플릿을 선택해야 합니다"),
 });
 
-// ── 일괄 업서트 ──
-//   - UI에서 슬롯타입별 셀렉트박스 묶음으로 한 번에 저장할 때 사용
 export const bulkUpsertLineupTemplateMapsSchema = z.object({
   items: z
     .array(upsertLineupTemplateMapSchema)
     .max(20, "한 번에 최대 20개까지 매핑 가능합니다"),
 });
 
-// ── 목록 조회 (라인업 단위) ──
-//   - 별도 페이지네이션 없음 (슬롯타입 5개 한정)
 export const lineupTemplateMapListQuerySchema = z.object({
   lineupId: z.string().min(1),
 });
@@ -88,12 +105,9 @@ export type CreateLineupInput = z.infer<typeof createLineupSchema>;
 export type UpdateLineupInput = z.infer<typeof updateLineupSchema>;
 export type LineupListQuery = z.output<typeof lineupListQuerySchema>;
 
-export type CreateLineupLocationMapInput = z.infer<
-  typeof createLineupLocationMapSchema
->;
-export type SyncLineupLocationsInput = z.infer<
-  typeof syncLineupLocationsSchema
->;
+// LocationMap 타입도 주석 처리
+// export type CreateLineupLocationMapInput = z.infer<typeof createLineupLocationMapSchema>;
+// export type SyncLineupLocationsInput = z.infer<typeof syncLineupLocationsSchema>;
 
 export type UpsertLineupTemplateMapInput = z.output<
   typeof upsertLineupTemplateMapSchema

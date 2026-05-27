@@ -175,19 +175,19 @@ async function main() {
   console.log("✅ Lineups: 2개 생성");
 
   // ---- 7. LineupLocationMaps ----
-  const lineupMaps = [
-    { lineupId: lineupHome.id, locationId: locationSeoul.id },
-    { lineupId: lineupHome.id, locationId: locationGyeonggi.id },
-    { lineupId: lineupFresh.id, locationId: locationSeoul.id },
-  ];
-  for (const map of lineupMaps) {
-    await prisma.lineupLocationMap.upsert({
-      where: { lineupId_locationId: { lineupId: map.lineupId, locationId: map.locationId } },
-      update: {},
-      create: map,
-    });
-  }
-  console.log("✅ LineupLocationMaps: 3개 생성");
+  // const lineupMaps = [
+  //   { lineupId: lineupHome.id, locationId: locationSeoul.id },
+  //   { lineupId: lineupHome.id, locationId: locationGyeonggi.id },
+  //   { lineupId: lineupFresh.id, locationId: locationSeoul.id },
+  // ];
+  // for (const map of lineupMaps) {
+  //   await prisma.lineupLocationMap.upsert({
+  //     where: { lineupId_locationId: { lineupId: map.lineupId, locationId: map.locationId } },
+  //     update: {},
+  //     create: map,
+  //   });
+  // }
+  // console.log("✅ LineupLocationMaps: 3개 생성");
 
   // ---- 8. MaterialMasters ----
   const materials = [
