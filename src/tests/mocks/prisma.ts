@@ -46,6 +46,11 @@ export const mockPrisma = {
   mealCount: createModelMock(),
   mealPlanAccessory: createModelMock(),
   lineup: createModelMock(),
+  // ★ Phase 5-R Step 2: 라인업 부속
+  location: createModelMock(),
+  lineupLocationMap: createModelMock(),
+  lineupMealTemplateMap: createModelMock(),
+  shippingOrder: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn(),
 };
