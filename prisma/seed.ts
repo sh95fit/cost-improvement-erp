@@ -200,6 +200,19 @@ async function main() {
     },
   });
 
+  // ★ Phase 5-R Step 3.2a: EVENT 슬롯 시드 (제휴이벤트/단체주문 검증 케이스)
+  const mealSlotEvent = await prisma.companyMealSlot.upsert({
+    where: { companyId_code: { companyId: company.id, code: "SLOT-003" } },
+    update: {},
+    create: {
+      companyId: company.id,
+      code: "SLOT-003",
+      displayName: "제휴이벤트",
+      isActive: true,
+      sortOrder: 30,
+    },
+  });
+
   console.log("✓ CompanyMealSlot seeded:", {
     lunch: mealSlotLunch.id,
     dinner: mealSlotDinner.id,
@@ -728,6 +741,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupA.id,
       slotType: "LUNCH",
+      companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupHome.id,
       deletedAt: null,
     },
@@ -737,6 +751,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupA.id,
         slotType: "LUNCH",
+        companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
         note: "점심 가정간편식",
@@ -748,6 +763,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupA.id,
       slotType: "LUNCH",
+      companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
     },
@@ -757,6 +773,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupA.id,
         slotType: "LUNCH",
+        companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
         note: "점심 신선식품",
@@ -768,6 +785,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupA.id,
       slotType: "DINNER",
+      companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupHome.id,
       deletedAt: null,
     },
@@ -777,6 +795,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupA.id,
         slotType: "DINNER",
+        companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
         note: "석식 가정간편식",
@@ -789,6 +808,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupB.id,
       slotType: "LUNCH",
+      companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupHome.id,
       deletedAt: null,
     },
@@ -798,6 +818,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupB.id,
         slotType: "LUNCH",
+        companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
       },
@@ -808,6 +829,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupB.id,
       slotType: "LUNCH",
+      companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
     },
@@ -817,6 +839,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupB.id,
         slotType: "LUNCH",
+        companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
       },
@@ -827,6 +850,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupB.id,
       slotType: "DINNER",
+      companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupHome.id,
       deletedAt: null,
     },
@@ -836,6 +860,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupB.id,
         slotType: "DINNER",
+        companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
       },
@@ -846,6 +871,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupB.id,
       slotType: "DINNER",
+      companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
     },
@@ -855,6 +881,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupB.id,
         slotType: "DINNER",
+        companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
       },
@@ -865,6 +892,7 @@ async function main() {
     where: {
       mealPlanGroupId: groupB.id,
       slotType: "EVENT",
+      companyMealSlotId: mealSlotEvent.id,
       lineupId: lineupHome.id,
       deletedAt: null,
     },
@@ -874,6 +902,7 @@ async function main() {
       data: {
         mealPlanGroupId: groupB.id,
         slotType: "EVENT",
+        companyMealSlotId: mealSlotEvent.id,  
         lineupId: lineupHome.id,
         // EVENT는 템플릿 없이 DIRECT 슬롯만 사용
         note: "제휴 이벤트: 공급업체 완제품 직접 배정",
@@ -1015,15 +1044,15 @@ async function main() {
   // ---- 22-4. MealCount (라인업별 예상/확정 식수) ----
   const mealCountData = [
     // groupA
-    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: 2950 },
-    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, lineupId: lineupFresh.id, estimatedCount: 1000, finalCount: 1020 },
-    { mealPlanGroupId: groupA.id, slotType: "DINNER" as const, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: 2950 },
+    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1000, finalCount: 1020 },
+    { mealPlanGroupId: groupA.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
     // groupB
-    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, lineupId: lineupFresh.id, estimatedCount: 1200, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, lineupId: lineupFresh.id, estimatedCount: 800, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "EVENT" as const, lineupId: lineupHome.id, estimatedCount: 200, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1200, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupFresh.id, estimatedCount: 800, finalCount: null },
+    { mealPlanGroupId: groupB.id, slotType: "EVENT" as const, companyMealSlotId: mealSlotEvent.id, lineupId: lineupHome.id, estimatedCount: 200, finalCount: null },
   ];
   for (const mc of mealCountData) {
     await prisma.mealCount.upsert({

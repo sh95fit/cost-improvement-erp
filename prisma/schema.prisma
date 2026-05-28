@@ -955,30 +955,31 @@ model MealPlanGroup {
 }
 
 model MealPlan {
-  id              String       @id @default(cuid())
-  mealPlanGroupId String       @map("meal_plan_group_id")
-  slotType        MealSlotType @map("slot_type")
-  lineupId        String       @map("lineup_id")
-  mealTemplateId  String?      @map("meal_template_id")
+  id                String       @id @default(cuid())
+  mealPlanGroupId   String       @map("meal_plan_group_id")
+  slotType          MealSlotType @map("slot_type")              // ⚠️ Step 3.2b에서 제거 예정
+  companyMealSlotId String       @map("company_meal_slot_id")   // ★ Phase 5-R Step 3.2a 신설
+  lineupId          String       @map("lineup_id")
+  mealTemplateId    String?      @map("meal_template_id")
   note            String?
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")
 
-  mealPlanGroup MealPlanGroup       @relation(fields: [mealPlanGroupId], references: [id])
-  lineup        Lineup              @relation(fields: [lineupId], references: [id])
-  mealTemplate  MealTemplate?       @relation(fields: [mealTemplateId], references: [id])
-  slots         MealPlanSlot[]
-  accessories   MealPlanAccessory[]
+  mealPlanGroup   MealPlanGroup       @relation(fields: [mealPlanGroupId], references: [id])
+  companyMealSlot CompanyMealSlot     @relation(fields: [companyMealSlotId], references: [id])  
+  lineup          Lineup              @relation(fields: [lineupId], references: [id])
+  mealTemplate    MealTemplate?       @relation(fields: [mealTemplateId], references: [id])
+  slots           MealPlanSlot[]
+  accessories     MealPlanAccessory[]
 
-  // ★ Phase 5-R Step 1.2: soft delete 데이터 보존을 위해 일반 unique 제거.
-  //    migration 20260526030000_phase5r_step1_2_meal_plan_partial_unique 에서
-  //    deleted_at IS NULL 조건의 partial unique index로 대체함.
-  //    아래 라인은 의도적으로 주석 처리 — 절대 해제하지 말 것.
+  // ★ Phase 5-R Step 1.2: partial unique 유지 (slot_type 기준)
+  //    Step 3.2b에서 company_meal_slot_id 기준으로 재작성 예정.
   // @@unique([mealPlanGroupId, slotType, lineupId])
   @@index([mealPlanGroupId])
   @@index([lineupId])
   @@index([mealTemplateId])
+  @@index([companyMealSlotId])
   @@map("meal_plans")
 }
 
@@ -1017,23 +1018,28 @@ model MealPlanSlot {
 }
 
 model MealCount {
-  id              String       @id @default(cuid())
-  mealPlanGroupId String       @map("meal_plan_group_id")
-  slotType        MealSlotType @map("slot_type")
-  lineupId        String       @map("lineup_id")
+  id                String       @id @default(cuid())
+  mealPlanGroupId   String       @map("meal_plan_group_id")
+  slotType          MealSlotType @map("slot_type")              // ⚠️ Step 3.2b에서 제거 예정
+  companyMealSlotId String       @map("company_meal_slot_id")   // ★ Phase 5-R Step 3.2a 신설
+  lineupId          String       @map("lineup_id")
   estimatedCount  Int?         @map("estimated_count")
   finalCount      Int?         @map("final_count")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")  
 
-  mealPlanGroup MealPlanGroup @relation(fields: [mealPlanGroupId], references: [id])
-  lineup        Lineup        @relation(fields: [lineupId], references: [id])
+  mealPlanGroup   MealPlanGroup   @relation(fields: [mealPlanGroupId], references: [id])
+  companyMealSlot CompanyMealSlot @relation(fields: [companyMealSlotId], references: [id])  
+  lineup          Lineup          @relation(fields: [lineupId], references: [id])
 
+  // ★ Phase 5-R Step 3.2a: 기존 unique 유지 (slot_type 기준).
+  //    Step 3.2b에서 company_meal_slot_id 기준 partial unique로 재작성.
   @@unique([mealPlanGroupId, slotType, lineupId])
   @@index([mealPlanGroupId])
   @@index([lineupId])
-  @@index([deletedAt])                        
+  @@index([deletedAt])
+  @@index([companyMealSlotId])
   @@map("meal_counts")
 }
 
@@ -1117,9 +1123,9 @@ model CompanyMealSlot {
 
   company Company @relation(fields: [companyId], references: [id])
 
-  // ⚠️ Step 3.2에서 추가될 역방향 관계 (현 단계에서는 주석 유지)
-  // mealPlans  MealPlan[]
-  // mealCounts MealCount[]
+  // ★ Phase 5-R Step 3.2a: 역방향 관계 활성화 (FK 컬럼 추가에 따른)
+  mealPlans  MealPlan[]
+  mealCounts MealCount[]
 
   @@unique([companyId, code])
   @@index([companyId])
