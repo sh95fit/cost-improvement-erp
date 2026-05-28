@@ -350,6 +350,7 @@ model Company {
   costCalculations      CostCalculation[]
   overheadCosts         OverheadCost[]
   unitMasters           UnitMaster[]
+  companyMealSlots  CompanyMealSlot[]  // ★ Phase 5-R Step 3.1: 식단 슬롯 마스터  
 
   @@map("companies")
 }
@@ -1094,6 +1095,38 @@ model Lineup {
   @@index([companyId, sortOrder])
   @@index([deletedAt])
   @@map("lineups")
+}
+
+// ---- 8.5. 식단 슬롯 마스터 ---- // ★ Phase 5-R Step 3.1 신설
+// 회사 단위 식단 슬롯 정의(중식/석식/조식 등). MealSlotType enum 대체용 마스터.
+// Step 3.2에서 MealPlan/MealCount의 slot_type 컬럼을 본 모델의 FK로 교체 예정.
+// 운영 흐름:
+//   1) 마스터 화면(/meal-slots)에서 등록 + 활성/비활성/정렬 관리
+//   2) 식단 관리 화면에서는 isActive=true 슬롯만 옵션으로 노출
+model CompanyMealSlot {
+  id          String    @id @default(cuid())
+  companyId   String    @map("company_id")
+  code        String    // 자동 채번: SLOT-001, SLOT-002 ... (생성 후 불변)
+  displayName String    @map("display_name") // 사용자 편집 가능: "중식", "석식" 등
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  // ⚠️ Step 3.2에서 추가될 역방향 관계 (현 단계에서는 주석 유지)
+  // mealPlans  MealPlan[]
+  // mealCounts MealCount[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([companyId, sortOrder])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("company_meal_slots")
 }
 
 // ⚠️ LineupLocationMap: 현재 비즈니스 모델상 쓰임이 명확하지 않아 코드 레벨 배제

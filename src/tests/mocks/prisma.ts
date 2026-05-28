@@ -46,6 +46,8 @@ export const mockPrisma = {
   mealCount: createModelMock(),
   mealPlanAccessory: createModelMock(),
   lineup: createModelMock(),
+  // ★ Phase 5-R Step 3.1: 식단 슬롯 마스터
+  companyMealSlot: createModelMock(),
   // ★ Phase 5-R Step 2: 라인업 부속
   location: createModelMock(),
   lineupLocationMap: createModelMock(),

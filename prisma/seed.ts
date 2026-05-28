@@ -174,6 +174,38 @@ async function main() {
   });
   console.log("✅ Lineups: 2개 생성");
 
+  // ★ Phase 5-R Step 3.1: 기본 식단 슬롯 마스터 시드 (LUNCH=SLOT-001, DINNER=SLOT-002)
+  // Step 3.2에서 MealPlan/MealCount FK 교체 시 데이터 매핑에 사용됨.
+  const mealSlotLunch = await prisma.companyMealSlot.upsert({
+    where: { companyId_code: { companyId: company.id, code: "SLOT-001" } },
+    update: {},
+    create: {
+      companyId: company.id,
+      code: "SLOT-001",
+      displayName: "중식",
+      isActive: true,
+      sortOrder: 10,
+    },
+  });
+
+  const mealSlotDinner = await prisma.companyMealSlot.upsert({
+    where: { companyId_code: { companyId: company.id, code: "SLOT-002" } },
+    update: {},
+    create: {
+      companyId: company.id,
+      code: "SLOT-002",
+      displayName: "석식",
+      isActive: true,
+      sortOrder: 20,
+    },
+  });
+
+  console.log("✓ CompanyMealSlot seeded:", {
+    lunch: mealSlotLunch.id,
+    dinner: mealSlotDinner.id,
+  });
+
+
   // ---- 7. LineupLocationMaps ----
   // const lineupMaps = [
   //   { lineupId: lineupHome.id, locationId: locationSeoul.id },
