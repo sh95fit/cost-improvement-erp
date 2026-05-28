@@ -35,7 +35,6 @@ describe("getLineups", () => {
         description: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        _count: { templateMaps: 3 },
       },
       {
         id: "l2",
@@ -46,7 +45,6 @@ describe("getLineups", () => {
         description: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        _count: { templateMaps: 2 },
       },
     ];
     mockPrisma.lineup.findMany.mockResolvedValue(items);
@@ -202,7 +200,7 @@ describe("getLineups", () => {
 // ============================================================
 
 describe("getLineupById", () => {
-  it("회사 소속의 활성 라인업을 templateMaps와 함께 반환한다", async () => {
+  it("회사 소속의 활성 라인업을 반환한다", async () => {
     const lineup = {
       id: LINEUP_ID,
       name: "가정식도시락",
@@ -210,7 +208,6 @@ describe("getLineupById", () => {
       isActive: true,
       sortOrder: 0,
       description: null,
-      templateMaps: [],
     };
     mockPrisma.lineup.findFirst.mockResolvedValue(lineup);
 
@@ -218,15 +215,6 @@ describe("getLineupById", () => {
 
     expect(mockPrisma.lineup.findFirst).toHaveBeenCalledWith({
       where: { id: LINEUP_ID, companyId: COMPANY_ID, deletedAt: null },
-      include: {
-        templateMaps: {
-          where: { deletedAt: null },
-          include: {
-            mealTemplate: { select: { id: true, name: true } },
-          },
-          orderBy: { slotType: "asc" },
-        },
-      },
     });
     expect(result).toEqual(lineup);
   });
@@ -449,15 +437,13 @@ describe("checkLineupDependencies", () => {
 // ============================================================
 
 describe("deleteLineup", () => {
-  it("의존성 없으면 트랜잭션으로 templateMaps soft-delete + lineup soft-delete를 수행한다", async () => {
+  it("의존성 없으면 lineup을 soft-delete 한다", async () => {
     // checkLineupDependencies 내부 호출
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(0);
     mockPrisma.mealCount.count.mockResolvedValue(0);
     mockPrisma.shippingOrder.count.mockResolvedValue(0);
 
-    // 트랜잭션 내부
-    mockPrisma.lineupMealTemplateMap.updateMany.mockResolvedValue({ count: 2 });
     mockPrisma.lineup.update.mockResolvedValue({
       id: LINEUP_ID,
       deletedAt: new Date(),
@@ -465,23 +451,14 @@ describe("deleteLineup", () => {
 
     await deleteLineup(COMPANY_ID, LINEUP_ID);
 
-    // templateMaps soft delete 호출 확인
-    expect(mockPrisma.lineupMealTemplateMap.updateMany).toHaveBeenCalledWith({
-      where: { lineupId: LINEUP_ID, deletedAt: null },
-      data: { deletedAt: expect.any(Date) },
-    });
-
     // lineup soft delete 호출 확인
     expect(mockPrisma.lineup.update).toHaveBeenCalledWith({
       where: { id: LINEUP_ID },
       data: { deletedAt: expect.any(Date) },
     });
-
-    // ⚠️ locationMap 처리는 더 이상 수행하지 않아야 함
-    expect(mockPrisma.lineupLocationMap.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("의존성이 있으면 DEPENDENCY_EXISTS 에러를 던지고 트랜잭션을 시작하지 않는다", async () => {
+  it("의존성이 있으면 DEPENDENCY_EXISTS 에러를 던지고 update를 호출하지 않는다", async () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(1);
     mockPrisma.mealCount.count.mockResolvedValue(0);
@@ -491,9 +468,7 @@ describe("deleteLineup", () => {
       "DEPENDENCY_EXISTS"
     );
 
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     expect(mockPrisma.lineup.update).not.toHaveBeenCalled();
-    expect(mockPrisma.lineupMealTemplateMap.updateMany).not.toHaveBeenCalled();
   });
 
   it("라인업이 존재하지 않으면 NOT_FOUND를 던진다", async () => {
@@ -504,6 +479,7 @@ describe("deleteLineup", () => {
     );
   });
 });
+
 
 // ============================================================
 // ⚠️ LineupLocationMap 관련 테스트 — 모델 배제로 skip

@@ -20,14 +20,6 @@ const LINEUP_LIST_SELECT = {
   description: true,
   createdAt: true,
   updatedAt: true,
-  _count: {
-    select: {
-      // ⚠️ locationMaps 카운트 제거 (모델 배제)
-      // ⚠️ templateMaps는 활성 매핑만 카운트하고 싶지만,
-      //    Prisma _count는 단순 카운트만 지원하므로 별도 쿼리 필요 시 추가
-      templateMaps: true,
-    },
-  },
 } as const;
 
 // ============================================================
@@ -99,16 +91,6 @@ export async function getLineups(companyId: string, query: LineupListQuery) {
 export async function getLineupById(companyId: string, id: string) {
   return prisma.lineup.findFirst({
     where: { id, companyId, deletedAt: null },
-    include: {
-      // ⚠️ locationMaps include 제거
-      templateMaps: {
-        where: { deletedAt: null },
-        include: {
-          mealTemplate: { select: { id: true, name: true } },
-        },
-        orderBy: { slotType: "asc" },
-      },
-    },
   });
 }
 
@@ -213,22 +195,9 @@ export async function deleteLineup(companyId: string, id: string) {
   const check = await checkLineupDependencies(companyId, id);
   if (!check.canDelete) throw new Error("DEPENDENCY_EXISTS");
 
-  return prisma.$transaction(async (tx) => {
-    const now = new Date();
-
-    // ⚠️ locationMaps hard delete 제거 (모델 배제)
-    // await tx.lineupLocationMap.deleteMany({ where: { lineupId: id } });
-
-    // templateMaps soft delete
-    await tx.lineupMealTemplateMap.updateMany({
-      where: { lineupId: id, deletedAt: null },
-      data: { deletedAt: now },
-    });
-
-    return tx.lineup.update({
-      where: { id },
-      data: { deletedAt: now },
-    });
+  return prisma.lineup.update({
+    where: { id },
+    data: { deletedAt: new Date() },
   });
 }
 

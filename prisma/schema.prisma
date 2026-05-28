@@ -885,9 +885,9 @@ model MealTemplate {
   containers  MealTemplateContainer[]
   accessories MealTemplateAccessory[]
   mealPlans   MealPlan[]
-  lineupMaps  LineupMealTemplateMap[]  // ★ 추가 (Phase 5-R Step 2)
+  // ⚠️ Phase 5-R Step 2 정정: LineupMealTemplateMap 폐기 (식단 단계 결정 사항)
+  // lineupMaps LineupMealTemplateMap[]
 
-  // ★ 삭제: containerGroupId, slots (MealTemplateSlot 모델 폐지)
   @@index([companyId])
   @@map("meal_templates")
 }
@@ -1080,9 +1080,12 @@ model Lineup {
   //    향후 명확한 쓰임이 정의되면 주석 해제하여 복원.
   // locationMaps LineupLocationMap[]
 
-  templateMaps LineupMealTemplateMap[]
-  mealPlans    MealPlan[]
-  mealCounts   MealCount[]
+  // ⚠️ Phase 5-R Step 2 정정: LineupMealTemplateMap 폐기
+  //    슬롯-템플릿 매핑은 식단(MealPlan) 작성 단계에서 결정됨.
+  // templateMaps LineupMealTemplateMap[]
+
+  mealPlans      MealPlan[]
+  mealCounts     MealCount[]
   shippingOrders ShippingOrder[]
 
   @@unique([companyId, code]) // 또는 partial unique index — 기존 정의 유지
@@ -1111,30 +1114,6 @@ model Lineup {
 //   @@index([locationId])
 //   @@map("lineup_location_maps")
 // }
-
-// ★ 신규 (Phase 5-R Step 2): 라인업 × 슬롯타입 → 기본 식단 템플릿 매핑
-//   - "기본값" 의미: MealPlan 자동 생성 시 mealTemplateId 채우는 출처
-//   - 운영 중 특정 일자 변경은 MealPlan.mealTemplateId에서 override (이 매핑은 그대로)
-//   - (lineupId, slotType) 활성 1건만 허용: partial unique index는 마이그레이션 SQL에서 처리
-model LineupMealTemplateMap {
-  id             String       @id @default(cuid())
-  lineupId       String       @map("lineup_id")
-  slotType       MealSlotType @map("slot_type")
-  mealTemplateId String       @map("meal_template_id")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  deletedAt      DateTime?    @map("deleted_at")
-
-  lineup       Lineup       @relation(fields: [lineupId], references: [id])
-  mealTemplate MealTemplate @relation(fields: [mealTemplateId], references: [id])
-
-  // partial unique (deletedAt IS NULL)는 migration SQL에서 직접 생성
-  @@index([lineupId])
-  @@index([slotType])
-  @@index([mealTemplateId])
-  @@index([deletedAt])
-  @@map("lineup_meal_template_maps")
-}
 
 // ---- 9. 자동 생성 ----
 
