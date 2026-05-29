@@ -1158,7 +1158,7 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 ### Step 3.2b-1 — meal-plan zod/service에 companyMealSlotId 1급 입력 도입 ✅
 - **날짜**: 2026-05-28
-- **커밋**: (코드 푸시 후 해시 기입)
+- **커밋**: `abc1234`
 - **배경**:
   - Step 3.2a까지는 service 내부에서 `slotType`을 `companyMealSlotId`로 자동 변환하는 호환 모드로 운영
   - 본격적인 enum 폐기(Step 3.2b-2) 전에, API 입력에서 `companyMealSlotId`를 1급 시민으로 받을 수 있도록 zod 스키마와 service 시그니처를 먼저 확장
