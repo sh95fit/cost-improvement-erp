@@ -221,6 +221,8 @@ export async function createMealPlanAction(
       NOT_FOUND: "식단 그룹을 찾을 수 없습니다",
       LINEUP_NOT_FOUND: "라인업을 찾을 수 없습니다",
       DUPLICATE_MEAL_PLAN: "동일 식사타입/라인업의 식단이 이미 존재합니다",
+      COMPANY_MEAL_SLOT_NOT_FOUND: "해당 슬롯을 찾을 수 없습니다",
+      SLOT_TYPE_REQUIRED: "식사 타입 또는 슬롯을 선택하세요",
     });
   }
 }
@@ -466,6 +468,8 @@ export async function upsertMealCountAction(
     return handleActionError(error, "식수 저장에 실패했습니다", {
       NOT_FOUND: "식단 그룹을 찾을 수 없습니다",
       LINEUP_NOT_FOUND: "라인업을 찾을 수 없습니다",
+      COMPANY_MEAL_SLOT_NOT_FOUND: "해당 슬롯을 찾을 수 없습니다",
+      SLOT_TYPE_REQUIRED: "식사 타입 또는 슬롯을 선택하세요",
     });
   }
 }
@@ -495,6 +499,8 @@ export async function bulkUpsertMealCountAction(
     return handleActionError(error, "식수 일괄 저장에 실패했습니다", {
       NOT_FOUND: "식단 그룹을 찾을 수 없습니다",
       LINEUP_NOT_FOUND: "일부 라인업을 찾을 수 없습니다",
+      COMPANY_MEAL_SLOT_NOT_FOUND: "일부 슬롯을 찾을 수 없습니다",
+      SLOT_TYPE_REQUIRED: "식사 타입 또는 슬롯을 선택하세요",
     });
   }
 }

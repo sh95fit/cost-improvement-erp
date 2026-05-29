@@ -1075,121 +1075,155 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 ---
 
-#### Step 2 — seed.ts 식단 샘플 추가 ⬜
-#### Step 3 — meal-plan Zod 스키마 재작성 ⬜
-#### Step 4 — meal-plan.service.ts 재작성 ⬜
-#### Step 5 — meal-plan.action.ts 재작성 ⬜
-#### Step 6 — meal-plan.service.test.ts 재작성 + 전체 테스트 통과 ⬜
-#### Step 7 — /meal-plans/page.tsx UI 재구성 ⬜
-#### Step 8 — 자동생성 연결 계약 문서화 + Phase 5-R 종합 검증 ⬜
+---
 
-#### Phase 5-R1 — 구조 재정의 기준 문서 확정 ⬜
-- **작업 목록**:
-  - [ ] `MealPlanGroup = 날짜 그룹` 기준 확정
-  - [ ] `MealPlan = 식사타입 × lineup` 기준 확정
-  - [ ] `MealPlanSlot = 실행 배정 단위` 기준 확정
-  - [ ] `MealCount = 상태가 아닌 데이터` 기준 확정
-  - [ ] `MaterialRequirement / CookingPlan / 자동생성` 입력 기준을 `MealPlanSlot` 중심으로 확정
-  - [ ] 관련 문서 보강:
-    - [ ] `PROGRESS.md`
-    - [ ] `01_개발순서.md`
-    - [ ] `02_개발문서.md`
-    - [ ] `03_개발가이드문서.md`
-    - [ ] `04_전체 구현 체크리스트 및 코드기준안.md`
-    - [ ] `05_불일치 정리 및 통합기준 제안.md`
-    - [ ] `06_Phase 3. 식단 관리 프로세스.md`
-    - [ ] `07_HANDOFF.md`
+## Phase 5-R Step 3 — CompanyMealSlot 모듈 (회사별 자유 슬롯 정의)
 
-#### Phase 5-R2 — schema.prisma / migration 수정 ⬜
-- **대상 파일**:
-  - `prisma/schema.prisma`
-  - migration 파일
-- **작업 목록**:
-  - [ ] `MealPlanGroup.lineupId` 제거
-  - [ ] `MealPlan.lineupId` 관계 재배치
-  - [ ] `MealPlan` unique / relation 재정의
-  - [ ] `MealPlanSlot` 실행 배정 필드 추가
-    - [ ] `supplierItemId`
-    - [ ] `productionLineId`
-    - [ ] 필요 시 `itemName`, `note`, `sortOrder` 등 보강
-  - [ ] 관련 relation / index / nullable 정책 점검
-  - [ ] migration 생성 및 검증
-- **완료 기준**:
-  - [ ] `prisma validate`
-  - [ ] `prisma generate`
-  - [ ] `prisma migrate dev`
-  - [ ] Prisma Studio 구조 검증 완료
+### 배경 / 결정 사항
+- 기존 `MealSlotType` enum(`BREAKFAST/LUNCH/DINNER/SNACK/EVENT`)은 회사별 자유 슬롯 운영 요구사항을 충족하지 못함
+  - 회사 A는 "중식/석식/제휴이벤트", 회사 B는 "프리미엄 중식/일반 중식/석식" 같이 다르게 운영
+  - 향후 슬롯 추가가 빈번할 가능성 (캠페인 이벤트 등)
+- 회사별로 자유롭게 슬롯을 정의할 수 있는 `CompanyMealSlot` 마스터 테이블 신설
+- `MealSlotType` enum은 단계적으로 폐기 (Step 3.2b-2에서 제거)
 
-#### Phase 5-R3 — seed / schema / service / action 재정비 ⬜
-- **대상 파일**:
-  - `prisma/seed.ts`
-  - `src/features/meal-plan/schemas/meal-plan.schema.ts`
-  - `src/features/meal-plan/services/meal-plan.service.ts`
-  - `src/features/meal-plan/actions/meal-plan.action.ts`
-- **작업 목록**:
-  - [ ] 날짜 그룹 + 다중 lineup + 슬롯 예시 시드 보강
-  - [ ] create / update / copy / delete / state-change 입력 스키마 재정의
-  - [ ] cascade delete / deep copy / transaction 재정비
-  - [ ] MealCount와 상태 분리 검증
-  - [ ] permission / audit / error mapping 유지
-- **완료 기준**:
-  - [ ] 기존 CRUD 시나리오 유지
-  - [ ] copy 기능 유지
-  - [ ] 상태 전이 유지
-  - [ ] seed 재실행 가능
+### Step 진행 구조 (재구성)
+실제 작업 순서를 PROGRESS.md에 정확히 반영하기 위해 아래 골격으로 재구성:
 
-#### Phase 5-R4 — MealPlan UI 재구성 ⬜
-- **대상 파일**:
-  - `src/app/(dashboard)/meal-plans/page.tsx`
-  - 관련 보조 컴포넌트
-- **작업 목록**:
-  - [ ] 날짜 그룹 중심 목록 유지
-  - [ ] `MealPlan = 식사타입 × lineup` 카드 구조로 전환
-  - [ ] `MealPlanSlot` 실행 배정 편집 UI 추가
-  - [ ] 공급업체 품목 / 생산라인 배정 UX 반영
-  - [ ] 기존 생성 / 복사 / 상태 변경 UX 재연결
-- **완료 기준**:
-  - [ ] 날짜별 그룹 확인 가능
-  - [ ] 같은 날짜에 여러 lineup 표현 가능
-  - [ ] 슬롯 단위 배정 정보 수정 가능
+| Step | 작업 | 상태 |
+|------|------|------|
+| 3.1 | CompanyMealSlot 마스터 테이블 + 기본 시드 (LUNCH/DINNER) | ✅ |
+| 3.2a | MealPlan/MealCount에 companyMealSlotId 컬럼 추가 + 백필 + EVENT 시드 | ✅ |
+| 3.2b-1 | meal-plan zod/service에 companyMealSlotId 1급 입력 도입, slotType 호환 유지 | ✅ |
+| 3.2b-2 | UI 전환 (slotType Select → companyMealSlot 동적 Select) + DB slot_type 컬럼/enum 제거 | ⬜ |
+| 3.2c | CompanyMealSlot 마스터 관리 페이지 (CRUD UI) | ⬜ (보류 — 필요 시점에 진행) |
+| 3.3 | meal-plan.service.test.ts 갱신 + 전체 테스트 통과 | ⬜ |
+| 3.4 | /meal-plans UI 회귀 검증 + Phase 5-R Step 3 종합 검증 | ⬜ |
 
-#### Phase 5-R5 — 자동생성 연결 계약 정리 ⬜
-- **작업 목록**:
-  - [ ] MealCount 연결 시점 정의
-  - [ ] MealPlanAccessory 연결 방식 정의
-  - [ ] MaterialRequirement 생성 기준 정의
-  - [ ] CookingPlan 연결 방식 정의
-  - [ ] 자동생성 재실행 / 멱등성 정책 정의
-- **완료 기준**:
-  - [ ] 어떤 시점에 어떤 엔티티가 생성되는지 문서화 완료
-  - [ ] 재실행 시 중복/덮어쓰기 정책 명확화
+### Step 3.1 — CompanyMealSlot 마스터 테이블 ✅
+- **날짜**: 2026-05-28
+- **커밋**: `3b5eeaec`
+- **변경 파일**:
+  - `prisma/schema.prisma` — `CompanyMealSlot` 모델 신규 (id, companyId, code, displayName, description, isActive, sortOrder, timestamps, deletedAt), 유니크 `(companyId, code)`, 인덱스 4개
+  - `prisma/migrations/20260528020000_phase5r_step3_1_add_company_meal_slot/migration.sql` — CREATE TABLE + FK + 인덱스
+  - `prisma/migrations/20260528020001_phase5r_step3_1_fk_policy_fix/migration.sql` — FK 정책 보정 (마이그레이션 폴더 rename으로 ordering 정정)
+  - `prisma/seed.ts` — 기본 슬롯 SLOT-001(중식), SLOT-002(석식) upsert
+- **완료 항목**:
+  - [x] CompanyMealSlot 모델 정의 (회사별 슬롯 자유 정의)
+  - [x] 자동 채번 `code` (SLOT-001, SLOT-002 등), 생성 후 immutable 정책
+  - [x] 기본 시드: SLOT-001(중식, sortOrder=10), SLOT-002(석식, sortOrder=20)
+  - [x] 마이그레이션 폴더 timestamp 정정 (15125 → 020001로 rename, _prisma_migrations 테이블 동기화)
+  - [x] `prisma migrate status`: Database schema is up to date
+  - [x] `npx tsc --noEmit`: 0 errors
+- **아키텍처 결정**:
+  - 슬롯 `code`는 시스템 자동 채번 (사용자 입력 불가) — 일관된 정렬·표시 보장
+  - `displayName`은 사용자가 자유롭게 변경 가능 (중식 → 점심특선 등)
+  - `isSystem` 플래그 미도입 — 모든 슬롯을 동일하게 취급 (UnitMaster와 정책 차이, 단순성 우선)
+  - FK 정책: ON DELETE NO ACTION + ON UPDATE CASCADE
+- **다음 단계**: Step 3.2a — MealPlan/MealCount에 companyMealSlotId FK 컬럼 추가
 
-#### Phase 5-R6 — 테스트 보강 ⬜
-- **작업 목록**:
-  - [ ] meal-plan schema test 보강
-  - [ ] meal-plan service test 작성/갱신
-  - [ ] meal-plan action 통합 검증
-  - [ ] 다중 lineup / slot assignment / copy / state transition / count 분리 테스트
-  - [ ] 필요 시 E2E 시나리오 보강
-- **완료 기준**:
-  - [ ] 기존 테스트 회귀 없음
-  - [ ] 신규 구조 시나리오 PASS
+### Step 3.2a — MealPlan/MealCount에 companyMealSlotId 컬럼 추가 + 백필 ✅
+- **날짜**: 2026-05-28
+- **커밋**: `944807bc`
+- **배경**:
+  - Step 3.1로 슬롯 마스터는 생성됐지만, 기존 MealPlan/MealCount는 여전히 `slotType` enum만 참조
+  - 1단계로 신규 FK 컬럼을 추가하고 기존 데이터를 백필한 뒤, Step 3.2b-2에서 enum/컬럼을 제거하는 점진적 전환 방식 채택
+  - 동시 변경은 롤백 비용이 크고 회귀 위험이 높아 분할 진행
+- **변경 파일**: 5개 (신규 1 + 수정 4 + rename 1)
+  - `prisma/migrations/20260528020100_phase5r_step3_2a_add_company_meal_slot_id_columns/migration.sql` — **신규**: nullable 컬럼 추가 → 백필 (LUNCH→SLOT-001, DINNER→SLOT-002, EVENT→SLOT-003) → DO $$ 검증 블록 → NOT NULL 전환 → FK + 인덱스
+  - `prisma/schema.prisma` — `MealPlan`/`MealCount`에 `companyMealSlotId String @map("company_meal_slot_id")` + relation + `@@index([companyMealSlotId])`, `CompanyMealSlot`에 역참조 관계 `mealPlans MealPlan[]` / `mealCounts MealCount[]` 추가, `slotType`은 주석으로 "Step 3.2b-2에서 제거 예정" 명시
+  - `prisma/seed.ts` — SLOT-003(제휴이벤트, sortOrder=30) upsert 추가, 8개 MealPlan + 8개 MealCount에 `companyMealSlotId` 매핑
+  - `src/features/meal-plan/services/meal-plan.service.ts` — `SLOT_TYPE_TO_CODE` 상수 + `resolveCompanyMealSlotId` 호환 helper 추가, `createMealPlan`/`upsertMealCount`/`bulkUpsertMealCount`/`copyMealPlanGroup`에서 `companyMealSlotId` 채움 (bulk는 slotIdMap 캐시로 N+1 회피)
+  - `prisma/migrations/20260528015125_…/` → `20260528020001_phase5r_step3_1_fk_policy_fix/` (폴더 rename, Step 3.1과 함께 정정)
+- **완료 항목**:
+  - [x] nullable 컬럼 추가 → 백필 → NOT NULL 전환 → FK + 인덱스 (단일 마이그레이션 트랜잭션)
+  - [x] 백필 매핑: LUNCH → SLOT-001, DINNER → SLOT-002, EVENT → SLOT-003 (회사별)
+  - [x] DO $$ 검증 블록: 매핑 실패 시 명확한 에러 메시지로 마이그레이션 중단
+  - [x] SLOT-003(제휴이벤트) 시드 추가 (EVENT 백필 대응)
+  - [x] service에 `resolveCompanyMealSlotId` 호환 helper 도입 (slotType → companyMealSlotId 변환, Step 3.2b-2에서 제거 예정)
+  - [x] `slotType` 컬럼/enum은 그대로 유지 (Step 3.2b-2에서 일괄 제거)
+  - [x] migrate reset 후 seed 8 MealPlan + 8 MealCount 모두 FK 매핑 (NULL 0건 SQL 확인)
+  - [x] `npx tsc --noEmit`: 0 errors
+  - [x] `npm run test`: 13 files / 183 passed / 2 skipped
+- **트러블슈팅 이력** (참고):
+  - 첫 마이그레이션 시도 시 P3018 (백필 단계에서 SLOT-003 누락으로 EVENT 행 매핑 실패) → `migrate resolve --rolled-back` 후 seed에 SLOT-003 추가하고 reset
+  - seed 실행 시 PrismaClient에 `companyMealSlotId` 타입 부재 → `prisma generate` 재실행으로 해결
+  - `prisma.mealPlan.findFirst` 시 P2021 (`MealPlan` 테이블 없음) → schema.prisma의 MealPlan/MealCount 모델에 `@@map("meal_plans")`/`@@map("meal_counts")` 누락 발견하여 추가
+  - seed의 `mealPlan.create` 8곳에서 `companyMealSlotId` 누락 → 각각 명시적 매핑 추가
+  - service에서 TS2322 5건 (`createMealPlan`/`upsertMealCount`/`bulkUpsertMealCount`/`copyMealPlanGroup` 2곳) → 위 helper 도입으로 해소
+- **아키텍처 결정**:
+  - **점진적 전환**: nullable 컬럼 → 백필 → NOT NULL의 3-step 패턴은 production migration에서도 안전. 단일 마이그레이션 안에서 트랜잭션으로 묶어 일관성 보장
+  - **호환 helper 임시 유지**: `resolveCompanyMealSlotId`는 입력 API가 여전히 `slotType`을 받는 상태(UI 미전환)이므로 service 레이어에서 변환. Step 3.2b-2에서 helper 자체 제거 예정
+  - **백필 검증의 명시화**: DO $$ 블록으로 NULL 0건을 보장 — silent failure 방지
+- **다음 단계**: Step 3.2b-1 — meal-plan zod/service에 `companyMealSlotId`를 1급 입력으로 도입, `slotType` 호환은 유지 (UI는 변경 없음)
 
-#### Phase 5-R7 — 문서 동기화 및 Sprint 2 재개 판정 ⬜
-- **작업 목록**:
-  - [ ] `PROGRESS.md` 갱신
-  - [ ] 핵심 문서 7종 갱신
-  - [ ] Sprint 2 원래 미완료 Phase 재개 순서 확정
-- **재개 순서**:
-  1. Phase 2-e
-  2. Phase 6
-  3. Phase 7
-  4. Phase 8
-  5. Phase 9
-  6. Phase 10
-  7. Phase 11
-- **완료 기준**:
-  - [ ] 구조 재정의 이후 Sprint 2 나머지 작업을 안전하게 이어갈 수 있다고 판단됨
+### Step 3.2b-1 — meal-plan zod/service에 companyMealSlotId 1급 입력 도입 ✅
+- **날짜**: 2026-05-28
+- **커밋**: (코드 푸시 후 해시 기입)
+- **배경**:
+  - Step 3.2a까지는 service 내부에서 `slotType`을 `companyMealSlotId`로 자동 변환하는 호환 모드로 운영
+  - 본격적인 enum 폐기(Step 3.2b-2) 전에, API 입력에서 `companyMealSlotId`를 1급 시민으로 받을 수 있도록 zod 스키마와 service 시그니처를 먼저 확장
+  - UI는 아직 `slotType`만 보내므로, 두 입력 모두 받되 `companyMealSlotId`가 있으면 우선 사용. 그 외 외부 client(API 직접 호출 등)는 신규 입력으로 옮길 수 있음
+  - DB의 `slot_type` 컬럼은 그대로 유지 (UI/DB 동시 변경은 Step 3.2b-2에서)
+- **변경 파일**: 3개 (수정)
+  - `src/features/meal-plan/schemas/meal-plan.schema.ts` — `createMealPlanSchema`/`upsertMealCountSchema`에서 `slotType`을 optional로 변경, `companyMealSlotId` optional 추가, `.refine`으로 "둘 중 하나는 반드시 필요" 검증
+  - `src/features/meal-plan/services/meal-plan.service.ts` — `resolveCompanyMealSlotIdFromInput` 헬퍼 신규 (companyMealSlotId가 있으면 회사 격리 검증 후 그대로 사용, 없으면 slotType→code 변환), `resolveSlotTypeFromCompanyMealSlot` 헬퍼 신규 (code→slotType 역매핑, 기본 3개 슬롯 외에는 EVENT로 fallback), `createMealPlan`/`upsertMealCount`/`bulkUpsertMealCount` 3곳에서 새 헬퍼 사용
+  - `src/features/meal-plan/actions/meal-plan.action.ts` — `createMealPlanAction`/`upsertMealCountAction`/`bulkUpsertMealCountAction`의 에러 매핑에 `COMPANY_MEAL_SLOT_NOT_FOUND`, `SLOT_TYPE_REQUIRED` 추가
+- **완료 항목**:
+  - [x] zod schema: `slotType` 옵션화 + `companyMealSlotId` 옵션 추가 + `.refine`으로 XOR 검증 (둘 다 누락 시 거부)
+  - [x] service: `companyMealSlotId` 우선 처리, 없으면 `slotType` → `companyMealSlotId` 변환 (기존 호환 helper 재사용)
+  - [x] 회사 격리 검증: 외부로 받은 `companyMealSlotId`가 해당 회사 소속인지 `companyMealSlot.findUnique({ where: { id, ... } })`로 확인
+  - [x] slotType 역매핑 helper: SLOT-001→LUNCH, SLOT-002→DINNER, SLOT-003→EVENT, 그 외→EVENT fallback (Step 3.2b-1 한정 임시 정책, Step 3.2b-2에서 slot_type 컬럼 제거 시 자연 소멸)
+  - [x] action 에러 매핑 한글화: `COMPANY_MEAL_SLOT_NOT_FOUND` → "해당 슬롯을 찾을 수 없습니다", `SLOT_TYPE_REQUIRED` → "식사 타입 또는 슬롯을 선택하세요"
+  - [x] UI 변경 없음 — 기존 `slotType` 입력 경로 정상 동작 (회귀 0건)
+  - [x] `npx tsc --noEmit`: 0 errors
+  - [x] `npm run test`: 13 files / 183 passed / 2 skipped
+- **아키텍처 결정**:
+  - **입력 우선순위**: `companyMealSlotId` > `slotType`. 두 필드가 모두 있으면 `companyMealSlotId`만 사용하고 `slotType`은 무시 (혼동 방지). 둘 다 없으면 `SLOT_TYPE_REQUIRED` 에러
+  - **회사 격리는 service에서**: 다른 회사의 `companyMealSlotId`를 우회 입력하는 공격 차단. zod 단계에서는 형식만, 실제 검증은 DB 조회로
+  - **fallback 정책**: Step 3.2b-1 단계에서는 기본 3개 슬롯(SLOT-001/002/003)만 운영 가정. 사용자가 SLOT-004 등 새 슬롯을 만들 수단(UI)이 없으므로 fallback이 실제로 발생하지 않음. Step 3.2b-2에서 컬럼 제거와 함께 정리
+  - **helper 정의 위치 정리**: 기존 `resolveCompanyMealSlotId`가 `DbClient` 타입보다 먼저 선언돼 가독성 이슈 있었음 → 본 Step에서 타입 정의 이후로 재배치
+- **다음 단계**: Step 3.2b-2 — UI를 companyMealSlot 동적 Select로 전환하고, DB의 `slot_type` 컬럼 및 `MealSlotType` enum 제거
+
+### Step 3.2b-2 — UI 전환 + DB slot_type 컬럼/enum 제거 ⬜
+- **목표**:
+  - `/meal-plans/page.tsx`의 `<Select>` 하드코딩 5개 옵션(BREAKFAST/LUNCH/DINNER/SNACK/EVENT)을 회사별 활성 슬롯 동적 목록으로 전환
+  - 신규 server action: `getCompanyMealSlotsAction(companyId)` — sortOrder asc, isActive=true, deletedAt=null
+  - `SLOT_TYPE_LABEL` 룩업 → `companyMealSlot.displayName`으로 교체
+  - `MealCount` 표시도 `companyMealSlot.displayName` 기반으로 전환
+  - service에서 `slotType` 호환 helper(`resolveSlotTypeFromCompanyMealSlot`/`resolveCompanyMealSlotId`/`SLOT_TYPE_TO_CODE`) 제거
+  - zod schema에서 `slotType` 필드 및 `mealSlotTypeEnum` export 제거
+  - prisma schema에서 `MealPlan.slotType`/`MealCount.slotType` 필드 제거, `MealSlotType` enum 블록 제거, `MealCount`의 `@@unique([mealPlanGroupId, slotType, lineupId])` → `@@unique([mealPlanGroupId, companyMealSlotId, lineupId])`로 교체
+  - 마이그레이션 SQL: DROP CONSTRAINT → CREATE UNIQUE INDEX (companyMealSlotId 기반) → DROP COLUMN(2개) → DROP TYPE
+  - `prisma/seed.ts`에서 8개 MealPlan/MealCount의 `slotType` 필드 라인 제거
+- **선결 조건**:
+  - Step 3.2b-1 완료 (zod/service가 이미 companyMealSlotId 1급 입력 지원)
+- **위험 요소**:
+  - UI 전환과 DB 컬럼 제거를 동시에 진행 → 단일 PR로 묶어 atomic 배포 필요
+  - 회귀 확인: 식단 추가 / 식수 입력 / 식수 표시 / 복사 / 삭제 전 시나리오 수동 검증
+
+### Step 3.2c — CompanyMealSlot 마스터 관리 페이지 ⬜ (보류)
+- **상태**: 별도 Step으로 분리, 필요 시점에 착수
+- **사유**: 현재 기본 3개 슬롯(SLOT-001/002/003)으로 비즈니스 요구를 충족. 운영 중 슬롯 추가가 실제 필요해질 때 진행
+- **예상 작업 범위**:
+  - `/company-meal-slots/page.tsx` — CRUD 페이지 (목록/생성/수정/비활성화/sortOrder 변경)
+  - `company-meal-slot.service.ts`/`action.ts` — CRUD + 의존성 체크 (MealPlan/MealCount 참조 시 비활성화로 제한)
+  - 사이드바 메뉴 추가 (관리 그룹 하위)
+
+### Step 3.3 — meal-plan.service.test.ts 갱신 + 전체 테스트 통과 ⬜
+- **목표**:
+  - Step 3.2b-2 적용 후 service 테스트가 `companyMealSlotId` 기반으로 동작하도록 갱신
+  - 신규 테스트 케이스: 회사 격리 위반 시 `COMPANY_MEAL_SLOT_NOT_FOUND` 에러 발생 확인
+  - 기존 `slotType` 기반 케이스를 `companyMealSlotId` 기반으로 마이그레이션
+- **선결 조건**: Step 3.2b-2 완료
+
+### Step 3.4 — /meal-plans UI 회귀 검증 + Phase 5-R Step 3 종합 검증 ⬜
+- **목표**:
+  - UI 전 시나리오 수동 검증 (식단 그룹 생성/삭제/복사, 식단 추가/삭제, 식수 입력)
+  - `prisma migrate status`, `tsc --noEmit`, `npm test` 통과 확인
+  - PROGRESS.md Phase 5-R Step 3 종결 처리
+  - Sprint 2 원래 미완료 Phase(2-e, 6, 7, 8, 9, 10, 11) 재개 판정
+
+---
 
 ### Phase 6 — 식단 캘린더 뷰 ⬜
 - **예정일**: 2026-05-17 ~ 2026-05-18

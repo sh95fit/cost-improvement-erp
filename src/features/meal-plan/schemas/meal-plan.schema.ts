@@ -75,13 +75,23 @@ export type UpdateMealPlanGroupInput = z.infer<
 // MealPlan (식사타입 × 라인업 단위 카드 — lineupId 필수)
 // ══════════════════════════════════════════════════════════════
 
-export const createMealPlanSchema = z.object({
-  slotType: mealSlotTypeEnum,
-  lineupId: z.string().min(1, "라인업을 선택하세요"),
-  mealTemplateId: z.string().optional(),
-  note: z.string().max(500, "비고는 500자 이내").optional(),
-});
+// Phase 5-R Step 3.2b-1: companyMealSlotId를 1급 입력으로 도입.
+// slotType은 호환을 위해 옵션으로 유지하되, 둘 중 하나는 반드시 필요.
+// Step 3.2b-2에서 slotType 필드는 완전 제거 예정.
+export const createMealPlanSchema = z
+  .object({
+    slotType: mealSlotTypeEnum.optional(),
+    companyMealSlotId: z.string().min(1).optional(),
+    lineupId: z.string().min(1, "라인업을 선택하세요"),
+    mealTemplateId: z.string().optional(),
+    note: z.string().max(500, "비고는 500자 이내").optional(),
+  })
+  .refine((v) => !!v.slotType || !!v.companyMealSlotId, {
+    message: "식사 타입 또는 슬롯을 선택하세요",
+    path: ["slotType"],
+  });
 export type CreateMealPlanInput = z.infer<typeof createMealPlanSchema>;
+
 
 export const updateMealPlanSchema = z.object({
   mealTemplateId: z.string().nullable().optional(),
@@ -178,12 +188,19 @@ export type ReorderMealPlanSlotsInput = z.infer<
 // MealCount (라인업별 식수 — 예상/확정 분리)
 // ══════════════════════════════════════════════════════════════
 
-export const upsertMealCountSchema = z.object({
-  slotType: mealSlotTypeEnum,
-  lineupId: z.string().min(1, "라인업을 선택하세요"),
-  estimatedCount: z.number().int().min(0).default(0),
-  finalCount: z.number().int().min(0).nullable().optional(),
-});
+// Phase 5-R Step 3.2b-1: companyMealSlotId를 1급 입력으로 도입 (createMealPlanSchema와 동일 정책).
+export const upsertMealCountSchema = z
+  .object({
+    slotType: mealSlotTypeEnum.optional(),
+    companyMealSlotId: z.string().min(1).optional(),
+    lineupId: z.string().min(1, "라인업을 선택하세요"),
+    estimatedCount: z.number().int().min(0).default(0),
+    finalCount: z.number().int().min(0).nullable().optional(),
+  })
+  .refine((v) => !!v.slotType || !!v.companyMealSlotId, {
+    message: "식사 타입 또는 슬롯을 선택하세요",
+    path: ["slotType"],
+  });
 export type UpsertMealCountInput = z.infer<typeof upsertMealCountSchema>;
 
 // 일괄 입력 (UI에서 그룹 단위로 라인업 식수 한번에 저장)
