@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-28 (Phase 5-R Step 2 마무리 — Lineup UI 완성 + LineupMealTemplateMap 폐기 + DB DROP 마이그레이션 적용)
+> 마지막 갱신: 2026-05-29 (Phase 5-R Step 3.2b-2-α — UI를 companyMealSlotId 1급 입력으로 전환)
 
 ---
 
@@ -1094,7 +1094,8 @@ LineupMealTemplateMap을 폐기하기로 결정.
 | 3.1 | CompanyMealSlot 마스터 테이블 + 기본 시드 (LUNCH/DINNER) | ✅ |
 | 3.2a | MealPlan/MealCount에 companyMealSlotId 컬럼 추가 + 백필 + EVENT 시드 | ✅ |
 | 3.2b-1 | meal-plan zod/service에 companyMealSlotId 1급 입력 도입, slotType 호환 유지 | ✅ |
-| 3.2b-2 | UI 전환 (slotType Select → companyMealSlot 동적 Select) + DB slot_type 컬럼/enum 제거 | ⬜ |
+| 3.2b-2-α | UI 전환 (slotType Select → companyMealSlot 동적 Select) + 백엔드 slotType 입력 폐기 | ✅ |
+| 3.2b-2-β | DB slot_type 컬럼/enum DROP + 호환 helper 제거 + 임시 잔재 정리 | ⬜ |
 | 3.2c | CompanyMealSlot 마스터 관리 페이지 (CRUD UI) | ⬜ (보류 — 필요 시점에 진행) |
 | 3.3 | meal-plan.service.test.ts 갱신 + 전체 테스트 통과 | ⬜ |
 | 3.4 | /meal-plans UI 회귀 검증 + Phase 5-R Step 3 종합 검증 | ⬜ |
@@ -1183,6 +1184,40 @@ LineupMealTemplateMap을 폐기하기로 결정.
   - **fallback 정책**: Step 3.2b-1 단계에서는 기본 3개 슬롯(SLOT-001/002/003)만 운영 가정. 사용자가 SLOT-004 등 새 슬롯을 만들 수단(UI)이 없으므로 fallback이 실제로 발생하지 않음. Step 3.2b-2에서 컬럼 제거와 함께 정리
   - **helper 정의 위치 정리**: 기존 `resolveCompanyMealSlotId`가 `DbClient` 타입보다 먼저 선언돼 가독성 이슈 있었음 → 본 Step에서 타입 정의 이후로 재배치
 - **다음 단계**: Step 3.2b-2 — UI를 companyMealSlot 동적 Select로 전환하고, DB의 `slot_type` 컬럼 및 `MealSlotType` enum 제거
+
+### Step 3.2b-2-α — UI를 companyMealSlotId 1급 입력으로 전환 ✅
+- **날짜**: 2026-05-29
+- **커밋**: `4f8aace0`
+- **배경**:
+  - Step 3.2b-1까지는 UI가 여전히 `slotType` enum(조식/중식/석식/간식/이벤트)을 하드코딩한 Select로 보내고, service에서 자동 변환하는 호환 모드로 운영
+  - 본격적인 enum 폐기를 위해 UI에서 회사별 동적 슬롯 Select로 전환하고, zod 입력에서 `slotType`을 제거하여 `companyMealSlotId`를 유일한 입력 채널로 승격
+  - DB의 `slot_type` 컬럼/enum 자체는 본 단계에서 유지 (β에서 일괄 DROP). service가 `companyMealSlotId`로부터 `slotType`을 역매핑해서 컬럼을 채워주는 임시 로직 유지
+- **변경 파일** (5개, +164 / −129):
+  - `src/features/company-meal-slot/actions/company-meal-slot.action.ts` (신규) — `getActiveCompanyMealSlotsAction` + `CompanyMealSlotOption` 타입
+  - `src/features/meal-plan/schemas/meal-plan.schema.ts` — `createMealPlanSchema` / `upsertMealCountSchema`에서 `slotType` 필드 제거, `companyMealSlotId` 필수 승격, refine XOR 제거
+  - `src/features/meal-plan/services/meal-plan.service.ts` — `SLOT_TYPE_TO_CODE` / `resolveCompanyMealSlotIdBySlotType` 삭제, `resolveCompanyMealSlotIdFromInput`를 companyMealSlotId 단일 분기로 단순화, `MEAL_PLAN_INCLUDE` / `GROUP_DETAIL_INCLUDE`에 `companyMealSlot` include 추가
+  - `src/features/meal-plan/actions/meal-plan.action.ts` — `createMealPlanAction` / `upsertMealCountAction` / `bulkUpsertMealCountAction`의 에러 매핑에서 `SLOT_TYPE_REQUIRED` 제거 (zod 필수 검증으로 도달 불가)
+  - `src/app/(dashboard)/meal-plans/page.tsx` — 식단 추가 다이얼로그 Select를 회사별 동적 옵션으로 교체, `handleAddMeal` payload를 `companyMealSlotId` 기반으로 전환, 식단 카드 / 식수 행의 라벨링을 `companyMealSlot.displayName` 우선 + `slotType` fallback 정책으로 전환
+- **완료 항목**:
+  - [x] `getActiveCompanyMealSlotsAction` 신설 (회사 격리 + isActive 필터 + sortOrder 정렬)
+  - [x] zod 스키마에서 `slotType` 입력 채널 폐기, `companyMealSlotId` 필수화
+  - [x] service의 호환 helper 단순화 (β까지 임시 잔재만 남김)
+  - [x] UI Select 동적 전환 + 라벨링 fallback 정책 적용
+  - [x] PROGRESS.md 동시 갱신 (Step 3.2b-1 커밋 해시 정정 `abc1234` → `4629037e` 포함)
+  - [x] `npx tsc --noEmit`: 0 errors
+  - [x] `npm run test`: 통과
+- **아키텍처 결정**:
+  - **3.2b-2를 α(코드)/β(DB)로 분할**한 이유는 DB 마이그레이션 도중 UI 회귀가 동반될 경우 롤백 비용이 크기 때문. α에서 UI를 안정화하고 호환 helper로 DB와 격리한 뒤, β에서 호환 잔재를 일괄 제거.
+  - **`company-meal-slot` 디렉토리를 별도로 신설**한 이유는 Step 3.2c에서 마스터 관리 CRUD action이 추가될 예정이라 자연스러운 응집도를 위함. 본 단계에서는 read action 하나만 들어가지만 명시적으로 `getActiveCompanyMealSlotsAction`으로 명명하여 향후 `getCompanyMealSlotsAction`(전체 목록, 비활성 포함)과 충돌하지 않도록 예약.
+  - **라벨링 fallback 정책 (`displayName ?? SLOT_TYPE_LABEL ?? slotType`)**: β 이전까지 응답에 `slotType`이 함께 내려오는 호환 기간 동안 표시 안정성 확보. β에서 `slotType` 필드가 응답에서 사라지면 자연스럽게 첫 번째 분기만 살아남음.
+- **β 단계 정리 대상 (메모)**:
+  - `prisma/schema.prisma`: `MealPlan.slotType` / `MealCount.slotType` 컬럼 제거, `MealSlotType` enum DROP, unique `(mealPlanGroupId, slotType, lineupId)` → `(mealPlanGroupId, companyMealSlotId, lineupId)` 교체
+  - `prisma/seed.ts`: 시드의 `slotType` 라인 제거
+  - service의 `CODE_TO_SLOT_TYPE` 상수, `resolveSlotTypeFromCompanyMealSlot` 함수, `createMealPlan` / `upsertMealCount` / `bulkUpsertMealCount`의 `slotType` 역매핑 호출 라인, `assertMealPlanInCompany`의 `slotType: true` select, `deleteMealPlan`의 cascade MealCount 조건 (`slotType` → `companyMealSlotId`), `MEAL_PLAN_INCLUDE` / `GROUP_DETAIL_INCLUDE`의 `orderBy: [{ slotType: "asc" }, ...]` (companyMealSlot.sortOrder로 교체)
+  - schema의 `mealSlotTypeEnum` / `MealSlotType` export 제거
+  - page.tsx의 `MealPlanRow.slotType` / `MealCountRow.slotType` 필드 + `SLOT_TYPE_LABEL` 상수 + 옛 `addMealSlotType` state 주석 제거 + 라벨링 fallback 단순화
+- **다음 단계**: Step 3.2b-2-β — DB 마이그레이션 + 호환 잔재 일괄 제거
+
 
 ### Step 3.2b-2 — UI 전환 + DB slot_type 컬럼/enum 제거 ⬜
 - **목표**:

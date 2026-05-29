@@ -225,8 +225,6 @@ export default function MealPlansPage() {
 
   // ── 식단(MealPlan) 추가 다이얼로그 ──
   const [addMealGroupId, setAddMealGroupId] = useState<string | null>(null);
-  // const [addMealSlotType, setAddMealSlotType] =
-  //   useState<MealPlanRow["slotType"]>("LUNCH");
   const [addMealCompanyMealSlotId, setAddMealCompanyMealSlotId] =
     useState<string>("");
   const [slotOptions, setSlotOptions] = useState<CompanyMealSlotOption[]>([]);
