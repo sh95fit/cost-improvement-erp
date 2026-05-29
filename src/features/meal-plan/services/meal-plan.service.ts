@@ -22,17 +22,8 @@ import type { MealSlotType } from "@prisma/client";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
-// ══════════════════════════════════════════════════════════════
-// Phase 5-R Step 3.2a + 3.2b-1: slotType ↔ companyMealSlotId 호환 helper
-// - Step 3.2b-2에서 slot_type 컬럼 제거와 함께 본 helper들도 모두 삭제 예정
-// ══════════════════════════════════════════════════════════════
-
-const SLOT_TYPE_TO_CODE: Record<string, string> = {
-  LUNCH: "SLOT-001",
-  DINNER: "SLOT-002",
-  EVENT: "SLOT-003",
-};
-
+// Phase 5-R Step 3.2b-2-α: SLOT_TYPE_TO_CODE 삭제 (사용처 0).
+// CODE_TO_SLOT_TYPE은 resolveSlotTypeFromCompanyMealSlot이 β까지 사용하므로 유지.
 const CODE_TO_SLOT_TYPE: Record<string, MealSlotType> = {
   "SLOT-001": "LUNCH",
   "SLOT-002": "DINNER",
@@ -40,61 +31,27 @@ const CODE_TO_SLOT_TYPE: Record<string, MealSlotType> = {
 };
 
 /**
- * 기존 helper (Step 3.2a 호환).
- * slotType → 회사별 companyMealSlot.id 조회.
+ * Step 3.2b-2-α: companyMealSlotId 필수 입력 검증 (회사 격리).
+ * - β 단계에서 DB slot_type 컬럼 제거 후에도 이 함수는 그대로 유지.
  */
-async function resolveCompanyMealSlotIdBySlotType(
+async function resolveCompanyMealSlotIdFromInput(
   tx: DbClient,
   companyId: string,
-  slotType: MealSlotType,
+  input: { companyMealSlotId: string },
 ): Promise<string> {
-  const code = SLOT_TYPE_TO_CODE[slotType];
-  if (!code) {
-    throw new Error(`UNSUPPORTED_SLOT_TYPE: ${slotType}`);
-  }
   const slot = await tx.companyMealSlot.findUnique({
-    where: { companyId_code: { companyId, code } },
-    select: { id: true },
+    where: { id: input.companyMealSlotId },
+    select: { id: true, companyId: true, deletedAt: true },
   });
-  if (!slot) {
+  if (!slot || slot.companyId !== companyId || slot.deletedAt !== null) {
     throw new Error("COMPANY_MEAL_SLOT_NOT_FOUND");
   }
   return slot.id;
 }
 
 /**
- * Step 3.2b-1: zod에서 검증된 입력으로부터 companyMealSlotId 확정.
- * - companyMealSlotId가 있으면 회사 격리 검증 후 그대로 사용 (slotType은 무시).
- * - 없으면 slotType을 변환.
- * - 둘 다 없으면 zod refine에서 이미 차단되지만, 안전망으로 한 번 더 검사.
- */
-async function resolveCompanyMealSlotIdFromInput(
-  tx: DbClient,
-  companyId: string,
-  input: { slotType?: MealSlotType; companyMealSlotId?: string },
-): Promise<string> {
-  if (input.companyMealSlotId) {
-    const slot = await tx.companyMealSlot.findUnique({
-      where: { id: input.companyMealSlotId },
-      select: { id: true, companyId: true, deletedAt: true },
-    });
-    if (!slot || slot.companyId !== companyId || slot.deletedAt !== null) {
-      throw new Error("COMPANY_MEAL_SLOT_NOT_FOUND");
-    }
-    return slot.id;
-  }
-  if (input.slotType) {
-    return resolveCompanyMealSlotIdBySlotType(tx, companyId, input.slotType);
-  }
-  throw new Error("SLOT_TYPE_REQUIRED");
-}
-
-/**
- * Step 3.2b-1: DB의 slot_type 컬럼이 NOT NULL이므로,
- * companyMealSlotId 기준 입력일 때도 slotType 값을 채워야 한다.
- * - 기본 3개 슬롯(SLOT-001/002/003)은 정확히 매핑.
- * - 그 외 슬롯은 EVENT로 fallback (Step 3.2b-1 한정 임시 정책,
- *   Step 3.2b-2에서 slot_type 컬럼이 제거되면 본 helper와 함께 소멸).
+ * Step 3.2b-2-α: DB slot_type 컬럼이 여전히 NOT NULL이라 임시로 채워 넣는 역할.
+ * Step 3.2b-2-β에서 컬럼 DROP과 함께 CODE_TO_SLOT_TYPE 상수 및 본 helper 모두 삭제.
  */
 async function resolveSlotTypeFromCompanyMealSlot(
   tx: DbClient,
@@ -138,6 +95,9 @@ const SLOT_INCLUDE = {
 const MEAL_PLAN_INCLUDE = {
   lineup: { select: { id: true, name: true, code: true } },
   mealTemplate: { select: { id: true, name: true } },
+  companyMealSlot: {
+    select: { id: true, code: true, displayName: true, sortOrder: true },
+  },
   slots: {
     where: { deletedAt: null },
     include: SLOT_INCLUDE,
@@ -169,6 +129,9 @@ const GROUP_DETAIL_INCLUDE = {
     where: { deletedAt: null },
     include: {
       lineup: { select: { id: true, name: true, code: true } },
+      companyMealSlot: {
+        select: { id: true, code: true, displayName: true, sortOrder: true },
+      },
     },
     orderBy: [
       { slotType: "asc" },
@@ -515,16 +478,16 @@ export async function createMealPlan(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-1: companyMealSlotId 우선, 없으면 slotType 변환.
+  // Step 3.2b-2-α: companyMealSlotId 필수. slot_type은 β까지 임시로 채워 넣음.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,
     input,
   );
-  // slot_type 컬럼은 여전히 NOT NULL — 입력에 없으면 slot에서 역매핑.
-  const slotType =
-    input.slotType ??
-    (await resolveSlotTypeFromCompanyMealSlot(prisma, companyMealSlotId));
+  const slotType = await resolveSlotTypeFromCompanyMealSlot(
+    prisma,
+    companyMealSlotId,
+  );
 
   try {
     return await prisma.mealPlan.create({
@@ -862,17 +825,19 @@ export async function upsertMealCount(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-1: companyMealSlotId 우선, 없으면 slotType 변환.
+  // Step 3.2b-2-α: companyMealSlotId 필수. slot_type은 β까지 임시로 채워 넣음.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,
     input,
   );
   // upsert의 where 키는 (mealPlanGroupId, slotType, lineupId) 기준이므로
-  // slot_type 값이 필요. 입력에 없으면 역매핑.
-  const slotType =
-    input.slotType ??
-    (await resolveSlotTypeFromCompanyMealSlot(prisma, companyMealSlotId));
+  // slot_type 값이 필요. β에서 unique key가 companyMealSlotId 기반으로 교체되면
+  // 본 라인과 resolveSlotTypeFromCompanyMealSlot 호출도 함께 제거된다.
+  const slotType = await resolveSlotTypeFromCompanyMealSlot(
+    prisma,
+    companyMealSlotId,
+  );
 
   return prisma.mealCount.upsert({
     where: {
@@ -941,9 +906,10 @@ export async function bulkUpsertMealCount(
       companyId,
       it,
     );
-    const slotType =
-      it.slotType ??
-      (await resolveSlotTypeFromCompanyMealSlot(prisma, companyMealSlotId));
+    const slotType = await resolveSlotTypeFromCompanyMealSlot(
+      prisma,
+      companyMealSlotId,
+    );
     resolved.push({
       slotType,
       companyMealSlotId,

@@ -68,6 +68,10 @@ import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-te
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
 import { LineupSelect } from "@/components/lineup/lineup-select";
+import {
+  getActiveCompanyMealSlotsAction,
+  type CompanyMealSlotOption,
+} from "@/features/company-meal-slot/actions/company-meal-slot.action";
 
 // ══════════════════════════════════════════════════════════════
 // 타입 (Phase 5-R v2 도메인 — service의 GROUP_DETAIL_INCLUDE 응답에 맞춤)
@@ -110,9 +114,18 @@ type MealPlanAccessoryRow = {
   subsidiaryMaster: SubsidiaryInfo;
 };
 
+type CompanyMealSlotInfo = {
+  id: string;
+  code: string;
+  displayName: string;
+  sortOrder: number;
+};
+
 type MealPlanRow = {
   id: string;
-  slotType: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | "EVENT";
+  slotType: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | "EVENT"; // β에서 제거
+  companyMealSlotId: string;
+  companyMealSlot: CompanyMealSlotInfo | null;
   lineupId: string;
   mealTemplateId: string | null;
   note: string | null;
@@ -124,7 +137,9 @@ type MealPlanRow = {
 
 type MealCountRow = {
   id: string;
-  slotType: string;
+  slotType: string; // β에서 제거
+  companyMealSlotId: string;
+  companyMealSlot: CompanyMealSlotInfo | null;
   lineupId: string;
   estimatedCount: number | null;
   finalCount: number | null;
@@ -210,8 +225,11 @@ export default function MealPlansPage() {
 
   // ── 식단(MealPlan) 추가 다이얼로그 ──
   const [addMealGroupId, setAddMealGroupId] = useState<string | null>(null);
-  const [addMealSlotType, setAddMealSlotType] =
-    useState<MealPlanRow["slotType"]>("LUNCH");
+  // const [addMealSlotType, setAddMealSlotType] =
+  //   useState<MealPlanRow["slotType"]>("LUNCH");
+  const [addMealCompanyMealSlotId, setAddMealCompanyMealSlotId] =
+    useState<string>("");
+  const [slotOptions, setSlotOptions] = useState<CompanyMealSlotOption[]>([]);
   const [addMealLineupId, setAddMealLineupId] = useState(""); // 임시: ID 직접 입력
   const [addMealTemplateId, setAddMealTemplateId] = useState("");
   const [addMealNote, setAddMealNote] = useState("");
@@ -280,10 +298,28 @@ export default function MealPlansPage() {
     }
   }, []);
 
+  // Phase 5-R Step 3.2b-2-α: 회사별 활성 슬롯 옵션 로딩
+  const loadSlotOptions = useCallback(async () => {
+    try {
+      const result = await getActiveCompanyMealSlotsAction();
+      if (result.success) {
+        setSlotOptions(result.data);
+      } else {
+        logger.error(
+          "[MealPlansPage.loadSlotOptions]",
+          result.error?.message ?? "unknown",
+        );
+      }
+    } catch (err) {
+      logger.error("[MealPlansPage.loadSlotOptions]", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData(1);
     loadTemplateOptions();
-  }, [fetchData, loadTemplateOptions]);
+    loadSlotOptions();
+  }, [fetchData, loadTemplateOptions, loadSlotOptions]);
 
   // ── 상세 ──
   const openDetail = async (groupId: string) => {
@@ -388,21 +424,23 @@ export default function MealPlansPage() {
 
   // ── 식단(MealPlan) 추가 ──
   const handleAddMeal = async () => {
-    if (!addMealGroupId || !addMealSlotType || !addMealLineupId.trim()) return;
+    if (!addMealGroupId || !addMealCompanyMealSlotId || !addMealLineupId.trim())
+      return;
     setMealSaving(true);
     try {
       const result = await createMealPlanAction(addMealGroupId, {
-        slotType: addMealSlotType,
+        companyMealSlotId: addMealCompanyMealSlotId,
         lineupId: addMealLineupId.trim(),
         mealTemplateId: addMealTemplateId || undefined,
         note: addMealNote.trim() || undefined,
       });
       if (result.success) {
-        toast.success(
-          `${SLOT_TYPE_LABEL[addMealSlotType] ?? addMealSlotType} 식단이 추가되었습니다`,
-        );
+        const slotLabel =
+          slotOptions.find((o) => o.id === addMealCompanyMealSlotId)
+            ?.displayName ?? "식단";
+        toast.success(`${slotLabel} 식단이 추가되었습니다`);
         setAddMealGroupId(null);
-        setAddMealSlotType("LUNCH");
+        setAddMealCompanyMealSlotId("");
         setAddMealLineupId("");
         setAddMealTemplateId("");
         setAddMealNote("");
@@ -540,7 +578,7 @@ export default function MealPlansPage() {
                 {detailGroup.mealCounts.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      {SLOT_TYPE_LABEL[c.slotType] ?? c.slotType}
+                      {c.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[c.slotType] ?? c.slotType}
                     </TableCell>
                     <TableCell>
                       {c.lineup?.name ?? "—"}{" "}
@@ -581,7 +619,7 @@ export default function MealPlansPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">
-                        {SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType}{" "}
+                        {mp.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType}{" "}
                         <span className="text-base font-normal text-gray-600">
                           · {mp.lineup?.name ?? "—"}
                           {mp.lineup?.code && (
@@ -610,7 +648,7 @@ export default function MealPlansPage() {
                         setDeleteTarget({
                           type: "meal",
                           id: mp.id,
-                          name: `${SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType} · ${mp.lineup?.name ?? ""}`,
+                          name: `${mp.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType} · ${mp.lineup?.name ?? ""}`,
                         })
                       }
                     >
@@ -775,22 +813,20 @@ export default function MealPlansPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="add-meal-slot-type">식사 타입</Label>
+                <Label htmlFor="add-meal-slot">슬롯</Label>
                 <Select
-                  value={addMealSlotType}
-                  onValueChange={(v) =>
-                    setAddMealSlotType(v as MealPlanRow["slotType"])
-                  }
+                  value={addMealCompanyMealSlotId}
+                  onValueChange={setAddMealCompanyMealSlotId}
                 >
-                  <SelectTrigger id="add-meal-slot-type">
-                    <SelectValue />
+                  <SelectTrigger id="add-meal-slot">
+                    <SelectValue placeholder="슬롯을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="BREAKFAST">조식</SelectItem>
-                    <SelectItem value="LUNCH">중식</SelectItem>
-                    <SelectItem value="DINNER">석식</SelectItem>
-                    <SelectItem value="SNACK">간식</SelectItem>
-                    <SelectItem value="EVENT">이벤트</SelectItem>
+                    {slotOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.displayName}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -840,7 +876,7 @@ export default function MealPlansPage() {
                 <Button
                   onClick={handleAddMeal}
                   disabled={
-                    mealSaving || !addMealSlotType || !addMealLineupId.trim()
+                    mealSaving || !addMealCompanyMealSlotId || !addMealLineupId.trim()
                   }
                 >
                   {mealSaving && (
