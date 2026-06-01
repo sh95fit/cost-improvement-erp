@@ -7,6 +7,7 @@ import { createAuditLog } from "@/lib/utils/audit";
 import { actionOk } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
 import { handleActionError } from "@/lib/action-helpers";
+import { prisma } from "@/lib/prisma";
 import {
   mealPlanGroupListQuerySchema,
   createMealPlanGroupSchema,
@@ -415,6 +416,46 @@ export async function reorderMealPlanSlotsAction(
       NOT_FOUND: "식단을 찾을 수 없습니다",
       SLOT_NOT_FOUND: "일부 슬롯을 찾을 수 없습니다",
     });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Lookup helpers (Phase 5-R Step 7-A: 슬롯 에디터용)
+// ══════════════════════════════════════════════════════════════
+
+export async function getActiveProductionLinesAction(): Promise<
+  ActionResult<
+    Array<{
+      id: string;
+      name: string;
+      locationId: string;
+      locationName: string;
+    }>
+  >
+> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "mealPlan", "READ");
+    const lines = await prisma.productionLine.findMany({
+      where: { companyId: session.companyId, status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        locationId: true,
+        location: { select: { name: true } },
+      },
+      orderBy: [{ location: { name: "asc" } }, { name: "asc" }],
+    });
+    return actionOk(
+      lines.map((l) => ({
+        id: l.id,
+        name: l.name,
+        locationId: l.locationId,
+        locationName: l.location?.name ?? "",
+      })),
+    );
+  } catch (error) {
+    return handleActionError(error, "생산 라인 조회에 실패했습니다");
   }
 }
 

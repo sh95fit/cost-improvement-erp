@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-06-01 (Phase 5-R Step 6-3c-A2 — MealCount × MealPlan 1:1 통합 뷰 완료 · Sprint 2 재개 진입 / 다음: Phase 7 슬롯 상세 에디터)
+> 마지막 갱신: 2026-06-01 (Phase 7-A — CONTAINER 슬롯 추가 UI 완료)
 
 ---
 
