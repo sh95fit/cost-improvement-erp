@@ -1265,6 +1265,18 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 **다음 스텝**: 식수 입력 UI 추가 (Step 3.2c 또는 별도 스텝)
 
+### Step 6-3c-A — MealCount 입력 UI 최소 구현 ✅
+
+- 일자: 2026-06-01
+- 커밋: <hash>
+- 변경 파일: 1개
+  * src/app/(dashboard)/meal-plans/page.tsx
+- 내용:
+  * "식수 추가" 다이얼로그 추가 (슬롯/라인업/예상/확정)
+  * 식수 테이블에 행별 삭제 버튼 추가
+  * upsertMealCountAction, deleteMealCountAction 연동
+- 검증: tsc 0 errors, /meal-plans에서 식수 CRUD + soft-delete 재활성화 확인
+- 다음: Step 6-3c-B (inline 편집 + bulk save + 자동 채우기)
 
 ### Step 3.2c — CompanyMealSlot 마스터 관리 페이지 ⬜ (보류)
 - **상태**: 별도 Step으로 분리, 필요 시점에 착수
