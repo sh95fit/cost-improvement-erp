@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-05-29 (Phase 5-R Step 3.2b-2-α — UI를 companyMealSlotId 1급 입력으로 전환)
+> 마지막 갱신: 2026-06-01 (Phase 5-R Step 3.2b-2-α — UI를 companyMealSlotId 1급 입력으로 전환)
 
 ---
 
@@ -1219,22 +1219,52 @@ LineupMealTemplateMap을 폐기하기로 결정.
 - **다음 단계**: Step 3.2b-2-β — DB 마이그레이션 + 호환 잔재 일괄 제거
 
 
-### Step 3.2b-2 — UI 전환 + DB slot_type 컬럼/enum 제거 ⬜
-- **목표**:
-  - `/meal-plans/page.tsx`의 `<Select>` 하드코딩 5개 옵션(BREAKFAST/LUNCH/DINNER/SNACK/EVENT)을 회사별 활성 슬롯 동적 목록으로 전환
-  - 신규 server action: `getCompanyMealSlotsAction(companyId)` — sortOrder asc, isActive=true, deletedAt=null
-  - `SLOT_TYPE_LABEL` 룩업 → `companyMealSlot.displayName`으로 교체
-  - `MealCount` 표시도 `companyMealSlot.displayName` 기반으로 전환
-  - service에서 `slotType` 호환 helper(`resolveSlotTypeFromCompanyMealSlot`/`resolveCompanyMealSlotId`/`SLOT_TYPE_TO_CODE`) 제거
-  - zod schema에서 `slotType` 필드 및 `mealSlotTypeEnum` export 제거
-  - prisma schema에서 `MealPlan.slotType`/`MealCount.slotType` 필드 제거, `MealSlotType` enum 블록 제거, `MealCount`의 `@@unique([mealPlanGroupId, slotType, lineupId])` → `@@unique([mealPlanGroupId, companyMealSlotId, lineupId])`로 교체
-  - 마이그레이션 SQL: DROP CONSTRAINT → CREATE UNIQUE INDEX (companyMealSlotId 기반) → DROP COLUMN(2개) → DROP TYPE
-  - `prisma/seed.ts`에서 8개 MealPlan/MealCount의 `slotType` 필드 라인 제거
-- **선결 조건**:
-  - Step 3.2b-1 완료 (zod/service가 이미 companyMealSlotId 1급 입력 지원)
-- **위험 요소**:
-  - UI 전환과 DB 컬럼 제거를 동시에 진행 → 단일 PR로 묶어 atomic 배포 필요
-  - 회귀 확인: 식단 추가 / 식수 입력 / 식수 표시 / 복사 / 삭제 전 시나리오 수동 검증
+### Step 3.2b-2-β — slot_type 완전 제거 ✅ (2026-06-01)
+
+**목적**: MealSlotType enum과 slot_type 컬럼을 DB·코드에서 완전히 제거하고 companyMealSlotId 단일 키로 통합.
+
+**변경 파일** (7개):
+- `prisma/schema.prisma`
+  - `enum MealSlotType` 블록 삭제
+  - `MealPlan.slotType`, `MealCount.slotType` 필드 삭제
+  - `@@unique` 키를 `(mealPlanGroupId, companyMealSlotId, lineupId)`로 교체 (양 모델)
+- `prisma/migrations/20260601025811_drop_meal_slot_type/migration.sql`
+  - FK Drop → Index Drop → Column Drop → Enum Drop → Index Create → FK Re-add
+- `prisma/migrations/20260601030000_complete_drop_meal_slot_type_partial_unique/migration.sql` (보완)
+  - meal_plans/meal_counts unique index를 partial(`WHERE deleted_at IS NULL`)로 재생성
+  - company_meal_slot_id FK 재생성 (ON DELETE RESTRICT, ON UPDATE CASCADE)
+- `prisma/seed.ts`
+  - MealPlan/MealCount seed에서 slotType 라인 전량 제거 (16+8 곳)
+  - upsert 복합 키를 companyMealSlotId 기반으로 교체
+- `src/features/meal-plan/schemas/meal-plan.schema.ts`
+  - `mealSlotTypeEnum`, `MealSlotType` export 삭제
+  - createMealPlanSchema/upsertMealCountSchema 주석을 β로 갱신
+- `src/features/meal-plan/services/meal-plan.service.ts`
+  - `MealSlotType` import 삭제
+  - `CODE_TO_SLOT_TYPE` 상수, `resolveSlotTypeFromCompanyMealSlot` 헬퍼 삭제
+  - createMealPlan / upsertMealCount / bulkUpsertMealCount: slotType 필드 제거, 복합 키를 `mealPlanGroupId_companyMealSlotId_lineupId`로 교체
+  - assertMealPlanInCompany select에서 slotType 제거
+  - deleteMealPlan 캐스케이드 where절을 companyMealSlotId 기반으로 변경
+  - copyMealPlanGroup 매핑에서 slotType 라인 제거
+  - MEAL_PLAN_INCLUDE / GROUP_DETAIL_INCLUDE / getMealCounts orderBy를 `companyMealSlot.sortOrder`로 변경
+- `src/app/(dashboard)/meal-plans/page.tsx`
+  - MealPlanRow / MealCountRow 타입에서 slotType 제거
+  - `SLOT_TYPE_LABEL` 상수 삭제
+  - 라벨 fallback을 `companyMealSlot?.displayName ?? "-"`로 단순화
+
+**마이그레이션 이력 특이사항**:
+- 1차 마이그레이션(`...025811`)은 활성 partial unique 미적용으로 인해 soft-deleted 행과 충돌, 롤백됨
+- 2차 보완 마이그레이션(`...030000`)으로 partial unique + FK 재생성하여 해결
+- 최종 상태: `prisma migrate status` up-to-date, 29개 마이그레이션
+
+**검증 완료**:
+- ✅ `npx tsc --noEmit` 0 errors
+- ✅ DB 인덱스/FK 검증 (pg_indexes, pg_constraint)
+- ✅ 식단 추가/삭제/삭제 후 재추가(partial unique 동작 확인)
+- ⏭️ 식수 입력은 UI 미구현으로 다음 스텝에서 검증 예정
+
+**다음 스텝**: 식수 입력 UI 추가 (Step 3.2c 또는 별도 스텝)
+
 
 ### Step 3.2c — CompanyMealSlot 마스터 관리 페이지 ⬜ (보류)
 - **상태**: 별도 Step으로 분리, 필요 시점에 착수

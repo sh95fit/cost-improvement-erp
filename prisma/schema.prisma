@@ -83,16 +83,6 @@ enum MealPlanStatus {
   @@map("meal_plan_status")
 }
 
-enum MealSlotType {
-  BREAKFAST
-  LUNCH
-  DINNER
-  SNACK
-  EVENT
-
-  @@map("meal_slot_type")
-}
-
 enum POStatus {
   DRAFT
   SUBMITTED
@@ -957,7 +947,6 @@ model MealPlanGroup {
 model MealPlan {
   id                String       @id @default(cuid())
   mealPlanGroupId   String       @map("meal_plan_group_id")
-  slotType          MealSlotType @map("slot_type")              // ⚠️ Step 3.2b에서 제거 예정
   companyMealSlotId String       @map("company_meal_slot_id")   // ★ Phase 5-R Step 3.2a 신설
   lineupId          String       @map("lineup_id")
   mealTemplateId    String?      @map("meal_template_id")
@@ -973,9 +962,8 @@ model MealPlan {
   slots           MealPlanSlot[]
   accessories     MealPlanAccessory[]
 
-  // ★ Phase 5-R Step 1.2: partial unique 유지 (slot_type 기준)
-  //    Step 3.2b에서 company_meal_slot_id 기준으로 재작성 예정.
-  // @@unique([mealPlanGroupId, slotType, lineupId])
+  // ★ Phase 5-R Step 3.2b-2-β: companyMealSlotId 기준 unique.
+  @@unique([mealPlanGroupId, companyMealSlotId, lineupId])
   @@index([mealPlanGroupId])
   @@index([lineupId])
   @@index([mealTemplateId])
@@ -1020,7 +1008,6 @@ model MealPlanSlot {
 model MealCount {
   id                String       @id @default(cuid())
   mealPlanGroupId   String       @map("meal_plan_group_id")
-  slotType          MealSlotType @map("slot_type")              // ⚠️ Step 3.2b에서 제거 예정
   companyMealSlotId String       @map("company_meal_slot_id")   // ★ Phase 5-R Step 3.2a 신설
   lineupId          String       @map("lineup_id")
   estimatedCount  Int?         @map("estimated_count")
@@ -1033,9 +1020,8 @@ model MealCount {
   companyMealSlot CompanyMealSlot @relation(fields: [companyMealSlotId], references: [id])  
   lineup          Lineup          @relation(fields: [lineupId], references: [id])
 
-  // ★ Phase 5-R Step 3.2a: 기존 unique 유지 (slot_type 기준).
-  //    Step 3.2b에서 company_meal_slot_id 기준 partial unique로 재작성.
-  @@unique([mealPlanGroupId, slotType, lineupId])
+  // ★ Phase 5-R Step 3.2b-2-β: companyMealSlotId 기준 unique.
+  @@unique([mealPlanGroupId, companyMealSlotId, lineupId])
   @@index([mealPlanGroupId])
   @@index([lineupId])
   @@index([deletedAt])
@@ -1104,7 +1090,7 @@ model Lineup {
 }
 
 // ---- 8.5. 식단 슬롯 마스터 ---- // ★ Phase 5-R Step 3.1 신설
-// 회사 단위 식단 슬롯 정의(중식/석식/조식 등). MealSlotType enum 대체용 마스터.
+// 회사 단위 식단 슬롯 정의(중식/석식/조식 등). 회사별 자유 슬롯 마스터.
 // Step 3.2에서 MealPlan/MealCount의 slot_type 컬럼을 본 모델의 FK로 교체 예정.
 // 운영 흐름:
 //   1) 마스터 화면(/meal-slots)에서 등록 + 활성/비활성/정렬 관리

@@ -18,17 +18,7 @@ import type {
   CopyMealPlanGroupInput,
 } from "../schemas/meal-plan.schema";
 
-import type { MealSlotType } from "@prisma/client";
-
 type DbClient = Prisma.TransactionClient | typeof prisma;
-
-// Phase 5-R Step 3.2b-2-α: SLOT_TYPE_TO_CODE 삭제 (사용처 0).
-// CODE_TO_SLOT_TYPE은 resolveSlotTypeFromCompanyMealSlot이 β까지 사용하므로 유지.
-const CODE_TO_SLOT_TYPE: Record<string, MealSlotType> = {
-  "SLOT-001": "LUNCH",
-  "SLOT-002": "DINNER",
-  "SLOT-003": "EVENT",
-};
 
 /**
  * Step 3.2b-2-α: companyMealSlotId 필수 입력 검증 (회사 격리).
@@ -47,24 +37,6 @@ async function resolveCompanyMealSlotIdFromInput(
     throw new Error("COMPANY_MEAL_SLOT_NOT_FOUND");
   }
   return slot.id;
-}
-
-/**
- * Step 3.2b-2-α: DB slot_type 컬럼이 여전히 NOT NULL이라 임시로 채워 넣는 역할.
- * Step 3.2b-2-β에서 컬럼 DROP과 함께 CODE_TO_SLOT_TYPE 상수 및 본 helper 모두 삭제.
- */
-async function resolveSlotTypeFromCompanyMealSlot(
-  tx: DbClient,
-  companyMealSlotId: string,
-): Promise<MealSlotType> {
-  const slot = await tx.companyMealSlot.findUnique({
-    where: { id: companyMealSlotId },
-    select: { code: true },
-  });
-  if (!slot) {
-    throw new Error("COMPANY_MEAL_SLOT_NOT_FOUND");
-  }
-  return CODE_TO_SLOT_TYPE[slot.code] ?? "EVENT";
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -121,7 +93,7 @@ const GROUP_DETAIL_INCLUDE = {
     where: { deletedAt: null },
     include: MEAL_PLAN_INCLUDE,
     orderBy: [
-      { slotType: "asc" },
+      { companyMealSlot: { sortOrder: "asc" } },
       { lineup: { name: "asc" } },
     ] as Prisma.MealPlanOrderByWithRelationInput[],
   },
@@ -134,7 +106,7 @@ const GROUP_DETAIL_INCLUDE = {
       },
     },
     orderBy: [
-      { slotType: "asc" },
+      { companyMealSlot: { sortOrder: "asc" } },
       { lineup: { name: "asc" } },
     ] as Prisma.MealCountOrderByWithRelationInput[],
   },
@@ -176,7 +148,7 @@ async function assertMealPlanInCompany(
       deletedAt: null,
       mealPlanGroup: { companyId, deletedAt: null },
     },
-    select: { id: true, mealPlanGroupId: true, lineupId: true, slotType: true },
+    select: { id: true, mealPlanGroupId: true, lineupId: true, companyMealSlotId: true },
   });
   if (!plan) throw new Error("NOT_FOUND");
   return plan;
@@ -371,7 +343,6 @@ export async function copyMealPlanGroup(
         const newPlan = await tx.mealPlan.create({
           data: {
             mealPlanGroupId: newGroup.id,
-            slotType: mp.slotType,
             companyMealSlotId: mp.companyMealSlotId,
             lineupId: mp.lineupId,
             mealTemplateId: mp.mealTemplateId,
@@ -416,7 +387,6 @@ export async function copyMealPlanGroup(
         await tx.mealCount.createMany({
           data: source.mealCounts.map((c) => ({
             mealPlanGroupId: newGroup.id,
-            slotType: c.slotType,
             companyMealSlotId: c.companyMealSlotId,
             lineupId: c.lineupId,
             estimatedCount: c.estimatedCount,
@@ -459,7 +429,7 @@ export async function getMealPlansByGroup(
     where: { mealPlanGroupId, deletedAt: null },
     include: MEAL_PLAN_INCLUDE,
     orderBy: [
-      { slotType: "asc" },
+      { companyMealSlot: { sortOrder: "asc" } },
       { lineup: { name: "asc" } },
     ] as Prisma.MealPlanOrderByWithRelationInput[],
   });
@@ -484,16 +454,11 @@ export async function createMealPlan(
     companyId,
     input,
   );
-  const slotType = await resolveSlotTypeFromCompanyMealSlot(
-    prisma,
-    companyMealSlotId,
-  );
 
   try {
     return await prisma.mealPlan.create({
       data: {
         mealPlanGroupId,
-        slotType,
         companyMealSlotId,
         lineupId: input.lineupId,
         mealTemplateId: input.mealTemplateId,
@@ -530,7 +495,7 @@ export async function updateMealPlan(
 }
 
 export async function deleteMealPlan(companyId: string, id: string) {
-  // assertMealPlanInCompany는 { id, mealPlanGroupId, lineupId, slotType }을 반환
+  // assertMealPlanInCompany는 { id, mealPlanGroupId, lineupId, companyMealSlotId }을 반환
   const plan = await assertMealPlanInCompany(prisma, companyId, id);
 
   const now = new Date();
@@ -544,13 +509,13 @@ export async function deleteMealPlan(companyId: string, id: string) {
       where: { mealPlanId: id, deletedAt: null },
       data: { deletedAt: now },
     });
-    // ★ Phase 5-R Step 1.2: MealPlan 삭제 시 동일 (group, slotType, lineup) 조합의
+    // ★ Phase 5-R Step 1.2: MealPlan 삭제 시 동일 (group, companyMealSlot, lineup) 조합의
     //   MealCount도 함께 soft delete. deleteMealPlanGroup과 정책 일관성 유지.
     //   사용자가 식단을 삭제했을 때 식수 현황도 함께 사라지도록 한다.
     await tx.mealCount.updateMany({
       where: {
         mealPlanGroupId: plan.mealPlanGroupId,
-        slotType: plan.slotType,
+        companyMealSlotId: plan.companyMealSlotId,
         lineupId: plan.lineupId,
         deletedAt: null,
       },
@@ -806,7 +771,7 @@ export async function getMealCounts(
       lineup: { select: { id: true, name: true, code: true } },
     },
     orderBy: [
-      { slotType: "asc" },
+      { companyMealSlot: { sortOrder: "asc" } },
       { lineup: { name: "asc" } },
     ] as Prisma.MealCountOrderByWithRelationInput[],
   });
@@ -831,25 +796,18 @@ export async function upsertMealCount(
     companyId,
     input,
   );
-  // upsert의 where 키는 (mealPlanGroupId, slotType, lineupId) 기준이므로
-  // slot_type 값이 필요. β에서 unique key가 companyMealSlotId 기반으로 교체되면
-  // 본 라인과 resolveSlotTypeFromCompanyMealSlot 호출도 함께 제거된다.
-  const slotType = await resolveSlotTypeFromCompanyMealSlot(
-    prisma,
-    companyMealSlotId,
-  );
+  // upsert의 where 키는 (mealPlanGroupId, companyMealSlotId, lineupId) 기준
 
   return prisma.mealCount.upsert({
     where: {
-      mealPlanGroupId_slotType_lineupId: {
+      mealPlanGroupId_companyMealSlotId_lineupId: {
         mealPlanGroupId,
-        slotType,
+        companyMealSlotId,
         lineupId: input.lineupId,
       },
     },
     create: {
       mealPlanGroupId,
-      slotType,
       companyMealSlotId,
       lineupId: input.lineupId,
       estimatedCount: input.estimatedCount,
@@ -888,11 +846,8 @@ export async function bulkUpsertMealCount(
     throw new Error("LINEUP_NOT_FOUND");
   }
 
-  // 모든 slotType에 대한 companyMealSlotId 사전 조회 (캐시)
-  // Step 3.2b-1: 항목별로 입력 형태가 다를 수 있으므로(slotType만 / companyMealSlotId만 / 둘 다)
-  // 각 항목을 사전에 (slotType, companyMealSlotId) 쌍으로 확정한 뒤 트랜잭션 실행.
+  // Step 3.2b-2-β: companyMealSlotId만 입력으로 받음. slotType 사전 조회 불필요.
   type ResolvedItem = {
-    slotType: MealSlotType;
     companyMealSlotId: string;
     lineupId: string;
     estimatedCount: number;
@@ -906,12 +861,7 @@ export async function bulkUpsertMealCount(
       companyId,
       it,
     );
-    const slotType = await resolveSlotTypeFromCompanyMealSlot(
-      prisma,
-      companyMealSlotId,
-    );
     resolved.push({
-      slotType,
       companyMealSlotId,
       lineupId: it.lineupId,
       estimatedCount: it.estimatedCount,
@@ -923,15 +873,14 @@ export async function bulkUpsertMealCount(
     resolved.map((it) =>
       prisma.mealCount.upsert({
         where: {
-          mealPlanGroupId_slotType_lineupId: {
+          mealPlanGroupId_companyMealSlotId_lineupId: {
             mealPlanGroupId,
-            slotType: it.slotType,
+            companyMealSlotId: it.companyMealSlotId,
             lineupId: it.lineupId,
           },
         },
         create: {
           mealPlanGroupId,
-          slotType: it.slotType,
           companyMealSlotId: it.companyMealSlotId,
           lineupId: it.lineupId,
           estimatedCount: it.estimatedCount,

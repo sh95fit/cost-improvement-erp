@@ -14,15 +14,6 @@ export const mealPlanStatusEnum = z.enum([
 ]);
 export type MealPlanStatus = z.infer<typeof mealPlanStatusEnum>;
 
-export const mealSlotTypeEnum = z.enum([
-  "BREAKFAST",
-  "LUNCH",
-  "DINNER",
-  "SNACK",
-  "EVENT", // Phase 5-R: 행사/제휴 식수 케이스
-]);
-export type MealSlotType = z.infer<typeof mealSlotTypeEnum>;
-
 export const slotKindEnum = z.enum(["CONTAINER", "DIRECT"]);
 export type SlotKind = z.infer<typeof slotKindEnum>;
 
@@ -75,7 +66,7 @@ export type UpdateMealPlanGroupInput = z.infer<
 // MealPlan (식사타입 × 라인업 단위 카드 — lineupId 필수)
 // ══════════════════════════════════════════════════════════════
 
-// Phase 5-R Step 3.2b-2-α: slotType 제거, companyMealSlotId 필수 승격.
+// Phase 5-R Step 3.2b-2-β: companyMealSlotId 단일 입력.
 export const createMealPlanSchema = z.object({
   companyMealSlotId: z.string().min(1, "슬롯을 선택하세요"),
   lineupId: z.string().min(1, "라인업을 선택하세요"),
@@ -90,7 +81,7 @@ export const updateMealPlanSchema = z.object({
 });
 export type UpdateMealPlanInput = z.infer<typeof updateMealPlanSchema>;
 
-// Phase 5-R Step 3.2b-2-α: slotType 제거, companyMealSlotId 필수 승격.
+// Phase 5-R Step 3.2b-2-β: companyMealSlotId 단일 입력.
 export const upsertMealCountSchema = z.object({
   companyMealSlotId: z.string().min(1, "슬롯을 선택하세요"),
   lineupId: z.string().min(1, "라인업을 선택하세요"),

@@ -123,7 +123,6 @@ type CompanyMealSlotInfo = {
 
 type MealPlanRow = {
   id: string;
-  slotType: "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | "EVENT"; // β에서 제거
   companyMealSlotId: string;
   companyMealSlot: CompanyMealSlotInfo | null;
   lineupId: string;
@@ -137,7 +136,6 @@ type MealPlanRow = {
 
 type MealCountRow = {
   id: string;
-  slotType: string; // β에서 제거
   companyMealSlotId: string;
   companyMealSlot: CompanyMealSlotInfo | null;
   lineupId: string;
@@ -161,14 +159,6 @@ type TemplateOption = { id: string; name: string };
 // ══════════════════════════════════════════════════════════════
 // 표시 라벨/색상
 // ══════════════════════════════════════════════════════════════
-
-const SLOT_TYPE_LABEL: Record<string, string> = {
-  BREAKFAST: "조식",
-  LUNCH: "중식",
-  DINNER: "석식",
-  SNACK: "간식",
-  EVENT: "이벤트",
-};
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "작성중",
@@ -576,7 +566,7 @@ export default function MealPlansPage() {
                 {detailGroup.mealCounts.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      {c.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[c.slotType] ?? c.slotType}
+                      {c.companyMealSlot?.displayName ?? "-"}
                     </TableCell>
                     <TableCell>
                       {c.lineup?.name ?? "—"}{" "}
@@ -617,7 +607,7 @@ export default function MealPlansPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">
-                        {mp.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType}{" "}
+                        {mp.companyMealSlot?.displayName ?? "-"}{" "}
                         <span className="text-base font-normal text-gray-600">
                           · {mp.lineup?.name ?? "—"}
                           {mp.lineup?.code && (
@@ -646,7 +636,7 @@ export default function MealPlansPage() {
                         setDeleteTarget({
                           type: "meal",
                           id: mp.id,
-                          name: `${mp.companyMealSlot?.displayName ?? SLOT_TYPE_LABEL[mp.slotType] ?? mp.slotType} · ${mp.lineup?.name ?? ""}`,
+                          name: `${mp.companyMealSlot?.displayName ?? "-"} · ${mp.lineup?.name ?? ""}`,
                         })
                       }
                     >

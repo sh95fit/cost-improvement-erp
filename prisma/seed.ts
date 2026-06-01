@@ -740,7 +740,6 @@ async function main() {
   let planA_LunchHome = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupA.id,
-      slotType: "LUNCH",
       companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupHome.id,
       deletedAt: null,
@@ -750,7 +749,6 @@ async function main() {
     planA_LunchHome = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupA.id,
-        slotType: "LUNCH",
         companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
@@ -762,7 +760,6 @@ async function main() {
   let planA_LunchFresh = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupA.id,
-      slotType: "LUNCH",
       companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
@@ -772,7 +769,6 @@ async function main() {
     planA_LunchFresh = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupA.id,
-        slotType: "LUNCH",
         companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
@@ -784,7 +780,6 @@ async function main() {
   let planA_DinnerHome = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupA.id,
-      slotType: "DINNER",
       companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupHome.id,
       deletedAt: null,
@@ -794,7 +789,6 @@ async function main() {
     planA_DinnerHome = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupA.id,
-        slotType: "DINNER",
         companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
@@ -807,7 +801,6 @@ async function main() {
   let planB_LunchHome = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupB.id,
-      slotType: "LUNCH",
       companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupHome.id,
       deletedAt: null,
@@ -817,7 +810,6 @@ async function main() {
     planB_LunchHome = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupB.id,
-        slotType: "LUNCH",
         companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
@@ -828,7 +820,6 @@ async function main() {
   const existingPlanB_LunchFresh = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupB.id,
-      slotType: "LUNCH",
       companyMealSlotId: mealSlotLunch.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
@@ -838,7 +829,6 @@ async function main() {
     await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupB.id,
-        slotType: "LUNCH",
         companyMealSlotId: mealSlotLunch.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
@@ -849,7 +839,6 @@ async function main() {
   const existingPlanB_DinnerHome = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupB.id,
-      slotType: "DINNER",
       companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupHome.id,
       deletedAt: null,
@@ -859,7 +848,6 @@ async function main() {
     await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupB.id,
-        slotType: "DINNER",
         companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupHome.id,
         mealTemplateId: mealTemplate.id,
@@ -870,7 +858,6 @@ async function main() {
   const existingPlanB_DinnerFresh = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupB.id,
-      slotType: "DINNER",
       companyMealSlotId: mealSlotDinner.id,
       lineupId: lineupFresh.id,
       deletedAt: null,
@@ -880,7 +867,6 @@ async function main() {
     await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupB.id,
-        slotType: "DINNER",
         companyMealSlotId: mealSlotDinner.id,  
         lineupId: lineupFresh.id,
         mealTemplateId: mealTemplate.id,
@@ -891,7 +877,6 @@ async function main() {
   let planB_EventHome = await prisma.mealPlan.findFirst({
     where: {
       mealPlanGroupId: groupB.id,
-      slotType: "EVENT",
       companyMealSlotId: mealSlotEvent.id,
       lineupId: lineupHome.id,
       deletedAt: null,
@@ -901,7 +886,6 @@ async function main() {
     planB_EventHome = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId: groupB.id,
-        slotType: "EVENT",
         companyMealSlotId: mealSlotEvent.id,  
         lineupId: lineupHome.id,
         // EVENT는 템플릿 없이 DIRECT 슬롯만 사용
@@ -1044,22 +1028,22 @@ async function main() {
   // ---- 22-4. MealCount (라인업별 예상/확정 식수) ----
   const mealCountData = [
     // groupA
-    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: 2950 },
-    { mealPlanGroupId: groupA.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1000, finalCount: 1020 },
-    { mealPlanGroupId: groupA.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    { mealPlanGroupId: groupA.id, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: 2950 },
+    { mealPlanGroupId: groupA.id, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1000, finalCount: 1020 },
+    { mealPlanGroupId: groupA.id, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
     // groupB
-    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "LUNCH" as const, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1200, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "DINNER" as const, companyMealSlotId: mealSlotDinner.id, lineupId: lineupFresh.id, estimatedCount: 800, finalCount: null },
-    { mealPlanGroupId: groupB.id, slotType: "EVENT" as const, companyMealSlotId: mealSlotEvent.id, lineupId: lineupHome.id, estimatedCount: 200, finalCount: null },
+    { mealPlanGroupId: groupB.id, companyMealSlotId: mealSlotLunch.id, lineupId: lineupHome.id, estimatedCount: 3000, finalCount: null },
+    { mealPlanGroupId: groupB.id, companyMealSlotId: mealSlotLunch.id, lineupId: lineupFresh.id, estimatedCount: 1200, finalCount: null },
+    { mealPlanGroupId: groupB.id, companyMealSlotId: mealSlotDinner.id, lineupId: lineupHome.id, estimatedCount: 2500, finalCount: null },
+    { mealPlanGroupId: groupB.id, companyMealSlotId: mealSlotDinner.id, lineupId: lineupFresh.id, estimatedCount: 800, finalCount: null },
+    { mealPlanGroupId: groupB.id, companyMealSlotId: mealSlotEvent.id, lineupId: lineupHome.id, estimatedCount: 200, finalCount: null },
   ];
   for (const mc of mealCountData) {
     await prisma.mealCount.upsert({
       where: {
-        mealPlanGroupId_slotType_lineupId: {
+        mealPlanGroupId_companyMealSlotId_lineupId: {
           mealPlanGroupId: mc.mealPlanGroupId,
-          slotType: mc.slotType,
+          companyMealSlotId: mc.companyMealSlotId,
           lineupId: mc.lineupId,
         },
       },
