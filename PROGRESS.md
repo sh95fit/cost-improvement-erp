@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-06-01 (Phase 5-R Step 3.2b-2-β — slot_type 컬럼·MealSlotType enum 완전 제거)
+> 마지막 갱신: 2026-06-01 (Phase 5-R Step 6-3c-A2 — MealCount × MealPlan 1:1 통합 뷰 완료 · Sprint 2 재개 진입 / 다음: Phase 7 슬롯 상세 에디터)
 
 ---
 
@@ -23,14 +23,16 @@
 ## 📍 현재 상태 요약 / 완료 범위 / 남은 작업 / 보류 범위 / handoff 기준
 
 ### 현재 상태 요약
-- **현재 기준 완료 지점**: Sprint 2 / Phase 5 완료
-- **현재 프로젝트 상태**: Sprint 2 진행 중
-- **중요 판단**: Sprint 2의 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 삭제하지 않고 유지한다. 다만 MealPlan 도메인 구조 문제로 인해 해당 Phase들을 그대로 진행하지 않고, 그 전에 **구조 재정의 보강 작업**을 Sprint 2 내부 추가 작업으로 삽입한다.
-- **현재 블로커**:
-  1. `MealPlanGroup`에 `lineupId`가 있어 날짜 그룹과 라인업 책임이 분리되지 않음
-  2. `MealPlan`이 식사타입 × lineup 구조를 안정적으로 표현하기 어려움
-  3. `MealPlanSlot`이 실제 실행 배정 단위에 필요한 `supplierItemId`, `productionLineId` 등의 정보를 담지 못함
-  4. 이 상태로 `MealCount`, `MaterialRequirement`, `CookingPlan`, 자동생성 연결을 진행하면 후속 Sprint 구조가 다시 흔들릴 가능성이 높음
+- **현재 기준 완료 지점**: Sprint 2 / Phase 5 + Phase 5-R 구조 재정의 보강 라운드 완료 (Step 1~6-3c-A2)
+- **현재 프로젝트 상태**: Sprint 2 재개 진입 — Phase 2-e → 6 → **7 (다음 착수)** → 8 → 9 → 10 → 11
+- **중요 판단**: Sprint 2의 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 그대로 유지한다. MealPlan 도메인 구조 재정의(Phase 5-R)는 Sprint 2 내부 보강 작업으로 완료되었으며, 이제 원래 미완료 Phase를 재개한다.
+- **현재 블로커**: 없음
+- **해소된 과거 블로커** (Phase 5-R 라운드에서 해결):
+  1. ✅ `MealPlanGroup.lineupId` 제거 — Step 1.x에서 schema 분리
+  2. ✅ `MealPlan`이 (식사타입 × lineup) 조합 단위로 재정의 — `(mealPlanGroupId, companyMealSlotId, lineupId)` 합성 unique
+  3. ✅ `MealPlanSlot`에 `supplierItemId`, `productionLineId`, `slotKind(CONTAINER|DIRECT)` 등 실행 배정 필드 확보
+  4. ✅ `MealSlotType` enum / `slot_type` 컬럼 완전 제거 → `companyMealSlotId` 단일 입력 (Step 3.2b-2-β)
+  5. ✅ `MealCount`가 `MealPlan`과 (slot × lineup) 키로 1:1 매칭, UI에서 통합 뷰 제공 (Step 6-3c-A2)
 
 ### 완료 범위
 #### Sprint 1 완료 범위
@@ -52,26 +54,36 @@
 - v5 UI/로직 보완 및 supplier 패턴 통일
 - MealPlanGroup / MealPlan / MealPlanSlot 기본 schema/service/action
 - 식단 그룹 CRUD UI
+- **Phase 5-R (구조 재정의 보강 라운드)** 완료:
+- Step 1.x: MealPlanGroup 단순화, MealPlan/MealPlanSlot 재설계, MealCount partial unique
+- Step 2.x: seed / schema (Zod) / service / action 정렬
+- Step 3.2b-2-α/β: `companyMealSlotId` 1급 입력 전환, `slot_type` 컬럼 및 `MealSlotType` enum 완전 제거
+- Step 6-3c-A: MealCount 입력 UI 최소 구현 (commit `9ba2d21`)
+- Step 6-3c-A2: MealCount × MealPlan 1:1 통합 뷰 (commit `9078d01`)
 
 ### 남은 작업
 #### Sprint 2 기존 미완료 작업
-- Phase 2-e — 부자재-공급업체 연결 UX
-- Phase 6 — 식단 캘린더 뷰
-- Phase 7 — 슬롯 상세 에디터
-- Phase 8 — MealCount + MealPlanAccessory 서비스/UI
+- Phase 2-e — 부자재-공급업체 연결 UX (대기)
+- Phase 6 — 식단 캘린더 뷰 (대기 / 독립 가능)
+- **Phase 7 — 슬롯 상세 에디터 (다음 착수, Step 7-A부터)**
+- Phase 8 — MealCount(✅ 기본 완료) + MealPlanAccessory(미착수) 서비스/UI
 - Phase 9 — 소요량 자동 산출 서비스
 - Phase 10 — 테스트 작성
 - Phase 11 — 페이지 통합 + Sprint 2 QA
 
 #### Sprint 2 내부 추가 보강 작업
-- MealPlan 도메인 구조 재정의 기준 확정
-- `schema.prisma` / migration 수정
-- `seed.ts` 보강
-- `meal-plan.schema.ts` / `meal-plan.service.ts` / `meal-plan.action.ts` 재정비
-- `/meal-plans/page.tsx` 구조 재구성
-- 자동생성 연결 계약 정리
-- 관련 테스트 보강
-- 문서 동기화 및 Sprint 2 재개 판정
+(모두 완료 — Phase 5-R 라운드 종료)
+- ✅ MealPlan 도메인 구조 재정의 기준 확정
+- ✅ `schema.prisma` / migration 수정 (slot_type 제거 포함 2건)
+- ✅ `seed.ts` 보강
+- ✅ `meal-plan.schema.ts` / `meal-plan.service.ts` / `meal-plan.action.ts` 재정비
+- ✅ `/meal-plans/page.tsx` 구조 재구성 (1:1 통합 뷰 포함)
+- ⏳ 자동생성 연결 계약 정리 — Phase 9에서 진행
+- ⏳ 관련 테스트 보강 — Phase 10에서 진행
+- ✅ 문서 동기화 및 Sprint 2 재개 판정 완료
+
+#### 미해결 정리 항목 (라이트한 후속)
+- `page.tsx`의 `openMealCountEditor` / `closeMealCountEditor` / `handleSaveMealCount` 세 함수가 한 단계 추가 들여쓰기로 작성되어 있음. 기능엔 영향 없음. Phase 7-A 패치 시 동일 파일을 열 때 함께 정리.
 
 ### 보류 범위
 아래는 구조 재정의 보강 완료 전 본격 착수하지 않는다.
@@ -144,10 +156,10 @@
 | 27 | MealTemplate | S2 | P1-2 | ✅ |
 | 28 | MealTemplateContainer | S2 | P1-2 | ✅ (v5: MealTemplateSlot 폐지) |
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
-| 30 | MealPlanGroup | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
-| 31 | MealPlan | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
-| 32 | MealPlanSlot | S2 | P3-4 | ✅ (기본 구현 완료 / 구조 재정의 보강 예정) |
-| 33 | MealCount | S2 | P8 | ⬜ (Phase 5-R Step 1.3 백로그: partial unique index 통일) |
+| 30 | MealPlanGroup | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 날짜 그룹 단순화) |
+| 31 | MealPlan | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 식사타입 × lineup, companyMealSlotId 단일 키) |
+| 32 | MealPlanSlot | S2 | P3-4 / 5-R | ✅ schema 완료 / ⏳ UI Phase 7에서 슬롯 에디터 보강 예정 |
+| 33 | MealCount | S2 | P8 / 5-R | ✅ schema·service·action·UI 완료 (Step 6-3c-A2, MealPlan 1:1) |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
@@ -1265,18 +1277,39 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 **다음 스텝**: 식수 입력 UI 추가 (Step 3.2c 또는 별도 스텝)
 
-### Step 6-3c-A — MealCount 입력 UI 최소 구현 ✅
+### Phase 5-R Step 6-3c-A — MealCount 입력 UI 최소 구현 ✅
+- **날짜**: 2026-06-01
+- **커밋**: `9ba2d21`
+- **변경 파일**: 2개 (+192 / -4)
+  - `src/app/(dashboard)/meal-plans/page.tsx` — `upsertMealCountAction` / `deleteMealCountAction` import, 식수 추가 다이얼로그(슬롯 Select + LineupSelect + 예상/확정 input), 행 단위 삭제 버튼, deleteTarget union에 `"mealCount"` 추가
+  - `PROGRESS.md` — Step 6-3c-A 섹션 추가
+- **완료 항목**:
+  - [x] `+ 식수 추가` 버튼 → 다이얼로그 (슬롯·라인업·예상·확정)
+  - [x] 식수 테이블에 행 단위 🗑 버튼
+  - [x] soft-delete 후 동일 (slot, lineup) 조합 재등록 시 reactivation
+  - [x] `npx tsc --noEmit` 0 errors
+- **백엔드**: Step 3.2b-2-β에서 이미 준비 완료 (`upsertMealCount` 합성키, `deleteMealCount` soft-delete)
+- **후속 조정 사유**: 별도 추가 다이얼로그 방식이 "식단 없이도 식수가 생성될 수 있는 구조"라 데이터 무결성 약점이 있어, 곧바로 Step 6-3c-A2로 1:1 통합 뷰로 재설계.
 
-- 일자: 2026-06-01
-- 커밋: <hash>
-- 변경 파일: 1개
-  * src/app/(dashboard)/meal-plans/page.tsx
-- 내용:
-  * "식수 추가" 다이얼로그 추가 (슬롯/라인업/예상/확정)
-  * 식수 테이블에 행별 삭제 버튼 추가
-  * upsertMealCountAction, deleteMealCountAction 연동
-- 검증: tsc 0 errors, /meal-plans에서 식수 CRUD + soft-delete 재활성화 확인
-- 다음: Step 6-3c-B (inline 편집 + bulk save + 자동 채우기)
+### Phase 5-R Step 6-3c-A2 — MealCount × MealPlan 1:1 통합 뷰 ✅
+- **날짜**: 2026-06-01
+- **커밋**: `9078d01`
+- **변경 파일**: 1개 (+210 / -150)
+  - `src/app/(dashboard)/meal-plans/page.tsx` — 독립 "식수 추가" 다이얼로그 폐기, "식단/식수 현황" 통합 섹션으로 전환
+- **완료 항목**:
+  - [x] `detailGroup.mealPlans`를 기준으로 행을 그려, 같은 (`companyMealSlotId`, `lineupId`) `MealCount`를 옆에 매칭 표시
+  - [x] 행별 상태 배지: `미입력` / `예상만` / `확정`
+  - [x] 행별 `[입력]` 또는 `[수정]` 버튼 → 식수 편집 다이얼로그 (슬롯·라인업 readonly로 prefilled)
+  - [x] 행별 🗑 버튼은 `MealCount`가 존재할 때만 노출
+  - [x] 전역 `+ 식수 추가` 버튼 제거 → 식단 없이 식수만 등록되는 경로 차단
+  - [x] `upsertMealCountAction` / `deleteMealCountAction`은 그대로 재사용 (백엔드 변경 0)
+  - [x] `npx tsc --noEmit` 0 errors
+  - [x] 모든 (slot × lineup) 조합 CRUD + soft-delete reactivation 정상 동작 검증
+- **데이터 모델 정합성**:
+  - `MealPlan`과 `MealCount`는 같은 `(mealPlanGroupId, companyMealSlotId, lineupId)` 합성키를 공유 → 사실상 1:0..1 관계
+  - UI 차원에서 `MealPlan`이 선행 등록되어야 `MealCount` 입력 진입점이 노출되도록 강제 → 고아 `MealCount` 데이터 발생 가능성 0
+- **잔여 정리 항목**: `openMealCountEditor` / `closeMealCountEditor` / `handleSaveMealCount`의 들여쓰기가 4스페이스 추가로 작성됨. 기능엔 영향 없음. Phase 7-A 패치 시 동일 파일을 열 때 함께 정리.
+- **Phase 5-R 라운드 종료 판정**: ✅ 모든 Step 완료. `01_개발순서.md §3.8` 규정에 따라 Sprint 2 원래 미완료 작업 재개.
 
 ### Step 3.2c — CompanyMealSlot 마스터 관리 페이지 ⬜ (보류)
 - **상태**: 별도 Step으로 분리, 필요 시점에 착수
@@ -1307,10 +1340,26 @@ LineupMealTemplateMap을 폐기하기로 결정.
 - **예상 시간**: 6h
 - **작업**: `meal-plan-calendar.tsx` (주간/월간 캘린더, 드래그/클릭 슬롯 배정)
 
-### Phase 7 — 슬롯 상세 에디터 ⬜
-- **예정일**: 2026-05-18 ~ 2026-05-19
-- **예상 시간**: 4h
-- **작업**: `meal-plan-slot-editor.tsx` (레시피 선택, RecipeBOM 선택, 인원수 입력)
+### Phase 7 (재개) — 슬롯 상세 에디터 ⏳ (착수 대기)
+- **목표**: `MealPlanSlot`의 추가/수정/삭제/재정렬 UI를 식단 카드 안에 제공.
+- **사전 확인 완료** (재개 시 ready 상태):
+  - 백엔드 액션: `createMealPlanSlotAction`, `updateMealPlanSlotAction`, `deleteMealPlanSlotAction`, `reorderMealPlanSlotsAction` ✅
+  - SubsidiaryMaster(CONTAINER) 조회: `getContainerGroupsAction` (paginated, `loadAllPages` 호환) ✅
+  - Recipe 조회: `getRecipesAction` ✅
+  - SupplierItem 조회: `getSupplierItemsAction(supplierId)` (DIRECT 슬롯용, 7-B 단계에서 사용) ✅
+  - LineupSelect 컴포넌트 ✅
+  - ⛔ ProductionLine 조회 액션은 별도 feature가 없음 → Step 7-A에서 `meal-plan.action.ts`에 `getActiveProductionLinesAction` (회사 격리, 가벼운 인라인) 추가
+- **분할 계획**:
+  - **Step 7-A**: 컨테이너(CONTAINER) 슬롯 추가 다이얼로그. 각 식단 카드 위에 "슬롯 추가" 버튼 → 다이얼로그(부자재(CONTAINER), containerSlotIndex, recipe, productionLine, quantity, note). `slotKind=CONTAINER` 고정.
+  - **Step 7-B**: DIRECT 슬롯 지원. 다이얼로그 상단에 CONTAINER/DIRECT 토글 추가, DIRECT 선택 시 SupplierItem Select 노출.
+  - **Step 7-C**: 슬롯 수정 다이얼로그 + 드래그/드롭 재정렬 (`reorderMealPlanSlotsAction`).
+- **권장 의사결정** (사용자 확인 완료):
+  - ProductionLine UI = 본 Phase에서 `getActiveProductionLinesAction` 추가하여 Select 노출 (옵션 b).
+  - Step 7-A는 CONTAINER만 우선 (옵션 a).
+  - "슬롯 추가" 버튼은 각 MealPlan 카드 헤더 우측 (옵션 a).
+- **착수 전 마지막 점검**:
+  - [ ] `npx tsc --noEmit` 0 errors 베이스라인 확인
+  - [ ] 잔여 정리 항목 (page.tsx 들여쓰기 3건) 함께 처리 여부 결정
 
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
 - **예정일**: 2026-05-19 ~ 2026-05-20
