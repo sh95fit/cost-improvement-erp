@@ -225,14 +225,18 @@ export default function MealPlansPage() {
   const [addMealNote, setAddMealNote] = useState("");
   const [mealSaving, setMealSaving] = useState(false);
 
-  // ── 식수(MealCount) 추가 다이얼로그 ──
-  const [addMealCountGroupId, setAddMealCountGroupId] = useState<string | null>(
-    null,
-  );
-  const [addMealCountSlotId, setAddMealCountSlotId] = useState<string>("");
-  const [addMealCountLineupId, setAddMealCountLineupId] = useState<string>("");
-  const [addMealCountEstimated, setAddMealCountEstimated] = useState<string>("");
-  const [addMealCountFinal, setAddMealCountFinal] = useState<string>("");
+  // ── 식수(MealCount) 편집 다이얼로그 — MealPlan에 1:1 매칭 ──
+  const [editMealCountTarget, setEditMealCountTarget] = useState<{
+    groupId: string;
+    mealPlanId: string;
+    companyMealSlotId: string;
+    companyMealSlotLabel: string;
+    lineupId: string;
+    lineupLabel: string;
+    existingMealCountId: string | null;
+  } | null>(null);
+  const [editMealCountEstimated, setEditMealCountEstimated] = useState<string>("");
+  const [editMealCountFinal, setEditMealCountFinal] = useState<string>("");
   const [mealCountSaving, setMealCountSaving] = useState(false);
 
   // ── 템플릿 옵션 ──
@@ -456,53 +460,79 @@ export default function MealPlansPage() {
     }
   };
 
-  // ── 식수(MealCount) 추가 ──
-  const handleAddMealCount = async () => {
-    if (
-      !addMealCountGroupId ||
-      !addMealCountSlotId ||
-      !addMealCountLineupId.trim()
-    )
-      return;
-
-    const estimated = Number(addMealCountEstimated);
-    if (Number.isNaN(estimated) || estimated < 0) {
-      toast.error("예상 식수는 0 이상의 숫자여야 합니다");
-      return;
-    }
-    const finalRaw = addMealCountFinal.trim();
-    const finalCount = finalRaw === "" ? null : Number(finalRaw);
-    if (finalCount !== null && (Number.isNaN(finalCount) || finalCount < 0)) {
-      toast.error("확정 식수는 0 이상의 숫자여야 합니다");
-      return;
-    }
-
-    setMealCountSaving(true);
-    try {
-      const result = await upsertMealCountAction(addMealCountGroupId, {
-        companyMealSlotId: addMealCountSlotId,
-        lineupId: addMealCountLineupId.trim(),
-        estimatedCount: estimated,
-        finalCount,
+    // ── 식수(MealCount) 편집 열기 ──
+    const openMealCountEditor = (mp: MealPlanRow) => {
+      if (!detailGroup) return;
+      const existing = detailGroup.mealCounts?.find(
+        (c) =>
+          c.companyMealSlotId === mp.companyMealSlotId &&
+          c.lineupId === mp.lineupId,
+      );
+      setEditMealCountTarget({
+        groupId: detailGroup.id,
+        mealPlanId: mp.id,
+        companyMealSlotId: mp.companyMealSlotId,
+        companyMealSlotLabel: mp.companyMealSlot?.displayName ?? "-",
+        lineupId: mp.lineupId,
+        lineupLabel: `${mp.lineup?.name ?? "—"}${mp.lineup?.code ? ` (${mp.lineup.code})` : ""}`,
+        existingMealCountId: existing?.id ?? null,
       });
-      if (result.success) {
-        toast.success("식수가 저장되었습니다");
-        setAddMealCountGroupId(null);
-        setAddMealCountSlotId("");
-        setAddMealCountLineupId("");
-        setAddMealCountEstimated("");
-        setAddMealCountFinal("");
-        await refreshDetail();
-      } else {
-        toast.error(result.error?.message ?? "식수 저장에 실패했습니다");
+      setEditMealCountEstimated(
+        existing?.estimatedCount != null ? String(existing.estimatedCount) : "",
+      );
+      setEditMealCountFinal(
+        existing?.finalCount != null ? String(existing.finalCount) : "",
+      );
+    };
+  
+    const closeMealCountEditor = () => {
+      setEditMealCountTarget(null);
+      setEditMealCountEstimated("");
+      setEditMealCountFinal("");
+    };
+  
+    // ── 식수(MealCount) 저장 — 식단에 1:1로 upsert ──
+    const handleSaveMealCount = async () => {
+      if (!editMealCountTarget) return;
+  
+      const estimated = Number(editMealCountEstimated);
+      if (
+        editMealCountEstimated === "" ||
+        Number.isNaN(estimated) ||
+        estimated < 0
+      ) {
+        toast.error("예상 식수는 0 이상의 숫자여야 합니다");
+        return;
       }
-    } catch (err) {
-      logger.error("[MealPlansPage.handleAddMealCount]", err);
-      toast.error("식수 저장 중 오류가 발생했습니다");
-    } finally {
-      setMealCountSaving(false);
-    }
-  };
+      const finalRaw = editMealCountFinal.trim();
+      const finalCount = finalRaw === "" ? null : Number(finalRaw);
+      if (finalCount !== null && (Number.isNaN(finalCount) || finalCount < 0)) {
+        toast.error("확정 식수는 0 이상의 숫자여야 합니다");
+        return;
+      }
+  
+      setMealCountSaving(true);
+      try {
+        const result = await upsertMealCountAction(editMealCountTarget.groupId, {
+          companyMealSlotId: editMealCountTarget.companyMealSlotId,
+          lineupId: editMealCountTarget.lineupId,
+          estimatedCount: estimated,
+          finalCount,
+        });
+        if (result.success) {
+          toast.success("식수가 저장되었습니다");
+          closeMealCountEditor();
+          await refreshDetail();
+        } else {
+          toast.error(result.error?.message ?? "식수 저장에 실패했습니다");
+        }
+      } catch (err) {
+        logger.error("[MealPlansPage.handleSaveMealCount]", err);
+        toast.error("식수 저장 중 오류가 발생했습니다");
+      } finally {
+        setMealCountSaving(false);
+      }
+    };  
 
   // ── 삭제 ──
   const handleConfirmDelete = async () => {
@@ -606,21 +636,19 @@ export default function MealPlansPage() {
           </Button>
         </div>
 
-        {/* 식수 섹션 (6-3a: 읽기 전용) */}
+        {/* 식단/식수 통합 현황 */}
         <section className="rounded-lg border bg-gray-50/50 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">식수 현황</h2>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAddMealCountGroupId(detailGroup.id)}
-            >
-              <Plus className="mr-1 h-4 w-4" /> 식수 추가
-            </Button>
+            <h2 className="text-base font-semibold">식단/식수 현황</h2>
+            <span className="text-xs text-gray-400">
+              ※ 식수는 등록된 식단별로 입력합니다 (1:1)
+            </span>
           </div>
-          {!detailGroup.mealCounts || detailGroup.mealCounts.length === 0 ? (
+          {!detailGroup.mealPlans || detailGroup.mealPlans.length === 0 ? (
             <p className="text-sm text-gray-500">
-              아직 등록된 식수가 없습니다.
+              아직 등록된 식단이 없습니다. 우측 상단의{" "}
+              <span className="font-semibold">&ldquo;식단 추가&rdquo;</span>{" "}
+              버튼으로 먼저 식단을 등록하세요.
             </p>
           ) : (
             <Table>
@@ -630,47 +658,102 @@ export default function MealPlansPage() {
                   <TableHead>라인업</TableHead>
                   <TableHead className="w-[100px] text-right">예상</TableHead>
                   <TableHead className="w-[100px] text-right">확정</TableHead>
-                  <TableHead className="w-[60px]" />
+                  <TableHead className="w-[100px] text-center">상태</TableHead>
+                  <TableHead className="w-[100px] text-right">작업</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {detailGroup.mealCounts.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      {c.companyMealSlot?.displayName ?? "-"}
-                    </TableCell>
-                    <TableCell>
-                      {c.lineup?.name ?? "—"}{" "}
-                      {c.lineup?.code && (
-                        <span className="text-xs text-gray-400">
-                          ({c.lineup.code})
+                {detailGroup.mealPlans.map((mp) => {
+                  const mc = detailGroup.mealCounts?.find(
+                    (c) =>
+                      c.companyMealSlotId === mp.companyMealSlotId &&
+                      c.lineupId === mp.lineupId,
+                  );
+                  const hasEstimated = mc?.estimatedCount != null;
+                  const hasFinal = mc?.finalCount != null;
+                  let statusBadge: { label: string; cls: string };
+                  if (!mc) {
+                    statusBadge = {
+                      label: "미입력",
+                      cls: "bg-gray-100 text-gray-500",
+                    };
+                  } else if (hasFinal) {
+                    statusBadge = {
+                      label: "확정",
+                      cls: "bg-emerald-100 text-emerald-700",
+                    };
+                  } else if (hasEstimated) {
+                    statusBadge = {
+                      label: "예상만",
+                      cls: "bg-amber-100 text-amber-700",
+                    };
+                  } else {
+                    statusBadge = {
+                      label: "—",
+                      cls: "bg-gray-100 text-gray-500",
+                    };
+                  }
+                  return (
+                    <TableRow key={mp.id}>
+                      <TableCell>
+                        {mp.companyMealSlot?.displayName ?? "-"}
+                      </TableCell>
+                      <TableCell>
+                        {mp.lineup?.name ?? "—"}{" "}
+                        {mp.lineup?.code && (
+                          <span className="text-xs text-gray-400">
+                            ({mp.lineup.code})
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {mc?.estimatedCount ?? (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {mc?.finalCount ?? (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge.cls}`}
+                        >
+                          {statusBadge.label}
                         </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {c.estimatedCount ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {c.finalCount ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() =>
-                          setDeleteTarget({
-                            type: "mealCount",
-                            id: c.id,
-                            name: `${c.companyMealSlot?.displayName ?? "-"} · ${c.lineup?.name ?? ""}`,
-                          })
-                        }
-                      >
-                        <Trash2 className="h-3 w-3 text-red-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => openMealCountEditor(mp)}
+                          >
+                            {mc ? "수정" : "입력"}
+                          </Button>
+                          {mc && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() =>
+                                setDeleteTarget({
+                                  type: "mealCount",
+                                  id: mc.id,
+                                  name: `${mp.companyMealSlot?.displayName ?? "-"} · ${mp.lineup?.name ?? ""} 식수`,
+                                })
+                              }
+                            >
+                              <Trash2 className="h-3 w-3 text-red-400" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -964,84 +1047,61 @@ export default function MealPlansPage() {
           </DialogContent>
         </Dialog>
 
-        {/* 식수 추가 다이얼로그 */}
+        {/* 식수 편집 다이얼로그 — 식단에 1:1 매칭 */}
         <Dialog
-          open={!!addMealCountGroupId}
-          onOpenChange={(open) => !open && setAddMealCountGroupId(null)}
+          open={!!editMealCountTarget}
+          onOpenChange={(open) => !open && closeMealCountEditor()}
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>식수 추가</DialogTitle>
+              <DialogTitle>
+                {editMealCountTarget?.existingMealCountId ? "식수 수정" : "식수 입력"}
+              </DialogTitle>
               <DialogDescription>
-                (식사타입, 라인업) 조합 1개당 식수 1행만 등록됩니다. 동일 조합
-                재등록 시 기존 값이 갱신됩니다.
+                선택한 식단의 예상/확정 식수를 입력합니다. 같은 (식사 × 라인업)
+                식수는 1행만 유지됩니다.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="add-mc-slot">슬롯 *</Label>
-                <Select
-                  value={addMealCountSlotId}
-                  onValueChange={setAddMealCountSlotId}
-                >
-                  <SelectTrigger id="add-mc-slot">
-                    <SelectValue placeholder="슬롯을 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {slotOptions.map((opt) => (
-                      <SelectItem key={opt.id} value={opt.id}>
-                        {opt.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>라인업 *</Label>
-                <LineupSelect
-                  value={addMealCountLineupId}
-                  onChange={(lineupId) => setAddMealCountLineupId(lineupId)}
-                />
+              <div className="rounded-md border bg-white px-3 py-2 text-sm">
+                <div className="text-xs text-gray-500">대상 식단</div>
+                <div className="mt-0.5 font-medium">
+                  {editMealCountTarget?.companyMealSlotLabel} ·{" "}
+                  {editMealCountTarget?.lineupLabel}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="add-mc-est">예상 식수 *</Label>
+                  <Label htmlFor="edit-mc-est">예상 식수 *</Label>
                   <Input
-                    id="add-mc-est"
+                    id="edit-mc-est"
                     type="number"
                     min={0}
-                    value={addMealCountEstimated}
-                    onChange={(e) => setAddMealCountEstimated(e.target.value)}
+                    value={editMealCountEstimated}
+                    onChange={(e) => setEditMealCountEstimated(e.target.value)}
                     placeholder="0"
+                    autoFocus
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="add-mc-final">확정 식수 (선택)</Label>
+                  <Label htmlFor="edit-mc-final">확정 식수 (선택)</Label>
                   <Input
-                    id="add-mc-final"
+                    id="edit-mc-final"
                     type="number"
                     min={0}
-                    value={addMealCountFinal}
-                    onChange={(e) => setAddMealCountFinal(e.target.value)}
+                    value={editMealCountFinal}
+                    onChange={(e) => setEditMealCountFinal(e.target.value)}
                     placeholder="미입력 시 null"
                   />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setAddMealCountGroupId(null)}
-                >
+                <Button variant="outline" onClick={closeMealCountEditor}>
                   취소
                 </Button>
                 <Button
-                  onClick={handleAddMealCount}
-                  disabled={
-                    mealCountSaving ||
-                    !addMealCountSlotId ||
-                    !addMealCountLineupId.trim() ||
-                    addMealCountEstimated === ""
-                  }
+                  onClick={handleSaveMealCount}
+                  disabled={mealCountSaving || editMealCountEstimated === ""}
                 >
                   {mealCountSaving && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
