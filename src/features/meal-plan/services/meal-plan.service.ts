@@ -21,8 +21,8 @@ import type {
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /**
- * Step 3.2b-2-α: companyMealSlotId 필수 입력 검증 (회사 격리).
- * - β 단계에서 DB slot_type 컬럼 제거 후에도 이 함수는 그대로 유지.
+ * Step 3.2b-2-β: companyMealSlotId 회사 격리 검증.
+ * - slot_type 컬럼은 β에서 제거됐고, 본 함수는 입력 검증만 담당.
  */
 async function resolveCompanyMealSlotIdFromInput(
   tx: DbClient,
@@ -448,7 +448,7 @@ export async function createMealPlan(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-2-α: companyMealSlotId 필수. slot_type은 β까지 임시로 채워 넣음.
+  // Step 3.2b-2-β: companyMealSlotId 단일 입력. 회사 격리 검증.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,
@@ -769,6 +769,9 @@ export async function getMealCounts(
     where: { mealPlanGroupId, deletedAt: null },
     include: {
       lineup: { select: { id: true, name: true, code: true } },
+      companyMealSlot: {
+        select: { id: true, code: true, displayName: true, sortOrder: true },
+      },
     },
     orderBy: [
       { companyMealSlot: { sortOrder: "asc" } },
@@ -790,7 +793,7 @@ export async function upsertMealCount(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-2-α: companyMealSlotId 필수. slot_type은 β까지 임시로 채워 넣음.
+  // Step 3.2b-2-β: companyMealSlotId 단일 입력으로 통일. slotType 제거 완료.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,

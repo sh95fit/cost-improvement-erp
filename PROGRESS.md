@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-06-01 (Phase 5-R Step 3.2b-2-α — UI를 companyMealSlotId 1급 입력으로 전환)
+> 마지막 갱신: 2026-06-01 (Phase 5-R Step 3.2b-2-β — slot_type 컬럼·MealSlotType enum 완전 제거)
 
 ---
 
