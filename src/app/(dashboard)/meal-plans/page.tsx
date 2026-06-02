@@ -51,6 +51,9 @@ import {
   Eye,
   Package,
   Truck,
+  Pencil,
+  X,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
@@ -64,12 +67,17 @@ import {
   createMealPlanAction,
   deleteMealPlanAction,
   deleteMealPlanSlotAction,
+  updateMealPlanSlotAction,         
   upsertMealCountAction,
   deleteMealCountAction,
   getActiveProductionLinesAction,
   bulkCreateContainerSlotsAction,
   applyMealTemplateAction,
+  createMealPlanAccessoryAction,   
+  updateMealPlanAccessoryAction,   
+  deleteMealPlanAccessoryAction,    
 } from "@/features/meal-plan/actions/meal-plan.action";
+
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
 import { getRecipesAction } from "@/features/recipe/actions/recipe.action";
@@ -307,6 +315,44 @@ export default function MealPlansPage() {
   >({});
   const [bulkSlotSaving, setBulkSlotSaving] = useState(false);
 
+  // ══════════════════════════════════════════════════════════════
+  // Phase 7-B1: 슬롯 행 인라인 편집
+  // ══════════════════════════════════════════════════════════════
+  // editingSlotId !== null 이면 해당 행이 편집 모드
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  // 편집 중인 필드 (CONTAINER 기준; DIRECT는 quantity/line/note만 사용)
+  const [editSlotForm, setEditSlotForm] = useState<{
+    kind: "CONTAINER" | "DIRECT";
+    recipeId: string; // CONTAINER 전용 ("" = 미배정)
+    productionLineId: string; // "" = 미지정
+    quantity: string;
+    note: string;
+  } | null>(null);
+  const [slotUpdating, setSlotUpdating] = useState(false);
+
+  // ══════════════════════════════════════════════════════════════
+  // Phase 7-B2: 부자재 CRUD
+  // ══════════════════════════════════════════════════════════════
+  // 추가 다이얼로그 (mealPlanId가 null이 아니면 열림)
+  const [accessoryAddTarget, setAccessoryAddTarget] = useState<{
+    mealPlanId: string;
+    mealPlanLabel: string;
+  } | null>(null);
+  // 수정 다이얼로그 (기존 부자재 행 정보)
+  const [accessoryEditTarget, setAccessoryEditTarget] =
+    useState<MealPlanAccessoryRow | null>(null);
+  // 폼 상태 (add/edit 공용)
+  const [accessoryFormSubsidiaryId, setAccessoryFormSubsidiaryId] =
+    useState("");
+  const [accessoryFormMode, setAccessoryFormMode] = useState<
+    "PER_MEAL_COUNT" | "FIXED_QUANTITY"
+  >("PER_MEAL_COUNT");
+  const [accessoryFormFixedQuantity, setAccessoryFormFixedQuantity] =
+    useState("");
+  const [accessoryFormRequired, setAccessoryFormRequired] = useState(true);
+  const [accessoryFormNote, setAccessoryFormNote] = useState("");
+  const [accessorySaving, setAccessorySaving] = useState(false);
+
   // 템플릿 자동 적용 충돌 확인 다이얼로그 (Phase 7-A2: E1 + F1)
   const [templateApplyConfirm, setTemplateApplyConfirm] = useState<{
     mealPlanId: string;
@@ -318,7 +364,7 @@ export default function MealPlansPage() {
 
   // ── 삭제 확인 ──
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: "group" | "meal" | "slot" | "mealCount";
+    type: "group" | "meal" | "slot" | "mealCount" | "accessory"; 
     id: string;
     name: string;
   } | null>(null);
@@ -845,6 +891,190 @@ export default function MealPlansPage() {
     }
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // Phase 7-B1: 슬롯 행 인라인 편집
+  // ══════════════════════════════════════════════════════════════
+
+  const openSlotEdit = (slot: MealPlanSlotRow) => {
+    setEditingSlotId(slot.id);
+    setEditSlotForm({
+      kind: slot.kind,
+      recipeId: slot.recipe?.id ?? "",
+      productionLineId: slot.productionLine?.id ?? "",
+      quantity: String(slot.quantity ?? 0),
+      note: slot.note ?? "",
+    });
+  };
+
+  const closeSlotEdit = () => {
+    setEditingSlotId(null);
+    setEditSlotForm(null);
+  };
+
+  const handleSaveSlot = async () => {
+    if (!editingSlotId || !editSlotForm) return;
+
+    // 수량 검증
+    const qty = Number(editSlotForm.quantity);
+    if (
+      editSlotForm.quantity === "" ||
+      Number.isNaN(qty) ||
+      qty < 0 ||
+      !Number.isInteger(qty)
+    ) {
+      toast.error("수량은 0 이상의 정수여야 합니다");
+      return;
+    }
+
+    // kind 별 payload 구성 (Zod discriminatedUnion 충족)
+    const payload =
+      editSlotForm.kind === "CONTAINER"
+        ? {
+            kind: "CONTAINER" as const,
+            recipeId: editSlotForm.recipeId || null,
+            productionLineId: editSlotForm.productionLineId || null,
+            quantity: qty,
+            note: editSlotForm.note.trim() || null,
+          }
+        : {
+            kind: "DIRECT" as const,
+            productionLineId: editSlotForm.productionLineId || null,
+            quantity: qty,
+            note: editSlotForm.note.trim() || null,
+          };
+
+    setSlotUpdating(true);
+    try {
+      const result = await updateMealPlanSlotAction(editingSlotId, payload);
+      if (result.success) {
+        toast.success("슬롯이 수정되었습니다");
+        closeSlotEdit();
+        await refreshDetail();
+      } else {
+        toast.error(result.error?.message ?? "슬롯 수정에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealPlansPage.handleSaveSlot]", err);
+      toast.error("슬롯 수정 중 오류가 발생했습니다");
+    } finally {
+      setSlotUpdating(false);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // Phase 7-B2: 부자재 CRUD
+  // ══════════════════════════════════════════════════════════════
+
+  // 폼 초기화 헬퍼
+  const resetAccessoryForm = () => {
+    setAccessoryFormSubsidiaryId("");
+    setAccessoryFormMode("PER_MEAL_COUNT");
+    setAccessoryFormFixedQuantity("");
+    setAccessoryFormRequired(true);
+    setAccessoryFormNote("");
+  };
+
+  const openAccessoryAdd = (mp: MealPlanRow) => {
+    setAccessoryAddTarget({
+      mealPlanId: mp.id,
+      mealPlanLabel: `${mp.companyMealSlot?.displayName ?? "-"} · ${mp.lineup?.name ?? "—"}`,
+    });
+    resetAccessoryForm();
+  };
+
+  const openAccessoryEdit = (acc: MealPlanAccessoryRow) => {
+    setAccessoryEditTarget(acc);
+    setAccessoryFormSubsidiaryId(acc.subsidiaryMasterId);
+    setAccessoryFormMode(acc.consumptionMode);
+    setAccessoryFormFixedQuantity(
+      acc.fixedQuantity != null ? String(acc.fixedQuantity) : "",
+    );
+    setAccessoryFormRequired(acc.required);
+    setAccessoryFormNote(acc.note ?? "");
+  };
+
+  const closeAccessoryDialog = () => {
+    setAccessoryAddTarget(null);
+    setAccessoryEditTarget(null);
+    resetAccessoryForm();
+  };
+
+  // 폼 검증 공통 로직 → payload 반환 (검증 실패 시 null)
+  const buildAccessoryPayload = (): {
+    subsidiaryMasterId: string;
+    consumptionMode: "PER_MEAL_COUNT" | "FIXED_QUANTITY";
+    fixedQuantity: number | null;
+    required: boolean;
+    note: string | null;
+  } | null => {
+    if (!accessoryFormSubsidiaryId) {
+      toast.error("부자재를 선택하세요");
+      return null;
+    }
+    let fixedQuantity: number | null = null;
+    if (accessoryFormMode === "FIXED_QUANTITY") {
+      const v = Number(accessoryFormFixedQuantity);
+      if (
+        accessoryFormFixedQuantity === "" ||
+        Number.isNaN(v) ||
+        v < 0 ||
+        !Number.isInteger(v)
+      ) {
+        toast.error("고정수량은 0 이상의 정수여야 합니다");
+        return null;
+      }
+      fixedQuantity = v;
+    }
+    return {
+      subsidiaryMasterId: accessoryFormSubsidiaryId,
+      consumptionMode: accessoryFormMode,
+      fixedQuantity,
+      required: accessoryFormRequired,
+      note: accessoryFormNote.trim() || null,
+    };
+  };
+
+  const handleSaveAccessory = async () => {
+    const payload = buildAccessoryPayload();
+    if (!payload) return;
+
+    setAccessorySaving(true);
+    try {
+      if (accessoryEditTarget) {
+        // 수정
+        const result = await updateMealPlanAccessoryAction(
+          accessoryEditTarget.id,
+          payload,
+        );
+        if (result.success) {
+          toast.success("부자재가 수정되었습니다");
+          closeAccessoryDialog();
+          await refreshDetail();
+        } else {
+          toast.error(result.error?.message ?? "부자재 수정에 실패했습니다");
+        }
+      } else if (accessoryAddTarget) {
+        // 추가
+        const result = await createMealPlanAccessoryAction(
+          accessoryAddTarget.mealPlanId,
+          payload,
+        );
+        if (result.success) {
+          toast.success("부자재가 추가되었습니다");
+          closeAccessoryDialog();
+          await refreshDetail();
+        } else {
+          toast.error(result.error?.message ?? "부자재 추가에 실패했습니다");
+        }
+      }
+    } catch (err) {
+      logger.error("[MealPlansPage.handleSaveAccessory]", err);
+      toast.error("부자재 저장 중 오류가 발생했습니다");
+    } finally {
+      setAccessorySaving(false);
+    }
+  };
+
   // ── 삭제 ──
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -874,6 +1104,12 @@ export default function MealPlansPage() {
         result = await deleteMealCountAction(id);
         if (result.success) {
           toast.success("식수가 삭제되었습니다");
+          await refreshDetail();
+        }
+      } else if (type === "accessory") {
+        result = await deleteMealPlanAccessoryAction(id);
+        if (result.success) {
+          toast.success("부자재가 삭제되었습니다");
           await refreshDetail();
         }
       }
@@ -1167,104 +1403,301 @@ export default function MealPlansPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mp.slots.map((slot) => (
-                          <TableRow key={slot.id}>
-                            <TableCell className="text-center">
-                              {slot.sortOrder + 1}
-                            </TableCell>
-                            <TableCell>
-                              {slot.kind === "CONTAINER" ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                                  <Package className="h-3 w-3" /> 용기
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                                  <Truck className="h-3 w-3" /> 직배송
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {slot.kind === "CONTAINER" ? (
-                                <div>
-                                  <div className="text-sm">
-                                    {slot.recipe?.name ?? (
-                                      <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
-                                        레시피 미배정
-                                      </span>
-                                    )}
-                                  </div>
+                        {mp.slots.map((slot) => {
+                          const isEditing = editingSlotId === slot.id;
 
-                                  {slot.subsidiaryMaster && (
-                                    <div className="text-xs text-gray-500">
-                                      {slot.subsidiaryMaster.name}
-                                      {slot.containerSlotIndex !== null &&
-                                        ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                          // ── 편집 모드 ──
+                          if (isEditing && editSlotForm) {
+                            return (
+                              <TableRow
+                                key={slot.id}
+                                className="bg-amber-50/40"
+                              >
+                                <TableCell className="text-center">
+                                  {slot.sortOrder + 1}
+                                </TableCell>
+                                <TableCell>
+                                  {slot.kind === "CONTAINER" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                      <Package className="h-3 w-3" /> 용기
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                      <Truck className="h-3 w-3" /> 직배송
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {/* CONTAINER: 레시피 SearchableSelect / DIRECT: 품목 read-only */}
+                                  {slot.kind === "CONTAINER" ? (
+                                    <div className="space-y-1">
+                                      <SearchableSelect
+                                        options={recipeOptions.map<SearchableOption>(
+                                          (r) => ({
+                                            id: r.id,
+                                            label: r.name,
+                                            sublabel: r.code,
+                                          }),
+                                        )}
+                                        value={editSlotForm.recipeId}
+                                        onChange={(v) =>
+                                          setEditSlotForm({
+                                            ...editSlotForm,
+                                            recipeId: v,
+                                          })
+                                        }
+                                        placeholder="레시피 미배정"
+                                        searchPlaceholder="레시피 이름 또는 코드 검색..."
+                                        emptyText="등록된 레시피가 없습니다"
+                                        allowClear
+                                        clearLabel="미배정"
+                                        size="sm"
+                                      />
+                                      {slot.subsidiaryMaster && (
+                                        <div className="text-xs text-gray-500">
+                                          {slot.subsidiaryMaster.name}
+                                          {slot.containerSlotIndex !== null &&
+                                            ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                                        </div>
+                                      )}
+                                      <Input
+                                        value={editSlotForm.note}
+                                        onChange={(e) =>
+                                          setEditSlotForm({
+                                            ...editSlotForm,
+                                            note: e.target.value,
+                                          })
+                                        }
+                                        placeholder="비고 (선택)"
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      <div className="text-sm">
+                                        {slot.supplierItem?.productName ?? (
+                                          <span className="text-gray-400">
+                                            품목 미배정
+                                          </span>
+                                        )}
+                                      </div>
+                                      {slot.supplierItem?.supplier && (
+                                        <div className="text-xs text-gray-500">
+                                          {slot.supplierItem.supplier.name}
+                                          {slot.supplierItem
+                                            .supplierItemCode &&
+                                            ` · ${slot.supplierItem.supplierItemCode}`}
+                                        </div>
+                                      )}
+                                      <Input
+                                        value={editSlotForm.note}
+                                        onChange={(e) =>
+                                          setEditSlotForm({
+                                            ...editSlotForm,
+                                            note: e.target.value,
+                                          })
+                                        }
+                                        placeholder="비고 (선택)"
+                                        className="h-7 text-xs"
+                                      />
                                     </div>
                                   )}
-                                </div>
-                              ) : (
-                                <div>
-                                  <div className="text-sm">
-                                    {slot.supplierItem?.productName ?? (
-                                      <span className="text-gray-400">
-                                        품목 미배정
-                                      </span>
+                                </TableCell>
+                                <TableCell>
+                                  <SearchableSelect
+                                    options={productionLineOptions.map<SearchableOption>(
+                                      (p) => ({
+                                        id: p.id,
+                                        label: p.name,
+                                        sublabel: p.locationName || undefined,
+                                      }),
+                                    )}
+                                    value={editSlotForm.productionLineId}
+                                    onChange={(v) =>
+                                      setEditSlotForm({
+                                        ...editSlotForm,
+                                        productionLineId: v,
+                                      })
+                                    }
+                                    placeholder="미지정"
+                                    searchPlaceholder="라인 검색..."
+                                    emptyText="등록된 라인이 없습니다"
+                                    allowClear
+                                    clearLabel="미지정"
+                                    size="sm"
+                                  />
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={editSlotForm.quantity}
+                                    onChange={(e) =>
+                                      setEditSlotForm({
+                                        ...editSlotForm,
+                                        quantity: e.target.value,
+                                      })
+                                    }
+                                    className="h-7 w-20 text-right text-xs"
+                                  />
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-0.5">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={handleSaveSlot}
+                                      disabled={slotUpdating}
+                                      title="저장"
+                                    >
+                                      {slotUpdating ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Check className="h-3 w-3 text-emerald-600" />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={closeSlotEdit}
+                                      disabled={slotUpdating}
+                                      title="취소"
+                                    >
+                                      <X className="h-3 w-3 text-gray-500" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+
+                          // ── 보기 모드 (기존 동작) ──
+                          return (
+                            <TableRow key={slot.id}>
+                              <TableCell className="text-center">
+                                {slot.sortOrder + 1}
+                              </TableCell>
+                              <TableCell>
+                                {slot.kind === "CONTAINER" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                    <Package className="h-3 w-3" /> 용기
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                    <Truck className="h-3 w-3" /> 직배송
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {slot.kind === "CONTAINER" ? (
+                                  <div>
+                                    <div className="text-sm">
+                                      {slot.recipe?.name ?? (
+                                        <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+                                          레시피 미배정
+                                        </span>
+                                      )}
+                                    </div>
+                                    {slot.subsidiaryMaster && (
+                                      <div className="text-xs text-gray-500">
+                                        {slot.subsidiaryMaster.name}
+                                        {slot.containerSlotIndex !== null &&
+                                          ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                                      </div>
                                     )}
                                   </div>
-                                  {slot.supplierItem?.supplier && (
-                                    <div className="text-xs text-gray-500">
-                                      {slot.supplierItem.supplier.name}
-                                      {slot.supplierItem.supplierItemCode &&
-                                        ` · ${slot.supplierItem.supplierItemCode}`}
+                                ) : (
+                                  <div>
+                                    <div className="text-sm">
+                                      {slot.supplierItem?.productName ?? (
+                                        <span className="text-gray-400">
+                                          품목 미배정
+                                        </span>
+                                      )}
                                     </div>
-                                  )}
+                                    {slot.supplierItem?.supplier && (
+                                      <div className="text-xs text-gray-500">
+                                        {slot.supplierItem.supplier.name}
+                                        {slot.supplierItem.supplierItemCode &&
+                                          ` · ${slot.supplierItem.supplierItemCode}`}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {slot.note && (
+                                  <div className="mt-0.5 text-xs text-gray-400">
+                                    {slot.note}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-gray-600">
+                                {slot.productionLine?.name ?? "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {slot.quantity}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => openSlotEdit(slot)}
+                                    title="수정"
+                                  >
+                                    <Pencil className="h-3 w-3 text-gray-500" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() =>
+                                      setDeleteTarget({
+                                        type: "slot",
+                                        id: slot.id,
+                                        name: `슬롯 ${slot.sortOrder + 1}`,
+                                      })
+                                    }
+                                    title="삭제"
+                                  >
+                                    <Trash2 className="h-3 w-3 text-red-400" />
+                                  </Button>
                                 </div>
-                              )}
-                              {slot.note && (
-                                <div className="mt-0.5 text-xs text-gray-400">
-                                  {slot.note}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-xs text-gray-600">
-                              {slot.productionLine?.name ?? "—"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {slot.quantity}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() =>
-                                  setDeleteTarget({
-                                    type: "slot",
-                                    id: slot.id,
-                                    name: `슬롯 ${slot.sortOrder + 1}`,
-                                  })
-                                }
-                              >
-                                <Trash2 className="h-3 w-3 text-red-400" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
 
                   {/* 부자재 */}
-                  {mp.accessories.length > 0 && (
-                    <div className="mt-3 border-t pt-3">
-                      <p className="mb-2 text-xs font-semibold text-gray-600">
+                  <div className="mt-3 border-t pt-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-gray-600">
                         부자재
                       </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => openAccessoryAdd(mp)}
+                      >
+                        <Plus className="mr-1 h-3 w-3" /> 추가
+                      </Button>
+                    </div>
+                    {mp.accessories.length === 0 ? (
+                      <p className="text-xs text-gray-400">
+                        등록된 부자재가 없습니다.
+                      </p>
+                    ) : (
                       <div className="flex flex-wrap gap-2">
                         {mp.accessories.map((acc) => (
                           <div
                             key={acc.id}
-                            className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-xs text-orange-700"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-xs text-orange-700"
                           >
                             <span className="font-medium">
                               {acc.subsidiaryMaster.name}
@@ -1280,11 +1713,43 @@ export default function MealPlansPage() {
                                 필수
                               </span>
                             )}
+                            {acc.note && (
+                              <span
+                                className="text-orange-400"
+                                title={acc.note}
+                              >
+                                · {acc.note.length > 12
+                                  ? acc.note.slice(0, 12) + "…"
+                                  : acc.note}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openAccessoryEdit(acc)}
+                              className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-orange-200"
+                              title="수정"
+                            >
+                              <Pencil className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDeleteTarget({
+                                  type: "accessory",
+                                  id: acc.id,
+                                  name: `부자재 ${acc.subsidiaryMaster.name}`,
+                                })
+                              }
+                              className="inline-flex h-4 w-4 items-center justify-center rounded hover:bg-red-200"
+                              title="삭제"
+                            >
+                              <X className="h-2.5 w-2.5 text-red-500" />
+                            </button>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -1717,6 +2182,129 @@ export default function MealPlansPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Phase 7-B2: 부자재 추가/수정 다이얼로그 (공용) */}
+        <Dialog
+          open={!!accessoryAddTarget || !!accessoryEditTarget}
+          onOpenChange={(open) => !open && closeAccessoryDialog()}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {accessoryEditTarget ? "부자재 수정" : "부자재 추가"}
+              </DialogTitle>
+              <DialogDescription>
+                {accessoryEditTarget
+                  ? `${accessoryEditTarget.subsidiaryMaster.name}의 구성을 수정합니다.`
+                  : accessoryAddTarget
+                    ? `${accessoryAddTarget.mealPlanLabel} 식단에 부자재를 추가합니다.`
+                    : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>부자재</Label>
+                <SearchableSelect
+                  options={containerOptions.map<SearchableOption>((c) => ({
+                    id: c.id,
+                    label: c.name,
+                    sublabel: c.code,
+                  }))}
+                  value={accessoryFormSubsidiaryId}
+                  onChange={setAccessoryFormSubsidiaryId}
+                  placeholder="부자재 선택"
+                  searchPlaceholder="부자재 이름 또는 코드 검색..."
+                  emptyText="등록된 부자재가 없습니다"
+                  disabled={!!accessoryEditTarget}
+                />
+                {accessoryEditTarget && (
+                  <p className="text-xs text-gray-400">
+                    수정 시 부자재 항목 자체는 변경할 수 없습니다. 변경하려면
+                    삭제 후 다시 추가해주세요.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>소비 방식</Label>
+                <Select
+                  value={accessoryFormMode}
+                  onValueChange={(v) =>
+                    setAccessoryFormMode(
+                      v as "PER_MEAL_COUNT" | "FIXED_QUANTITY",
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PER_MEAL_COUNT">
+                      식수 비례 (식수 × 1)
+                    </SelectItem>
+                    <SelectItem value="FIXED_QUANTITY">
+                      고정수량 (식수와 무관)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {accessoryFormMode === "FIXED_QUANTITY" && (
+                <div className="space-y-2">
+                  <Label htmlFor="acc-fixed-qty">고정수량</Label>
+                  <Input
+                    id="acc-fixed-qty"
+                    type="number"
+                    min={0}
+                    value={accessoryFormFixedQuantity}
+                    onChange={(e) =>
+                      setAccessoryFormFixedQuantity(e.target.value)
+                    }
+                    placeholder="예: 50"
+                  />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="acc-required"
+                  checked={accessoryFormRequired}
+                  onCheckedChange={(c) =>
+                    setAccessoryFormRequired(c === true)
+                  }
+                />
+                <Label htmlFor="acc-required" className="cursor-pointer">
+                  필수 항목으로 표시
+                </Label>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="acc-note">비고 (선택)</Label>
+                <Textarea
+                  id="acc-note"
+                  rows={2}
+                  value={accessoryFormNote}
+                  onChange={(e) => setAccessoryFormNote(e.target.value)}
+                  placeholder="-"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={closeAccessoryDialog}
+                  disabled={accessorySaving}
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={handleSaveAccessory}
+                  disabled={accessorySaving || !accessoryFormSubsidiaryId}
+                >
+                  {accessorySaving && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {accessoryEditTarget ? "수정" : "추가"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* 상태 변경 */}
         <Dialog
