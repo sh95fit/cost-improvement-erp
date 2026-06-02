@@ -1403,272 +1403,396 @@ export default function MealPlansPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mp.slots.map((slot) => {
-                          const isEditing = editingSlotId === slot.id;
+                        {(() => {
+                          // ══════════════════════════════════════
+                          // Phase 7-C1: 슬롯을 용기 그룹별로 묶어서 렌더링
+                          // ══════════════════════════════════════
+                          type SlotGroup = {
+                            key: string;
+                            kind: "CONTAINER" | "DIRECT";
+                            // CONTAINER 그룹용
+                            subsidiaryName: string | null;
+                            subsidiaryCode: string | null;
+                            // 모든 그룹 공용
+                            slots: MealPlanSlotRow[];
+                            firstSortOrder: number;
+                          };
 
-                          // ── 편집 모드 ──
-                          if (isEditing && editSlotForm) {
+                          const groupMap = new Map<string, SlotGroup>();
+
+                          for (const slot of mp.slots) {
+                            let key: string;
+                            let kind: "CONTAINER" | "DIRECT";
+                            let subsidiaryName: string | null = null;
+                            let subsidiaryCode: string | null = null;
+
+                            if (slot.kind === "DIRECT") {
+                              key = "__direct__";
+                              kind = "DIRECT";
+                            } else if (slot.subsidiaryMaster) {
+                              key = `container:${slot.subsidiaryMaster.id}`;
+                              kind = "CONTAINER";
+                              subsidiaryName = slot.subsidiaryMaster.name;
+                              subsidiaryCode =
+                                slot.subsidiaryMaster.code ?? null;
+                            } else {
+                              key = "__container_unassigned__";
+                              kind = "CONTAINER";
+                            }
+
+                            const existing = groupMap.get(key);
+                            if (existing) {
+                              existing.slots.push(slot);
+                            } else {
+                              groupMap.set(key, {
+                                key,
+                                kind,
+                                subsidiaryName,
+                                subsidiaryCode,
+                                slots: [slot],
+                                firstSortOrder: slot.sortOrder,
+                              });
+                            }
+                          }
+
+                          const groups = Array.from(groupMap.values()).sort(
+                            (a, b) => a.firstSortOrder - b.firstSortOrder,
+                          );
+
+                          // 그룹 헤더 라벨/배정 카운트 계산
+                          const renderGroupHeader = (g: SlotGroup) => {
+                            const total = g.slots.length;
+                            let assignedLabel = "";
+                            let headerLabel = "";
+                            let headerIcon = (
+                              <Package className="h-3.5 w-3.5 text-blue-600" />
+                            );
+                            let headerBg = "bg-blue-50/60";
+
+                            if (g.kind === "DIRECT") {
+                              const assigned = g.slots.filter(
+                                (s) => s.supplierItem !== null,
+                              ).length;
+                              assignedLabel = `${assigned}/${total} 배정`;
+                              headerLabel = "직배송";
+                              headerIcon = (
+                                <Truck className="h-3.5 w-3.5 text-amber-600" />
+                              );
+                              headerBg = "bg-amber-50/60";
+                            } else {
+                              const assigned = g.slots.filter(
+                                (s) => s.recipe !== null,
+                              ).length;
+                              assignedLabel = `${assigned}/${total} 배정`;
+                              if (g.subsidiaryName) {
+                                headerLabel = g.subsidiaryName;
+                              } else {
+                                headerLabel = "용기 미지정";
+                                headerBg = "bg-gray-50/80";
+                              }
+                            }
+
                             return (
                               <TableRow
-                                key={slot.id}
-                                className="bg-amber-50/40"
+                                key={`group-header-${g.key}`}
+                                className={`${headerBg} hover:${headerBg}`}
                               >
-                                <TableCell className="text-center">
-                                  {slot.sortOrder + 1}
-                                </TableCell>
-                                <TableCell>
-                                  {slot.kind === "CONTAINER" ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                                      <Package className="h-3 w-3" /> 용기
+                                <TableCell
+                                  colSpan={6}
+                                  className="py-1.5 text-xs font-medium"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {headerIcon}
+                                    <span className="text-gray-800">
+                                      {headerLabel}
                                     </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                                      <Truck className="h-3 w-3" /> 직배송
-                                    </span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {/* CONTAINER: 레시피 SearchableSelect / DIRECT: 품목 read-only */}
-                                  {slot.kind === "CONTAINER" ? (
-                                    <div className="space-y-1">
-                                      <SearchableSelect
-                                        options={recipeOptions.map<SearchableOption>(
-                                          (r) => ({
-                                            id: r.id,
-                                            label: r.name,
-                                            sublabel: r.code,
-                                          }),
-                                        )}
-                                        value={editSlotForm.recipeId}
-                                        onChange={(v) =>
-                                          setEditSlotForm({
-                                            ...editSlotForm,
-                                            recipeId: v,
-                                          })
-                                        }
-                                        placeholder="레시피 미배정"
-                                        searchPlaceholder="레시피 이름 또는 코드 검색..."
-                                        emptyText="등록된 레시피가 없습니다"
-                                        allowClear
-                                        clearLabel="미배정"
-                                        size="sm"
-                                      />
-                                      {slot.subsidiaryMaster && (
-                                        <div className="text-xs text-gray-500">
-                                          {slot.subsidiaryMaster.name}
-                                          {slot.containerSlotIndex !== null &&
-                                            ` · 슬롯 #${slot.containerSlotIndex + 1}`}
-                                        </div>
-                                      )}
-                                      <Input
-                                        value={editSlotForm.note}
-                                        onChange={(e) =>
-                                          setEditSlotForm({
-                                            ...editSlotForm,
-                                            note: e.target.value,
-                                          })
-                                        }
-                                        placeholder="비고 (선택)"
-                                        className="h-7 text-xs"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-1">
-                                      <div className="text-sm">
-                                        {slot.supplierItem?.productName ?? (
-                                          <span className="text-gray-400">
-                                            품목 미배정
-                                          </span>
-                                        )}
-                                      </div>
-                                      {slot.supplierItem?.supplier && (
-                                        <div className="text-xs text-gray-500">
-                                          {slot.supplierItem.supplier.name}
-                                          {slot.supplierItem
-                                            .supplierItemCode &&
-                                            ` · ${slot.supplierItem.supplierItemCode}`}
-                                        </div>
-                                      )}
-                                      <Input
-                                        value={editSlotForm.note}
-                                        onChange={(e) =>
-                                          setEditSlotForm({
-                                            ...editSlotForm,
-                                            note: e.target.value,
-                                          })
-                                        }
-                                        placeholder="비고 (선택)"
-                                        className="h-7 text-xs"
-                                      />
-                                    </div>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <SearchableSelect
-                                    options={productionLineOptions.map<SearchableOption>(
-                                      (p) => ({
-                                        id: p.id,
-                                        label: p.name,
-                                        sublabel: p.locationName || undefined,
-                                      }),
+                                    {g.subsidiaryCode && (
+                                      <span className="text-gray-400">
+                                        · {g.subsidiaryCode}
+                                      </span>
                                     )}
-                                    value={editSlotForm.productionLineId}
-                                    onChange={(v) =>
-                                      setEditSlotForm({
-                                        ...editSlotForm,
-                                        productionLineId: v,
-                                      })
-                                    }
-                                    placeholder="미지정"
-                                    searchPlaceholder="라인 검색..."
-                                    emptyText="등록된 라인이 없습니다"
-                                    allowClear
-                                    clearLabel="미지정"
-                                    size="sm"
-                                  />
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={editSlotForm.quantity}
-                                    onChange={(e) =>
-                                      setEditSlotForm({
-                                        ...editSlotForm,
-                                        quantity: e.target.value,
-                                      })
-                                    }
-                                    className="h-7 w-20 text-right text-xs"
-                                  />
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex items-center justify-end gap-0.5">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6"
-                                      onClick={handleSaveSlot}
-                                      disabled={slotUpdating}
-                                      title="저장"
-                                    >
-                                      {slotUpdating ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Check className="h-3 w-3 text-emerald-600" />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6"
-                                      onClick={closeSlotEdit}
-                                      disabled={slotUpdating}
-                                      title="취소"
-                                    >
-                                      <X className="h-3 w-3 text-gray-500" />
-                                    </Button>
+                                    <span className="ml-auto text-gray-500">
+                                      {assignedLabel}
+                                    </span>
                                   </div>
                                 </TableCell>
                               </TableRow>
                             );
-                          }
+                          };
 
-                          // ── 보기 모드 (기존 동작) ──
-                          return (
-                            <TableRow key={slot.id}>
-                              <TableCell className="text-center">
-                                {slot.sortOrder + 1}
-                              </TableCell>
-                              <TableCell>
-                                {slot.kind === "CONTAINER" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                                    <Package className="h-3 w-3" /> 용기
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                                    <Truck className="h-3 w-3" /> 직배송
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {slot.kind === "CONTAINER" ? (
-                                  <div>
-                                    <div className="text-sm">
-                                      {slot.recipe?.name ?? (
-                                        <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
-                                          레시피 미배정
+                          return groups.flatMap((g) => [
+                            renderGroupHeader(g),
+                            ...g.slots.map((slot) => {
+                              const isEditing = editingSlotId === slot.id;
+
+                              // ── 편집 모드 ──
+                              if (isEditing && editSlotForm) {
+                                return (
+                                  <TableRow
+                                    key={slot.id}
+                                    className="bg-amber-50/40"
+                                  >
+                                    <TableCell className="text-center">
+                                      {slot.sortOrder + 1}
+                                    </TableCell>
+                                    <TableCell>
+                                      {slot.kind === "CONTAINER" ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                          <Package className="h-3 w-3" /> 용기
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                          <Truck className="h-3 w-3" /> 직배송
                                         </span>
                                       )}
-                                    </div>
-                                    {slot.subsidiaryMaster && (
-                                      <div className="text-xs text-gray-500">
-                                        {slot.subsidiaryMaster.name}
-                                        {slot.containerSlotIndex !== null &&
-                                          ` · 슬롯 #${slot.containerSlotIndex + 1}`}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div>
-                                    <div className="text-sm">
-                                      {slot.supplierItem?.productName ?? (
-                                        <span className="text-gray-400">
-                                          품목 미배정
-                                        </span>
+                                    </TableCell>
+                                    <TableCell>
+                                      {slot.kind === "CONTAINER" ? (
+                                        <div className="space-y-1">
+                                          <SearchableSelect
+                                            options={recipeOptions.map<SearchableOption>(
+                                              (r) => ({
+                                                id: r.id,
+                                                label: r.name,
+                                                sublabel: r.code,
+                                              }),
+                                            )}
+                                            value={editSlotForm.recipeId}
+                                            onChange={(v) =>
+                                              setEditSlotForm({
+                                                ...editSlotForm,
+                                                recipeId: v,
+                                              })
+                                            }
+                                            placeholder="레시피 미배정"
+                                            searchPlaceholder="레시피 이름 또는 코드 검색..."
+                                            emptyText="등록된 레시피가 없습니다"
+                                            allowClear
+                                            clearLabel="미배정"
+                                            size="sm"
+                                          />
+                                          {slot.subsidiaryMaster && (
+                                            <div className="text-xs text-gray-500">
+                                              {slot.subsidiaryMaster.name}
+                                              {slot.containerSlotIndex !==
+                                                null &&
+                                                ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                                            </div>
+                                          )}
+                                          <Input
+                                            value={editSlotForm.note}
+                                            onChange={(e) =>
+                                              setEditSlotForm({
+                                                ...editSlotForm,
+                                                note: e.target.value,
+                                              })
+                                            }
+                                            placeholder="비고 (선택)"
+                                            className="h-7 text-xs"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          <div className="text-sm">
+                                            {slot.supplierItem?.productName ?? (
+                                              <span className="text-gray-400">
+                                                품목 미배정
+                                              </span>
+                                            )}
+                                          </div>
+                                          {slot.supplierItem?.supplier && (
+                                            <div className="text-xs text-gray-500">
+                                              {slot.supplierItem.supplier.name}
+                                              {slot.supplierItem
+                                                .supplierItemCode &&
+                                                ` · ${slot.supplierItem.supplierItemCode}`}
+                                            </div>
+                                          )}
+                                          <Input
+                                            value={editSlotForm.note}
+                                            onChange={(e) =>
+                                              setEditSlotForm({
+                                                ...editSlotForm,
+                                                note: e.target.value,
+                                              })
+                                            }
+                                            placeholder="비고 (선택)"
+                                            className="h-7 text-xs"
+                                          />
+                                        </div>
                                       )}
-                                    </div>
-                                    {slot.supplierItem?.supplier && (
-                                      <div className="text-xs text-gray-500">
-                                        {slot.supplierItem.supplier.name}
-                                        {slot.supplierItem.supplierItemCode &&
-                                          ` · ${slot.supplierItem.supplierItemCode}`}
+                                    </TableCell>
+                                    <TableCell>
+                                      <SearchableSelect
+                                        options={productionLineOptions.map<SearchableOption>(
+                                          (p) => ({
+                                            id: p.id,
+                                            label: p.name,
+                                            sublabel:
+                                              p.locationName || undefined,
+                                          }),
+                                        )}
+                                        value={editSlotForm.productionLineId}
+                                        onChange={(v) =>
+                                          setEditSlotForm({
+                                            ...editSlotForm,
+                                            productionLineId: v,
+                                          })
+                                        }
+                                        placeholder="미지정"
+                                        searchPlaceholder="라인 검색..."
+                                        emptyText="등록된 라인이 없습니다"
+                                        allowClear
+                                        clearLabel="미지정"
+                                        size="sm"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        value={editSlotForm.quantity}
+                                        onChange={(e) =>
+                                          setEditSlotForm({
+                                            ...editSlotForm,
+                                            quantity: e.target.value,
+                                          })
+                                        }
+                                        className="h-7 w-20 text-right text-xs"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <div className="flex items-center justify-end gap-0.5">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={handleSaveSlot}
+                                          disabled={slotUpdating}
+                                          title="저장"
+                                        >
+                                          {slotUpdating ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Check className="h-3 w-3 text-emerald-600" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={closeSlotEdit}
+                                          disabled={slotUpdating}
+                                          title="취소"
+                                        >
+                                          <X className="h-3 w-3 text-gray-500" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              }
+
+                              // ── 보기 모드 (기존 동작 유지) ──
+                              return (
+                                <TableRow key={slot.id}>
+                                  <TableCell className="text-center">
+                                    {slot.sortOrder + 1}
+                                  </TableCell>
+                                  <TableCell>
+                                    {slot.kind === "CONTAINER" ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                        <Package className="h-3 w-3" /> 용기
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                        <Truck className="h-3 w-3" /> 직배송
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {slot.kind === "CONTAINER" ? (
+                                      <div>
+                                        <div className="text-sm">
+                                          {slot.recipe?.name ?? (
+                                            <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+                                              레시피 미배정
+                                            </span>
+                                          )}
+                                        </div>
+                                        {slot.subsidiaryMaster && (
+                                          <div className="text-xs text-gray-500">
+                                            {slot.subsidiaryMaster.name}
+                                            {slot.containerSlotIndex !==
+                                              null &&
+                                              ` · 슬롯 #${slot.containerSlotIndex + 1}`}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <div className="text-sm">
+                                          {slot.supplierItem?.productName ?? (
+                                            <span className="text-gray-400">
+                                              품목 미배정
+                                            </span>
+                                          )}
+                                        </div>
+                                        {slot.supplierItem?.supplier && (
+                                          <div className="text-xs text-gray-500">
+                                            {slot.supplierItem.supplier.name}
+                                            {slot.supplierItem
+                                              .supplierItemCode &&
+                                              ` · ${slot.supplierItem.supplierItemCode}`}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
-                                  </div>
-                                )}
-                                {slot.note && (
-                                  <div className="mt-0.5 text-xs text-gray-400">
-                                    {slot.note}
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-xs text-gray-600">
-                                {slot.productionLine?.name ?? "—"}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {slot.quantity}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-0.5">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() => openSlotEdit(slot)}
-                                    title="수정"
-                                  >
-                                    <Pencil className="h-3 w-3 text-gray-500" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() =>
-                                      setDeleteTarget({
-                                        type: "slot",
-                                        id: slot.id,
-                                        name: `슬롯 ${slot.sortOrder + 1}`,
-                                      })
-                                    }
-                                    title="삭제"
-                                  >
-                                    <Trash2 className="h-3 w-3 text-red-400" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                                    {slot.note && (
+                                      <div className="mt-0.5 text-xs text-gray-400">
+                                        {slot.note}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-xs text-gray-600">
+                                    {slot.productionLine?.name ?? "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {slot.quantity}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-0.5">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => openSlotEdit(slot)}
+                                        title="수정"
+                                      >
+                                        <Pencil className="h-3 w-3 text-gray-500" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() =>
+                                          setDeleteTarget({
+                                            type: "slot",
+                                            id: slot.id,
+                                            name: `슬롯 ${slot.sortOrder + 1}`,
+                                          })
+                                        }
+                                        title="삭제"
+                                      >
+                                        <X className="h-3 w-3 text-red-500" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }),
+                          ]);
+                        })()}
                       </TableBody>
                     </Table>
                   )}
