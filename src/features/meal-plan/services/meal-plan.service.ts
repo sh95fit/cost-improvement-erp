@@ -10,6 +10,7 @@ import type {
   CreateMealPlanSlotInput,
   UpdateMealPlanSlotInput,
   ReorderMealPlanSlotsInput,
+  BulkCreateContainerSlotsInput,
   UpsertMealCountInput,
   BulkUpsertMealCountInput,
   CreateMealPlanAccessoryInput,
@@ -749,6 +750,112 @@ export async function reorderMealPlanSlots(
       }),
     ),
   );
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// Phase 7-A3: bulkCreateContainerSlots
+// 한 식단 + 한 용기 그룹의 모든 슬롯을 트랜잭션으로 일괄 생성.
+// recipeId는 슬롯별 null 허용. 회사 격리 검증 포함.
+// ══════════════════════════════════════════════════════════════
+
+export async function bulkCreateContainerSlots(
+  companyId: string,
+  mealPlanId: string,
+  input: BulkCreateContainerSlotsInput,
+) {
+  await assertMealPlanInCompany(prisma, companyId, mealPlanId);
+
+  // 1) 용기 그룹 회사 격리 검증
+  const subsidiary = await prisma.subsidiaryMaster.findFirst({
+    where: {
+      id: input.subsidiaryMasterId,
+      companyId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!subsidiary) throw new Error("SUBSIDIARY_NOT_FOUND");
+
+  // 2) 기본 라인 + 행별 라인 모두 ACTIVE 검증
+  const lineIds = new Set<string>();
+  if (input.defaultProductionLineId) {
+    lineIds.add(input.defaultProductionLineId);
+  }
+  for (const it of input.items) {
+    if (it.productionLineId) lineIds.add(it.productionLineId);
+  }
+  if (lineIds.size > 0) {
+    const validLines = await prisma.productionLine.findMany({
+      where: {
+        id: { in: Array.from(lineIds) },
+        companyId,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
+    if (validLines.length !== lineIds.size) {
+      throw new Error("PRODUCTION_LINE_NOT_FOUND");
+    }
+  }
+
+  // 3) 레시피 회사 격리 검증 (지정된 것만)
+  const recipeIds = Array.from(
+    new Set(
+      input.items
+        .map((it) => it.recipeId)
+        .filter((v): v is string => !!v),
+    ),
+  );
+  if (recipeIds.length > 0) {
+    const validRecipes = await prisma.recipe.findMany({
+      where: {
+        id: { in: recipeIds },
+        companyId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (validRecipes.length !== recipeIds.length) {
+      throw new Error("RECIPE_NOT_FOUND");
+    }
+  }
+
+  // 4) sortOrder 시작점 계산
+  const lastSlot = await prisma.mealPlanSlot.findFirst({
+    where: { mealPlanId, deletedAt: null },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  let nextSortOrder = (lastSlot?.sortOrder ?? -1) + 1;
+
+  const data: Prisma.MealPlanSlotCreateManyInput[] = input.items.map((it) => ({
+    mealPlanId,
+    kind: "CONTAINER",
+    sortOrder: nextSortOrder++,
+    subsidiaryMasterId: input.subsidiaryMasterId,
+    containerSlotIndex: it.containerSlotIndex,
+    recipeId: it.recipeId ?? null,
+    productionLineId:
+      it.productionLineId ?? input.defaultProductionLineId ?? null,
+    quantity: it.quantity ?? 0,
+    note: it.note ?? null,
+  }));
+
+  // 5) 트랜잭션 일괄 생성 후 생성된 슬롯들 반환
+  return prisma.$transaction(async (tx) => {
+    await tx.mealPlanSlot.createMany({ data });
+    return tx.mealPlanSlot.findMany({
+      where: {
+        mealPlanId,
+        subsidiaryMasterId: input.subsidiaryMasterId,
+        sortOrder: { gte: data[0].sortOrder ?? 0 },
+        deletedAt: null,
+      },
+      include: SLOT_INCLUDE,
+      orderBy: { sortOrder: "asc" },
+    });
+  });
 }
 
 // ══════════════════════════════════════════════════════════════

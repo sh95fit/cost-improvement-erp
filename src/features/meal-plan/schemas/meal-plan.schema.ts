@@ -175,6 +175,35 @@ export type ReorderMealPlanSlotsInput = z.infer<
   typeof reorderMealPlanSlotsSchema
 >;
 
+
+// ══════════════════════════════════════════════════════════════
+// Phase 7-A3: 용기 그룹 단위 일괄 슬롯 생성
+// ──────────────────────────────────────────────────────────────
+// 한 식단에 (한 용기 그룹의 모든 슬롯)을 한 번에 추가한다.
+// - recipeId는 슬롯별로 비어있을 수 있다 (미배정 허용 — A2 정책)
+// - 슬롯 인덱스는 ContainerSlot의 slotIndex와 1:1 매칭
+// - sortOrder는 서비스에서 기존 max+1부터 자동 부여
+// ══════════════════════════════════════════════════════════════
+
+export const bulkCreateContainerSlotsSchema = z.object({
+  subsidiaryMasterId: z.string().min(1, "용기 그룹을 선택하세요"),
+  defaultProductionLineId: z.string().nullable().optional(),
+  items: z
+    .array(
+      z.object({
+        containerSlotIndex: z.number().int().min(0),
+        recipeId: z.string().nullable().optional(),
+        productionLineId: z.string().nullable().optional(),
+        quantity: z.number().int().min(0).default(0),
+        note: z.string().max(500).nullable().optional(),
+      }),
+    )
+    .min(1, "생성할 슬롯이 없습니다"),
+});
+export type BulkCreateContainerSlotsInput = z.infer<
+  typeof bulkCreateContainerSlotsSchema
+>;
+
 // ══════════════════════════════════════════════════════════════
 // MealCount (라인업별 식수 — 예상/확정 분리)
 // ══════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ import {
   createMealPlanSlotSchema,
   updateMealPlanSlotSchema,
   reorderMealPlanSlotsSchema,
+  bulkCreateContainerSlotsSchema,
   upsertMealCountSchema,
   bulkUpsertMealCountSchema,
   createMealPlanAccessorySchema,
@@ -415,6 +416,44 @@ export async function reorderMealPlanSlotsAction(
     return handleActionError(error, "슬롯 재정렬에 실패했습니다", {
       NOT_FOUND: "식단을 찾을 수 없습니다",
       SLOT_NOT_FOUND: "일부 슬롯을 찾을 수 없습니다",
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Phase 7-A3: 용기 그룹 단위 일괄 슬롯 생성
+// ══════════════════════════════════════════════════════════════
+
+export async function bulkCreateContainerSlotsAction(
+  mealPlanId: string,
+  rawInput: Record<string, unknown>,
+): Promise<ActionResult<unknown>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "mealPlan", "UPDATE");
+    const input = bulkCreateContainerSlotsSchema.parse(rawInput);
+    const slots = await mealPlanService.bulkCreateContainerSlots(
+      session.companyId,
+      mealPlanId,
+      input,
+    );
+    await createAuditLog({
+      session,
+      action: "CREATE",
+      entityType: "MealPlanSlot",
+      entityId: mealPlanId,
+      after: {
+        subsidiaryMasterId: input.subsidiaryMasterId,
+        count: input.items.length,
+      } as unknown as Record<string, unknown>,
+    });
+    return actionOk(slots);
+  } catch (error) {
+    return handleActionError(error, "용기 그룹 일괄 배정에 실패했습니다", {
+      NOT_FOUND: "식단을 찾을 수 없습니다",
+      SUBSIDIARY_NOT_FOUND: "용기 그룹을 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "생산 라인을 찾을 수 없습니다",
+      RECIPE_NOT_FOUND: "일부 레시피를 찾을 수 없습니다",
     });
   }
 }
