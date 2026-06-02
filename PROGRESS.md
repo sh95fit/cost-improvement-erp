@@ -1361,6 +1361,60 @@ LineupMealTemplateMap을 폐기하기로 결정.
   - [ ] `npx tsc --noEmit` 0 errors 베이스라인 확인
   - [ ] 잔여 정리 항목 (page.tsx 들여쓰기 3건) 함께 처리 여부 결정
 
+## Phase 7-A2 / 7-A3 / 7-A4 — 식단 슬롯 등록 UI 전면 개편 (완료)
+
+- **Date**: 2026-06-02
+- **Commits**:
+  - `8449ee6` — feat(meal-plan): add bulkCreateContainerSlots backend (Phase 7-A3)
+  - `1f330f6` — feat(ui): add SearchableSelect combobox component (Phase 7-A4)
+  - `f060cb5` — feat(meal-plan): replace single-slot dialog with bulk container assignment + template auto-apply + searchable selects
+
+### Changes
+- **Backend (Phase 7-A3)**
+  - `meal-plan.schema.ts`: `bulkCreateContainerSlotsSchema` 추가 (recipeId nullable, productionLine 기본값/오버라이드)
+  - `meal-plan.service.ts`: `bulkCreateContainerSlots(companyId, mealPlanId, input)` — 회사 격리/라인 ACTIVE/레시피 검증 후 `prisma.$transaction`으로 일괄 생성, `SLOT_INCLUDE` 포함 반환
+  - `meal-plan.action.ts`: `bulkCreateContainerSlotsAction` — 권한·감사 로그·에러 매핑 (`SUBSIDIARY_NOT_FOUND`, `PRODUCTION_LINE_NOT_FOUND`, `RECIPE_NOT_FOUND`)
+- **Frontend**
+  - 기존 단일 슬롯 추가 다이얼로그 폐기, 식단 카드 헤더에 "용기 그룹 배정" 버튼 + 템플릿 적용된 경우 "템플릿 재적용" 버튼 노출
+  - 용기 그룹 선택 시 해당 그룹의 모든 ContainerSlot을 펼쳐 한 화면에서 일괄 배정 (요약: 총/배정/미배정 카운터)
+  - 7-A2(E1): 식단 추가 시 `mealTemplateId` 지정 시 `applyMealTemplateAction` 자동 호출
+  - 7-A2(F1): 기존 슬롯이 있을 때 "템플릿 재적용" → AlertDialog로 덮어쓰기 명시 확인
+  - 7-A4: `src/components/ui/searchable-select.tsx` 신규 — cmdk + Popover 기반 검색 가능 단일 선택 (라벨/서브라벨/우측정보, allowClear 옵션)
+  - 식단 추가 다이얼로그의 템플릿 선택과 bulk 슬롯 다이얼로그의 용기/레시피/라인 선택 모두 검색 가능 셀렉트로 전환
+
+### Decisions
+- A2 (빈 슬롯 허용) / B2 (한 식단에 같은 용기 그룹 중복 가능) / C2 (서버 bulk 트랜잭션) / D2 (기본 라인 + 행별 오버라이드) / E1 (템플릿 자동 적용) / F1 (재적용 시 명시 확인) / G2 (부자재 UI는 다음 단계)
+
+---
+
+## Phase 7-B1 / 7-B2 — 슬롯 인라인 편집 + 부자재 CRUD (완료)
+
+- **Date**: 2026-06-02
+- **Commit**: `6d0e410` — feat(meal-plan): add slot inline editing + accessory CRUD UI (Phase 7-B1/B2)
+
+### Changes
+- 슬롯 테이블에 ✏️(수정) 버튼 추가, 클릭 시 행이 amber 배경의 편집 모드로 전환
+- CONTAINER 슬롯 편집: 레시피(SearchableSelect, 미배정 허용), 생산라인, 수량, 비고
+- DIRECT 슬롯 편집: supplierItem은 read-only, 수량/라인/비고만 편집
+- 부자재 카드: "+ 추가" 버튼, 칩 옆 ✏️/✕ 마이크로 버튼
+- 부자재 추가/수정 다이얼로그 (공용): 부자재 선택, 소비 방식(PER_MEAL_COUNT / FIXED_QUANTITY), 고정수량 조건부 노출, 필수 체크박스, 비고
+- `handleConfirmDelete`에 `accessory` 분기 추가, `deleteTarget` union 확장
+
+### Known Issues (→ Phase 7-C 대상)
+- 부자재 다이얼로그 selector가 CONTAINER 타입 SubsidiaryMaster를 노출 (잘못된 옵션)
+- 슬롯 테이블이 단일 평탄 리스트라 같은 용기 그룹의 슬롯이 시각적으로 묶이지 않음
+- 부자재 수정 시 subsidiary selector가 잠겨 있어 부자재 본체 변경 불가
+
+---
+
+## Phase 7-C — 슬롯 그룹화 + 부자재 도메인 분리 + 수정 자유화 (예정)
+
+- **Targets**:
+  - 슬롯 테이블을 `subsidiaryMaster.id`로 그룹화, 그룹 헤더(용기명 + 코드 + 슬롯 수) 노출
+  - 부자재 옵션을 `getSubsidiariesByTypeAction("CONSUMABLE")` 로드 → `accessoryOptions` state
+  - 부자재 다이얼로그의 SubsidiaryMaster selector를 `accessoryOptions` 기반 검색 가능 셀렉트로 교체
+  - 부자재 수정 시 subsidiary 변경 허용 (selector disabled 해제)
+
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
 - **예정일**: 2026-05-19 ~ 2026-05-20
 - **예상 시간**: 4h
