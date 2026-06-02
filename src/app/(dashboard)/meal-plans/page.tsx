@@ -63,17 +63,22 @@ import {
   copyMealPlanGroupAction,
   createMealPlanAction,
   deleteMealPlanAction,
-  createMealPlanSlotAction,
   deleteMealPlanSlotAction,
   upsertMealCountAction,
   deleteMealCountAction,
   getActiveProductionLinesAction,
+  bulkCreateContainerSlotsAction,
+  applyMealTemplateAction,
 } from "@/features/meal-plan/actions/meal-plan.action";
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
 import { getRecipesAction } from "@/features/recipe/actions/recipe.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
+import {
+  SearchableSelect,
+  type SearchableOption,
+} from "@/components/ui/searchable-select";
 import { LineupSelect } from "@/components/lineup/lineup-select";
 import {
   getActiveCompanyMealSlotsAction,
@@ -268,7 +273,7 @@ export default function MealPlansPage() {
   // ── 템플릿 옵션 ──
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
 
-  // ── Phase 5-R Step 7-A: 슬롯 에디터 (CONTAINER 슬롯 추가) ──
+  // ── Phase 7-A3: 용기 그룹 일괄 배정 다이얼로그 ──
   const [containerOptions, setContainerOptions] = useState<ContainerOption[]>(
     [],
   );
@@ -276,19 +281,40 @@ export default function MealPlansPage() {
   const [productionLineOptions, setProductionLineOptions] = useState<
     ProductionLineOption[]
   >([]);
-  const [addSlotMealPlan, setAddSlotMealPlan] = useState<{
+
+  // 일괄 배정 다이얼로그 대상 식단
+  const [bulkSlotMealPlan, setBulkSlotMealPlan] = useState<{
     mealPlanId: string;
     title: string;
-    nextSortOrder: number;
   } | null>(null);
-  const [addSlotContainerId, setAddSlotContainerId] = useState("");
-  const [addSlotContainerSlotIndex, setAddSlotContainerSlotIndex] =
-    useState<string>("");
-  const [addSlotRecipeId, setAddSlotRecipeId] = useState("");
-  const [addSlotProductionLineId, setAddSlotProductionLineId] = useState(""); // "" = 미지정
-  const [addSlotQuantity, setAddSlotQuantity] = useState<string>("0");
-  const [addSlotNote, setAddSlotNote] = useState("");
-  const [slotSaving, setSlotSaving] = useState(false);
+  // 선택한 용기 그룹
+  const [bulkSlotContainerId, setBulkSlotContainerId] = useState("");
+  // 다이얼로그 상단의 기본 생산라인 ("" = 미지정)
+  const [bulkSlotDefaultLineId, setBulkSlotDefaultLineId] = useState("");
+  // 슬롯별 입력 (key = ContainerSlot.slotIndex)
+  // - recipeId: "" 이면 미배정
+  // - productionLineId: "" 이면 기본 라인 따름
+  const [bulkSlotRows, setBulkSlotRows] = useState<
+    Record<
+      number,
+      {
+        recipeId: string;
+        productionLineId: string;
+        quantity: string;
+        note: string;
+      }
+    >
+  >({});
+  const [bulkSlotSaving, setBulkSlotSaving] = useState(false);
+
+  // 템플릿 자동 적용 충돌 확인 다이얼로그 (Phase 7-A2: E1 + F1)
+  const [templateApplyConfirm, setTemplateApplyConfirm] = useState<{
+    mealPlanId: string;
+    mealPlanLabel: string;
+    mealTemplateId: string;
+    mealTemplateName: string;
+  } | null>(null);
+  const [templateApplying, setTemplateApplying] = useState(false);
 
   // ── 삭제 확인 ──
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -512,7 +538,7 @@ export default function MealPlansPage() {
     }
   };
 
-  // ── 식단(MealPlan) 추가 ──
+  // ── 식단(MealPlan) 추가 (Phase 7-A2 E1: 템플릿 선택 시 자동 applyMealTemplate) ──
   const handleAddMeal = async () => {
     if (!addMealGroupId || !addMealCompanyMealSlotId || !addMealLineupId.trim())
       return;
@@ -524,20 +550,40 @@ export default function MealPlansPage() {
         mealTemplateId: addMealTemplateId || undefined,
         note: addMealNote.trim() || undefined,
       });
-      if (result.success) {
-        const slotLabel =
-          slotOptions.find((o) => o.id === addMealCompanyMealSlotId)
-            ?.displayName ?? "식단";
-        toast.success(`${slotLabel} 식단이 추가되었습니다`);
-        setAddMealGroupId(null);
-        setAddMealCompanyMealSlotId("");
-        setAddMealLineupId("");
-        setAddMealTemplateId("");
-        setAddMealNote("");
-        await refreshDetail();
-      } else {
+      if (!result.success) {
         toast.error(result.error?.message ?? "식단 추가에 실패했습니다");
+        return;
       }
+
+      const slotLabel =
+        slotOptions.find((o) => o.id === addMealCompanyMealSlotId)
+          ?.displayName ?? "식단";
+      toast.success(`${slotLabel} 식단이 추가되었습니다`);
+
+      // 템플릿이 지정된 경우, 새로 만든 식단에 즉시 적용 (replaceExisting=true는
+      // 신규 식단이라 슬롯이 없으므로 의미상 안전)
+      const newPlan = result.data as { id?: string } | undefined;
+      if (addMealTemplateId && newPlan?.id) {
+        const applyRes = await applyMealTemplateAction(newPlan.id, {
+          mealTemplateId: addMealTemplateId,
+          replaceExisting: true,
+        });
+        if (applyRes.success) {
+          toast.success("템플릿 구성이 적용되었습니다");
+        } else {
+          toast.error(
+            applyRes.error?.message ??
+              "템플릿 적용에 실패했습니다 (식단은 생성됨)",
+          );
+        }
+      }
+
+      setAddMealGroupId(null);
+      setAddMealCompanyMealSlotId("");
+      setAddMealLineupId("");
+      setAddMealTemplateId("");
+      setAddMealNote("");
+      await refreshDetail();
     } catch (err) {
       logger.error("[MealPlansPage.handleAddMeal]", err);
       toast.error("식단 추가 중 오류가 발생했습니다");
@@ -620,85 +666,182 @@ export default function MealPlansPage() {
     }
   };
 
-  // ── Phase 5-R Step 7-A: 슬롯(CONTAINER) 추가 ──
-  const openSlotEditor = (mp: MealPlanRow) => {
+  // ══════════════════════════════════════
+  // Phase 7-A3: 용기 그룹 일괄 배정
+  // ══════════════════════════════════════
+
+  const openBulkSlotEditor = (mp: MealPlanRow) => {
     const title = `${mp.companyMealSlot?.displayName ?? "-"} · ${mp.lineup?.name ?? "—"}`;
-    const nextSortOrder =
-      mp.slots.length === 0
-        ? 0
-        : Math.max(...mp.slots.map((s) => s.sortOrder)) + 1;
-    setAddSlotMealPlan({ mealPlanId: mp.id, title, nextSortOrder });
-    setAddSlotContainerId("");
-    setAddSlotContainerSlotIndex("");
-    setAddSlotRecipeId("");
-    setAddSlotProductionLineId("");
-    setAddSlotQuantity("0");
-    setAddSlotNote("");
+    setBulkSlotMealPlan({ mealPlanId: mp.id, title });
+    setBulkSlotContainerId("");
+    setBulkSlotDefaultLineId("");
+    setBulkSlotRows({});
   };
 
-  const closeSlotEditor = () => {
-    setAddSlotMealPlan(null);
-    setAddSlotContainerId("");
-    setAddSlotContainerSlotIndex("");
-    setAddSlotRecipeId("");
-    setAddSlotProductionLineId("");
-    setAddSlotQuantity("0");
-    setAddSlotNote("");
+  const closeBulkSlotEditor = () => {
+    setBulkSlotMealPlan(null);
+    setBulkSlotContainerId("");
+    setBulkSlotDefaultLineId("");
+    setBulkSlotRows({});
   };
 
-  const selectedContainer = containerOptions.find(
-    (c) => c.id === addSlotContainerId,
+  const selectedBulkContainer = containerOptions.find(
+    (c) => c.id === bulkSlotContainerId,
   );
 
-  const handleAddSlot = async () => {
-    if (!addSlotMealPlan) return;
-    if (!addSlotContainerId) {
-      toast.error("용기를 선택하세요");
+  // 용기 그룹 변경 시 슬롯 행 초기화 (각 슬롯에 빈 입력값 채움)
+  const handleBulkContainerChange = (containerId: string) => {
+    setBulkSlotContainerId(containerId);
+    const c = containerOptions.find((co) => co.id === containerId);
+    if (!c) {
+      setBulkSlotRows({});
       return;
     }
-    if (addSlotContainerSlotIndex === "") {
-      toast.error("용기 슬롯을 선택하세요");
+    const initial: Record<
+      number,
+      { recipeId: string; productionLineId: string; quantity: string; note: string }
+    > = {};
+    for (const s of c.slots) {
+      initial[s.slotIndex] = {
+        recipeId: "",
+        productionLineId: "",
+        quantity: "0",
+        note: "",
+      };
+    }
+    setBulkSlotRows(initial);
+  };
+
+  const updateBulkRow = (
+    slotIndex: number,
+    patch: Partial<{
+      recipeId: string;
+      productionLineId: string;
+      quantity: string;
+      note: string;
+    }>,
+  ) => {
+    setBulkSlotRows((prev) => ({
+      ...prev,
+      [slotIndex]: {
+        ...(prev[slotIndex] ?? {
+          recipeId: "",
+          productionLineId: "",
+          quantity: "0",
+          note: "",
+        }),
+        ...patch,
+      },
+    }));
+  };
+
+  const handleBulkSubmit = async () => {
+    if (!bulkSlotMealPlan) return;
+    if (!bulkSlotContainerId) {
+      toast.error("용기 그룹을 선택하세요");
       return;
     }
-    if (!addSlotRecipeId) {
-      toast.error("레시피를 선택하세요");
-      return;
-    }
-    const slotIndexNum = Number(addSlotContainerSlotIndex);
-    if (Number.isNaN(slotIndexNum) || slotIndexNum < 0) {
-      toast.error("용기 슬롯 인덱스가 올바르지 않습니다");
-      return;
-    }
-    const quantityNum = Number(addSlotQuantity);
-    if (Number.isNaN(quantityNum) || quantityNum < 0) {
-      toast.error("수량은 0 이상의 숫자여야 합니다");
+    if (!selectedBulkContainer || selectedBulkContainer.slots.length === 0) {
+      toast.error("용기 그룹에 등록된 슬롯이 없습니다");
       return;
     }
 
-    setSlotSaving(true);
+    // 수량 형식 검증 (음수/문자열 거르기)
+    for (const s of selectedBulkContainer.slots) {
+      const row = bulkSlotRows[s.slotIndex];
+      const q = Number(row?.quantity ?? "0");
+      if (Number.isNaN(q) || q < 0) {
+        toast.error(`슬롯 #${s.slotIndex + 1}의 수량이 올바르지 않습니다`);
+        return;
+      }
+    }
+
+    const items = selectedBulkContainer.slots.map((s) => {
+      const row = bulkSlotRows[s.slotIndex] ?? {
+        recipeId: "",
+        productionLineId: "",
+        quantity: "0",
+        note: "",
+      };
+      return {
+        containerSlotIndex: s.slotIndex,
+        recipeId: row.recipeId || null,
+        productionLineId: row.productionLineId || null,
+        quantity: Number(row.quantity || "0"),
+        note: row.note.trim() || null,
+      };
+    });
+
+    setBulkSlotSaving(true);
     try {
-      const result = await createMealPlanSlotAction(addSlotMealPlan.mealPlanId, {
-        kind: "CONTAINER",
-        subsidiaryMasterId: addSlotContainerId,
-        containerSlotIndex: slotIndexNum,
-        recipeId: addSlotRecipeId,
-        sortOrder: addSlotMealPlan.nextSortOrder,
-        quantity: quantityNum,
-        productionLineId: addSlotProductionLineId || null,
-        note: addSlotNote.trim() || null,
-      });
+      const result = await bulkCreateContainerSlotsAction(
+        bulkSlotMealPlan.mealPlanId,
+        {
+          subsidiaryMasterId: bulkSlotContainerId,
+          defaultProductionLineId: bulkSlotDefaultLineId || null,
+          items,
+        },
+      );
       if (result.success) {
-        toast.success("슬롯이 추가되었습니다");
-        closeSlotEditor();
+        const unassigned = items.filter((it) => !it.recipeId).length;
+        toast.success(
+          unassigned > 0
+            ? `용기 그룹이 배정되었습니다 (미배정 슬롯 ${unassigned}개)`
+            : "용기 그룹이 배정되었습니다",
+        );
+        closeBulkSlotEditor();
         await refreshDetail();
       } else {
-        toast.error(result.error?.message ?? "슬롯 추가에 실패했습니다");
+        toast.error(result.error?.message ?? "용기 그룹 배정에 실패했습니다");
       }
     } catch (err) {
-      logger.error("[MealPlansPage.handleAddSlot]", err);
-      toast.error("슬롯 추가 중 오류가 발생했습니다");
+      logger.error("[MealPlansPage.handleBulkSubmit]", err);
+      toast.error("용기 그룹 배정 중 오류가 발생했습니다");
     } finally {
-      setSlotSaving(false);
+      setBulkSlotSaving(false);
+    }
+  };
+
+  // ══════════════════════════════════════
+  // Phase 7-A2: 템플릿 재적용 (F1 — 슬롯 있으면 덮어쓰기 확인)
+  // ══════════════════════════════════════
+
+  const openTemplateApplyConfirm = (mp: MealPlanRow) => {
+    if (!mp.mealTemplate || !mp.mealTemplateId) {
+      toast.error("이 식단에는 지정된 템플릿이 없습니다");
+      return;
+    }
+    setTemplateApplyConfirm({
+      mealPlanId: mp.id,
+      mealPlanLabel: `${mp.companyMealSlot?.displayName ?? "-"} · ${mp.lineup?.name ?? "—"}`,
+      mealTemplateId: mp.mealTemplateId,
+      mealTemplateName: mp.mealTemplate.name,
+    });
+  };
+
+  const handleApplyTemplate = async () => {
+    if (!templateApplyConfirm) return;
+    setTemplateApplying(true);
+    try {
+      const result = await applyMealTemplateAction(
+        templateApplyConfirm.mealPlanId,
+        {
+          mealTemplateId: templateApplyConfirm.mealTemplateId,
+          replaceExisting: true,
+        },
+      );
+      if (result.success) {
+        toast.success("템플릿 구성이 다시 적용되었습니다");
+        setTemplateApplyConfirm(null);
+        await refreshDetail();
+      } else {
+        toast.error(result.error?.message ?? "템플릿 적용에 실패했습니다");
+      }
+    } catch (err) {
+      logger.error("[MealPlansPage.handleApplyTemplate]", err);
+      toast.error("템플릿 적용 중 오류가 발생했습니다");
+    } finally {
+      setTemplateApplying(false);
     }
   };
 
@@ -971,11 +1114,22 @@ export default function MealPlansPage() {
                         variant="outline"
                         size="sm"
                         className="h-7 px-2 text-xs"
-                        onClick={() => openSlotEditor(mp)}
+                        onClick={() => openBulkSlotEditor(mp)}
                       >
                         <PlusCircle className="mr-1 h-3.5 w-3.5" />
-                        슬롯 추가
+                        용기 그룹 배정
                       </Button>
+                      {mp.mealTemplateId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => openTemplateApplyConfirm(mp)}
+                          title="템플릿 구성을 다시 적용 (기존 슬롯/부자재 덮어쓰기)"
+                        >
+                          템플릿 재적용
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1034,11 +1188,12 @@ export default function MealPlansPage() {
                                 <div>
                                   <div className="text-sm">
                                     {slot.recipe?.name ?? (
-                                      <span className="text-gray-400">
+                                      <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
                                         레시피 미배정
                                       </span>
                                     )}
                                   </div>
+
                                   {slot.subsidiaryMaster && (
                                     <div className="text-xs text-gray-500">
                                       {slot.subsidiaryMaster.name}
@@ -1176,24 +1331,19 @@ export default function MealPlansPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="add-meal-template">식단 템플릿 (선택)</Label>
-                <Select
-                  value={addMealTemplateId || "NONE"}
-                  onValueChange={(v) =>
-                    setAddMealTemplateId(v === "NONE" ? "" : v)
-                  }
-                >
-                  <SelectTrigger id="add-meal-template">
-                    <SelectValue placeholder="템플릿 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">없음</SelectItem>
-                    {templateOptions.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={templateOptions.map<SearchableOption>((t) => ({
+                    id: t.id,
+                    label: t.name,
+                  }))}
+                  value={addMealTemplateId}
+                  onChange={setAddMealTemplateId}
+                  placeholder="템플릿 선택"
+                  searchPlaceholder="템플릿 이름 검색..."
+                  emptyText="등록된 템플릿이 없습니다"
+                  allowClear
+                  clearLabel="없음"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="add-meal-note">비고 (선택)</Label>
@@ -1292,187 +1442,281 @@ export default function MealPlansPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Phase 5-R Step 7-A: 슬롯(CONTAINER) 추가 다이얼로그 */}
+        {/* Phase 7-A3: 용기 그룹 일괄 배정 다이얼로그 */}
         <Dialog
-          open={!!addSlotMealPlan}
-          onOpenChange={(open) => !open && closeSlotEditor()}
+          open={!!bulkSlotMealPlan}
+          onOpenChange={(open) => !open && closeBulkSlotEditor()}
         >
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
-              <DialogTitle>슬롯 추가 (용기형)</DialogTitle>
+              <DialogTitle>용기 그룹 일괄 배정</DialogTitle>
               <DialogDescription>
-                {addSlotMealPlan?.title} 식단에 새 용기 슬롯을 추가합니다.
-                직배송(DIRECT) 슬롯은 다음 단계(7-B)에서 지원됩니다.
+                <strong>{bulkSlotMealPlan?.title}</strong> 식단에 용기 그룹을
+                추가합니다. 선택한 용기 그룹의 모든 슬롯이 한 번에 펼쳐지며,
+                슬롯별로 레시피·생산라인을 지정합니다. 레시피를 비워두면 "미배정"
+                슬롯으로 저장됩니다 (나중에 채울 수 있음).
               </DialogDescription>
             </DialogHeader>
+
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="add-slot-container">용기 *</Label>
-                <Select
-                  value={addSlotContainerId}
-                  onValueChange={(v) => {
-                    setAddSlotContainerId(v);
-                    setAddSlotContainerSlotIndex(""); // 용기 변경 시 슬롯 초기화
-                  }}
-                >
-                  <SelectTrigger id="add-slot-container">
-                    <SelectValue placeholder="용기를 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {containerOptions.length === 0 ? (
-                      <div className="px-2 py-1.5 text-sm text-gray-400">
-                        등록된 용기가 없습니다
-                      </div>
-                    ) : (
-                      containerOptions.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}{" "}
-                          <span className="text-xs text-gray-400">
-                            ({c.code})
-                          </span>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="add-slot-slot-index">용기 슬롯 *</Label>
-                <Select
-                  value={addSlotContainerSlotIndex}
-                  onValueChange={setAddSlotContainerSlotIndex}
-                  disabled={!selectedContainer}
-                >
-                  <SelectTrigger id="add-slot-slot-index">
-                    <SelectValue
-                      placeholder={
-                        selectedContainer
-                          ? "슬롯을 선택하세요"
-                          : "먼저 용기를 선택하세요"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectedContainer?.slots.length === 0 ? (
-                      <div className="px-2 py-1.5 text-sm text-gray-400">
-                        용기에 등록된 슬롯이 없습니다
-                      </div>
-                    ) : (
-                      selectedContainer?.slots.map((s) => (
-                        <SelectItem key={s.id} value={String(s.slotIndex)}>
-                          #{s.slotIndex + 1} {s.label}
-                          {s.volumeMl != null && (
-                            <span className="ml-1 text-xs text-gray-400">
-                              ({s.volumeMl}ml)
-                            </span>
-                          )}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="add-slot-recipe">레시피 *</Label>
-                <Select
-                  value={addSlotRecipeId}
-                  onValueChange={setAddSlotRecipeId}
-                >
-                  <SelectTrigger id="add-slot-recipe">
-                    <SelectValue placeholder="레시피를 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {recipeOptions.length === 0 ? (
-                      <div className="px-2 py-1.5 text-sm text-gray-400">
-                        등록된 레시피가 없습니다
-                      </div>
-                    ) : (
-                      recipeOptions.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name}{" "}
-                          <span className="text-xs text-gray-400">
-                            ({r.code})
-                          </span>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
+              {/* 상단: 용기 그룹 + 기본 라인 */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="add-slot-line">생산 라인 (선택)</Label>
-                  <Select
-                    value={addSlotProductionLineId || "NONE"}
-                    onValueChange={(v) =>
-                      setAddSlotProductionLineId(v === "NONE" ? "" : v)
-                    }
-                  >
-                    <SelectTrigger id="add-slot-line">
-                      <SelectValue placeholder="미지정" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">미지정</SelectItem>
-                      {productionLineOptions.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                          {p.locationName && (
-                            <span className="ml-1 text-xs text-gray-400">
-                              · {p.locationName}
-                            </span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <Label htmlFor="bulk-container">용기 그룹 *</Label>
+                    <SearchableSelect
+                      options={containerOptions.map<SearchableOption>((c) => ({
+                        id: c.id,
+                        label: c.name,
+                        sublabel: c.code,
+                        rightLabel: `슬롯 ${c.slots.length}개`,
+                      }))}
+                      value={bulkSlotContainerId}
+                      onChange={handleBulkContainerChange}
+                      placeholder="용기 그룹을 선택하세요"
+                      searchPlaceholder="용기 이름 또는 코드 검색..."
+                      emptyText="등록된 용기 그룹이 없습니다"
+                    />
                 </div>
+
+
                 <div className="space-y-2">
-                  <Label htmlFor="add-slot-quantity">수량</Label>
-                  <Input
-                    id="add-slot-quantity"
-                    type="number"
-                    min={0}
-                    value={addSlotQuantity}
-                    onChange={(e) => setAddSlotQuantity(e.target.value)}
+                  <Label htmlFor="bulk-default-line">
+                    기본 생산 라인 (선택)
+                  </Label>
+                  <SearchableSelect
+                    options={productionLineOptions.map<SearchableOption>((p) => ({
+                      id: p.id,
+                      label: p.name,
+                      sublabel: p.locationName || undefined,
+                    }))}
+                    value={bulkSlotDefaultLineId}
+                    onChange={setBulkSlotDefaultLineId}
+                    placeholder="미지정"
+                    searchPlaceholder="라인 이름 또는 위치 검색..."
+                    emptyText="등록된 라인이 없습니다"
+                    allowClear
+                    clearLabel="미지정"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="add-slot-note">비고 (선택)</Label>
-                <Textarea
-                  id="add-slot-note"
-                  rows={2}
-                  value={addSlotNote}
-                  onChange={(e) => setAddSlotNote(e.target.value)}
-                />
-              </div>
+              {/* 슬롯 행 테이블 */}
+              {selectedBulkContainer ? (
+                selectedBulkContainer.slots.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-gray-500">
+                    이 용기 그룹에 등록된 슬롯이 없습니다. 용기 관리에서 슬롯을
+                    먼저 추가하세요.
+                  </div>
+                ) : (
+                  <div className="max-h-[420px] overflow-y-auto rounded-md border">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-gray-50">
+                        <TableRow>
+                          <TableHead className="w-[80px]">슬롯</TableHead>
+                          <TableHead>레시피</TableHead>
+                          <TableHead className="w-[180px]">생산라인</TableHead>
+                          <TableHead className="w-[80px] text-right">
+                            수량
+                          </TableHead>
+                          <TableHead className="w-[160px]">비고</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedBulkContainer.slots.map((s) => {
+                          const row = bulkSlotRows[s.slotIndex] ?? {
+                            recipeId: "",
+                            productionLineId: "",
+                            quantity: "0",
+                            note: "",
+                          };
+                          return (
+                            <TableRow key={s.id}>
+                              <TableCell className="text-xs">
+                                <div className="font-medium">
+                                  #{s.slotIndex + 1}
+                                </div>
+                                <div className="text-gray-500">{s.label}</div>
+                                {s.volumeMl != null && (
+                                  <div className="text-gray-400">
+                                    {s.volumeMl}ml
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <SearchableSelect
+                                  options={recipeOptions.map<SearchableOption>(
+                                    (r) => ({
+                                      id: r.id,
+                                      label: r.name,
+                                      sublabel: r.code,
+                                    }),
+                                  )}
+                                  value={row.recipeId}
+                                  onChange={(v) =>
+                                    updateBulkRow(s.slotIndex, { recipeId: v })
+                                  }
+                                  placeholder="미배정"
+                                  searchPlaceholder="레시피 이름 또는 코드 검색..."
+                                  emptyText="등록된 레시피가 없습니다"
+                                  allowClear
+                                  clearLabel="미배정"
+                                  size="sm"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <SearchableSelect
+                                  options={productionLineOptions.map<SearchableOption>(
+                                    (p) => ({
+                                      id: p.id,
+                                      label: p.name,
+                                      sublabel: p.locationName || undefined,
+                                    }),
+                                  )}
+                                  value={row.productionLineId}
+                                  onChange={(v) =>
+                                    updateBulkRow(s.slotIndex, {
+                                      productionLineId: v,
+                                    })
+                                  }
+                                  placeholder="기본 라인 따름"
+                                  searchPlaceholder="라인 이름 또는 위치 검색..."
+                                  emptyText="등록된 라인이 없습니다"
+                                  allowClear
+                                  clearLabel="기본 라인 따름"
+                                  size="sm"
+                                />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={row.quantity}
+                                  onChange={(e) =>
+                                    updateBulkRow(s.slotIndex, {
+                                      quantity: e.target.value,
+                                    })
+                                  }
+                                  className="h-8 w-20 text-right text-xs"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  value={row.note}
+                                  onChange={(e) =>
+                                    updateBulkRow(s.slotIndex, {
+                                      note: e.target.value,
+                                    })
+                                  }
+                                  placeholder="-"
+                                  className="h-8 text-xs"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-gray-500">
+                  먼저 용기 그룹을 선택하면 해당 그룹의 모든 슬롯이 펼쳐집니다.
+                </div>
+              )}
+
+              {/* 요약 */}
+              {selectedBulkContainer && selectedBulkContainer.slots.length > 0 && (
+                <div className="rounded-md border bg-gray-50 px-3 py-2 text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500">총 슬롯</span>
+                    <span className="font-medium">
+                      {selectedBulkContainer.slots.length}개
+                    </span>
+                    <span className="text-gray-300">|</span>
+                    <span className="text-gray-500">레시피 배정</span>
+                    <span className="font-medium text-emerald-700">
+                      {
+                        selectedBulkContainer.slots.filter(
+                          (s) => bulkSlotRows[s.slotIndex]?.recipeId,
+                        ).length
+                      }
+                      개
+                    </span>
+                    <span className="text-gray-300">|</span>
+                    <span className="text-gray-500">미배정</span>
+                    <span className="font-medium text-amber-700">
+                      {
+                        selectedBulkContainer.slots.filter(
+                          (s) => !bulkSlotRows[s.slotIndex]?.recipeId,
+                        ).length
+                      }
+                      개
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={closeSlotEditor}>
+                <Button variant="outline" onClick={closeBulkSlotEditor}>
                   취소
                 </Button>
                 <Button
-                  onClick={handleAddSlot}
+                  onClick={handleBulkSubmit}
                   disabled={
-                    slotSaving ||
-                    !addSlotContainerId ||
-                    addSlotContainerSlotIndex === "" ||
-                    !addSlotRecipeId
+                    bulkSlotSaving ||
+                    !bulkSlotContainerId ||
+                    !selectedBulkContainer ||
+                    selectedBulkContainer.slots.length === 0
                   }
                 >
-                  {slotSaving && (
+                  {bulkSlotSaving && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  추가
+                  배정 저장
                 </Button>
               </div>
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Phase 7-A2: 템플릿 재적용 확인 다이얼로그 */}
+        <AlertDialog
+          open={!!templateApplyConfirm}
+          onOpenChange={(open) => !open && setTemplateApplyConfirm(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>템플릿 재적용</AlertDialogTitle>
+              <AlertDialogDescription>
+                <span className="block">
+                  <strong>{templateApplyConfirm?.mealPlanLabel}</strong> 식단에
+                  템플릿{" "}
+                  <strong>{templateApplyConfirm?.mealTemplateName}</strong>의
+                  구성을 다시 적용합니다.
+                </span>
+                <span className="mt-2 block text-amber-700">
+                  ⚠ 현재 식단의 슬롯과 부자재가 모두 삭제되고 템플릿 구성으로
+                  교체됩니다. 이 작업은 되돌릴 수 없습니다.
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={templateApplying}>
+                취소
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleApplyTemplate}
+                disabled={templateApplying}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {templateApplying && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                덮어쓰기 적용
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* 상태 변경 */}
         <Dialog
