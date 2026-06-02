@@ -80,6 +80,7 @@ import {
 
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
+import { getSubsidiariesAction as getMaterialSubsidiariesAction } from "@/features/material/actions/material.action";
 import { getRecipesAction } from "@/features/recipe/actions/recipe.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
@@ -190,6 +191,13 @@ type ContainerOption = {
   slots: ContainerSlotOption[];
 };
 type RecipeOption = { id: string; name: string; code: string };
+type AccessoryOption = {
+  id: string;
+  name: string;
+  code: string;
+  unit: string;
+  subsidiaryType: "CONTAINER" | "ACCESSORY" | "CONSUMABLE";
+};
 type ProductionLineOption = {
   id: string;
   name: string;
@@ -289,6 +297,11 @@ export default function MealPlansPage() {
   const [productionLineOptions, setProductionLineOptions] = useState<
     ProductionLineOption[]
   >([]);
+
+  // Phase 7-C2: 부자재 옵션 (CONTAINER 제외 — ACCESSORY + CONSUMABLE)
+  const [accessoryOptions, setAccessoryOptions] = useState<AccessoryOption[]>(
+    [],
+  );  
 
   // 일괄 배정 다이얼로그 대상 식단
   const [bulkSlotMealPlan, setBulkSlotMealPlan] = useState<{
@@ -476,12 +489,52 @@ export default function MealPlansPage() {
     }
   }, []);
 
+  // Phase 7-C2: 부자재 옵션 로드 (CONTAINER 제외)
+  const loadAccessoryOptions = useCallback(async () => {
+    try {
+      // limit 500: 대부분의 회사 부자재 종류 < 500
+      // subsidiaryListQuerySchema에 subsidiaryType 필터가 없으면 클라이언트에서 제외
+      const result = await getMaterialSubsidiariesAction({
+        page: 1,
+        limit: 500,
+        sortBy: "name",
+        sortOrder: "asc",
+      });
+      if (result.success) {
+        const items = result.data.items as Array<{
+          id: string;
+          name: string;
+          code: string;
+          unit: string;
+          subsidiaryType: "CONTAINER" | "ACCESSORY" | "CONSUMABLE";
+        }>;
+        // CONTAINER는 부자재 셀렉터에서 제외 (용기는 슬롯 배정에서만 사용)
+        const filtered = items.filter((s) => s.subsidiaryType !== "CONTAINER");
+        setAccessoryOptions(filtered);
+      } else {
+        logger.error(
+          "[MealPlansPage.loadAccessoryOptions]",
+          result.error?.message ?? "unknown",
+        );
+      }
+    } catch (err) {
+      logger.error("[MealPlansPage.loadAccessoryOptions]", err);
+    }
+  }, []);  
+
   useEffect(() => {
     fetchData(1);
     loadTemplateOptions();
     loadSlotOptions();
     loadSlotEditorOptions();
-  }, [fetchData, loadTemplateOptions, loadSlotOptions, loadSlotEditorOptions]);
+    loadAccessoryOptions();
+  }, [
+    fetchData,
+    loadTemplateOptions,
+    loadSlotOptions,
+    loadSlotEditorOptions,
+    loadAccessoryOptions,
+  ]);
 
   // ── 상세 ──
   const openDetail = async (groupId: string) => {
@@ -2326,25 +2379,25 @@ export default function MealPlansPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <Label>부자재</Label>
                 <SearchableSelect
-                  options={containerOptions.map<SearchableOption>((c) => ({
-                    id: c.id,
-                    label: c.name,
-                    sublabel: c.code,
+                  options={accessoryOptions.map<SearchableOption>((s) => ({
+                    id: s.id,
+                    label: s.name,
+                    sublabel: s.code,
+                    rightLabel: s.unit,
                   }))}
                   value={accessoryFormSubsidiaryId}
                   onChange={setAccessoryFormSubsidiaryId}
                   placeholder="부자재 선택"
                   searchPlaceholder="부자재 이름 또는 코드 검색..."
                   emptyText="등록된 부자재가 없습니다"
-                  disabled={!!accessoryEditTarget}
                 />
-                {accessoryEditTarget && (
-                  <p className="text-xs text-gray-400">
-                    수정 시 부자재 항목 자체는 변경할 수 없습니다. 변경하려면
-                    삭제 후 다시 추가해주세요.
+                {accessoryOptions.length === 0 && (
+                  <p className="text-xs text-amber-600">
+                    등록된 부자재(소모품·악세사리)가 없습니다. 부자재 관리에서
+                    먼저 등록해주세요.
                   </p>
                 )}
               </div>
