@@ -489,38 +489,69 @@ export default function MealPlansPage() {
     }
   }, []);
 
-  // Phase 7-C2: 부자재 옵션 로드 (CONTAINER 제외)
+  // Phase 7-C2: 부자재 옵션 로드 (CONTAINER 제외 — ACCESSORY + CONSUMABLE)
   const loadAccessoryOptions = useCallback(async () => {
     try {
-      // limit 500: 대부분의 회사 부자재 종류 < 500
-      // subsidiaryListQuerySchema에 subsidiaryType 필터가 없으면 클라이언트에서 제외
-      const result = await getMaterialSubsidiariesAction({
-        page: 1,
-        limit: 500,
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-      if (result.success) {
-        const items = result.data.items as Array<{
+      // subsidiaryListQuerySchema.limit max=100 / paginated 응답
+      // ACCESSORY + CONSUMABLE을 별도 조회 후 합침 (CONTAINER는 슬롯 배정 전용)
+      const [accessoryRes, consumableRes] = await Promise.all([
+        getMaterialSubsidiariesAction({
+          page: 1,
+          limit: 100,
+          subsidiaryType: "ACCESSORY",
+          sortBy: "name",
+          sortOrder: "asc",
+        }),
+        getMaterialSubsidiariesAction({
+          page: 1,
+          limit: 100,
+          subsidiaryType: "CONSUMABLE",
+          sortBy: "name",
+          sortOrder: "asc",
+        }),
+      ]);
+
+      const merged: AccessoryOption[] = [];
+
+      if (accessoryRes.success) {
+        const items = accessoryRes.data.items as Array<{
           id: string;
           name: string;
           code: string;
           unit: string;
           subsidiaryType: "CONTAINER" | "ACCESSORY" | "CONSUMABLE";
         }>;
-        // CONTAINER는 부자재 셀렉터에서 제외 (용기는 슬롯 배정에서만 사용)
-        const filtered = items.filter((s) => s.subsidiaryType !== "CONTAINER");
-        setAccessoryOptions(filtered);
+        merged.push(...items);
       } else {
         logger.error(
-          "[MealPlansPage.loadAccessoryOptions]",
-          result.error?.message ?? "unknown",
+          "[MealPlansPage.loadAccessoryOptions.ACCESSORY]",
+          accessoryRes.error?.message ?? "unknown",
         );
       }
+
+      if (consumableRes.success) {
+        const items = consumableRes.data.items as Array<{
+          id: string;
+          name: string;
+          code: string;
+          unit: string;
+          subsidiaryType: "CONTAINER" | "ACCESSORY" | "CONSUMABLE";
+        }>;
+        merged.push(...items);
+      } else {
+        logger.error(
+          "[MealPlansPage.loadAccessoryOptions.CONSUMABLE]",
+          consumableRes.error?.message ?? "unknown",
+        );
+      }
+
+      // name 가나다 정렬 (두 결과 합쳐서 재정렬)
+      merged.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      setAccessoryOptions(merged);
     } catch (err) {
       logger.error("[MealPlansPage.loadAccessoryOptions]", err);
     }
-  }, []);  
+  }, []);
 
   useEffect(() => {
     fetchData(1);
