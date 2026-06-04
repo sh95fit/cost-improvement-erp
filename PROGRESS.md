@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-06-01 (Phase 7-A — CONTAINER 슬롯 추가 UI 완료)
+> 마지막 갱신: 2026-06-02 (Phase 7-C — 슬롯 그룹화 + 부자재 도메인 분리 + 부자재 수정 자유화 완료)
 
 ---
 
@@ -23,9 +23,8 @@
 ## 📍 현재 상태 요약 / 완료 범위 / 남은 작업 / 보류 범위 / handoff 기준
 
 ### 현재 상태 요약
-- **현재 기준 완료 지점**: Sprint 2 / Phase 5 + Phase 5-R 구조 재정의 보강 라운드 완료 (Step 1~6-3c-A2)
-- **현재 프로젝트 상태**: Sprint 2 재개 진입 — Phase 2-e → 6 → **7 (다음 착수)** → 8 → 9 → 10 → 11
-- **중요 판단**: Sprint 2의 기존 Phase 2-e, 6, 7, 8, 9, 10, 11은 그대로 유지한다. MealPlan 도메인 구조 재정의(Phase 5-R)는 Sprint 2 내부 보강 작업으로 완료되었으며, 이제 원래 미완료 Phase를 재개한다.
+- **현재 기준 완료 지점**: Sprint 2 / Phase 7-C 완료 (슬롯 상세 에디터 UI 1차 완성: 일괄 배정 + 인라인 편집 + 부자재 CRUD + 슬롯 그룹화 + 부자재 도메인 분리)
+- **현재 프로젝트 상태**: Sprint 2 재개 진행 중 — Phase 2-e → 6 → **7 (진행 중, 7-D 다음 착수)** → 8 → 9 → 10 → 11작업으로 완료되었으며, 이제 원래 미완료 Phase를 재개한다.
 - **현재 블로커**: 없음
 - **해소된 과거 블로커** (Phase 5-R 라운드에서 해결):
   1. ✅ `MealPlanGroup.lineupId` 제거 — Step 1.x에서 schema 분리
@@ -1407,13 +1406,67 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 ---
 
-## Phase 7-C — 슬롯 그룹화 + 부자재 도메인 분리 + 수정 자유화 (예정)
+## Phase 7-C1 / 7-C2 / 7-C3 — 슬롯 그룹화 + 부자재 도메인 분리 + 수정 자유화 (완료)
 
-- **Targets**:
-  - 슬롯 테이블을 `subsidiaryMaster.id`로 그룹화, 그룹 헤더(용기명 + 코드 + 슬롯 수) 노출
-  - 부자재 옵션을 `getSubsidiariesByTypeAction("CONSUMABLE")` 로드 → `accessoryOptions` state
-  - 부자재 다이얼로그의 SubsidiaryMaster selector를 `accessoryOptions` 기반 검색 가능 셀렉트로 교체
-  - 부자재 수정 시 subsidiary 변경 허용 (selector disabled 해제)
+- **Date**: 2026-06-02
+- **Commits**:
+  - `8ad8388` — feat(meal-plan): group slot table by container subsidiary (Phase 7-C1)
+  - `2a1acc3` — feat(meal-plan): use non-container subsidiaries for accessory selector + allow changing subsidiary in edit (Phase 7-C2/C3)
+  - `14e9794` — fix(meal-plan): respect subsidiaryListQuery limit max + load ACCESSORY/CONSUMABLE separately (Phase 7-C2 hotfix)
+
+### Changes
+
+#### Phase 7-C1 — 슬롯 그룹화
+- `<TableBody>` 내부의 단일 `mp.slots.map((slot) => ...)` 평탄 루프를 `(() => { ... })()` IIFE로 감싼 그룹화 렌더링으로 교체
+- 그룹화 키 규칙:
+  - CONTAINER 슬롯: `subsidiaryMaster.id` 기준 (subsidiaryMaster null이면 "용기 미지정" 그룹)
+  - DIRECT 슬롯: 단일 "직배송" 그룹
+- 그룹 표시 순서: 첫 번째 슬롯의 `sortOrder`가 작은 순 (안정 정렬)
+- 그룹 헤더 (`colSpan={6}` 행): 아이콘 + 그룹명 + `code` + 배정 카운터(`N/M 배정`)
+  - CONTAINER: `Package` 아이콘 + 파란 배경(`bg-blue-50/60`), 미지정 시 회색
+  - DIRECT: `Truck` 아이콘 + 황색 배경(`bg-amber-50/60`)
+- 그룹 내부 슬롯 행은 기존 보기/편집 모드 동작 그대로 유지
+
+#### Phase 7-C2 — 부자재 도메인 분리
+- `getSubsidiariesAction as getMaterialSubsidiariesAction` 별칭 import (container.action의 동명 함수와 충돌 회피)
+- 새 타입 `AccessoryOption` 추가 (id, name, code, unit, subsidiaryType)
+- 새 state `accessoryOptions: AccessoryOption[]` 추가
+- 새 callback `loadAccessoryOptions()` 추가: `ACCESSORY` + `CONSUMABLE` 두 타입을 `Promise.all`로 병렬 조회 후 name 가나다 정렬로 합침 (CONTAINER는 슬롯 배정 전용이므로 제외)
+- `useEffect` 의존성에 추가
+- 부자재 다이얼로그의 SubsidiaryMaster selector 데이터 소스를 `containerOptions` → `accessoryOptions`로 교체
+- 옵션 우측에 `unit` 표시 (rightLabel)
+- 부자재 0개일 때 안내 문구 노출
+
+#### Phase 7-C3 — 부자재 수정 자유화
+- 부자재 다이얼로그 SubsidiaryMaster selector의 `disabled={!!accessoryEditTarget}` 제거 → 수정 시에도 자유 변경 가능
+- "수정 시 변경 불가" 안내 문구 제거 → 빈 옵션 안내 문구로 교체
+
+#### Phase 7-C2 hotfix
+- 1차 푸시 후 `[ERROR] "[MealPlansPage.loadAccessoryOptions]" "부자재 목록 조회에 실패했습니다"` 발생
+- 원인: `subsidiaryListQuerySchema.limit` max=100인데 500을 보내 Zod validation 실패
+- 수정: `limit: 100`으로 축소 + 클라이언트 필터 대신 서버 `subsidiaryType` 필터 명시 호출로 전환 (2회 병렬)
+- 에러 로깅도 타입별 분리
+
+### Decisions
+- C1: 그룹 헤더는 읽기 전용 (그룹 일괄 변경/삭제는 별도 Phase로)
+- C2: CONTAINER 제외 = ACCESSORY + CONSUMABLE (사용자 확정: 용기는 별도 도메인, 부자재는 사용량 처리 대상)
+- C2: 클라이언트 필터링보다 서버 필터링 선호 (limit 효율, 정확성)
+- C3: 부자재 수정 시 subsidiary 자유 변경 허용 (활용성 우선, 잘못 선택 시 재선택 비용 < 삭제 후 재추가 비용)
+
+### Resolved Known Issues (7-B Carry-over)
+- ✅ 부자재 다이얼로그 selector가 CONTAINER 타입을 노출 → `accessoryOptions`로 교체
+- ✅ 슬롯 테이블 평탄 리스트 → 용기 그룹별 헤더로 시각적 구분
+- ✅ 부자재 수정 시 subsidiary selector 잠김 → disabled 제거
+
+---
+
+## Phase 7-D — 후속 정비 (예정)
+
+다음 라운드 후보:
+- 슬롯 재정렬 UI (그룹 내 ↑↓ 또는 드래그-드롭)
+- 그룹 단위 액션 (그룹 전체 라인 일괄 변경, 그룹 전체 삭제)
+- 템플릿 페이지(`/meal-templates`)의 부자재 selector도 동일 패턴으로 점검
+- MealPlanAccessory 백엔드 테스트 보강 (Phase 10 일부 선행 가능)
 
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
 - **예정일**: 2026-05-19 ~ 2026-05-20
