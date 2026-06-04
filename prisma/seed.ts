@@ -129,34 +129,54 @@ async function main() {
 
   // ---- 4. Locations ----
   const locationSeoul = await prisma.location.upsert({
-    where: { companyId_code: { companyId: company.id, code: "SEOUL-01" } },
+    where: { companyId_code: { companyId: company.id, code: "LOC-001" } },
     update: {},
-    create: { companyId: company.id, name: "서울 본사 주방", code: "SEOUL-01", address: "서울특별시 강남구 테헤란로 123" },
+    create: {
+      companyId: company.id,
+      name: "서울 본사 공장",
+      code: "LOC-001",
+      type: "FACTORY",
+      address: "서울특별시 강남구 테헤란로 123",
+      isActive: true,
+      sortOrder: 10,
+    },
   });
 
   const locationGyeonggi = await prisma.location.upsert({
-    where: { companyId_code: { companyId: company.id, code: "GG-01" } },
+    where: { companyId_code: { companyId: company.id, code: "LOC-002" } },
     update: {},
-    create: { companyId: company.id, name: "경기 물류센터", code: "GG-01", address: "경기도 성남시 분당구 판교로 456" },
+    create: {
+      companyId: company.id,
+      name: "경기 물류센터",
+      code: "LOC-002",
+      type: "WAREHOUSE",  // ← 파미넥스 같은 창고 역할
+      address: "경기도 성남시 분당구 판교로 456",
+      isActive: true,
+      sortOrder: 20,
+    },
   });
   console.log("✅ Locations: 2개 생성");
 
   // ---- 5. ProductionLines ----
   const prodLines = [
-    { name: "A라인 (한식)", locationId: locationSeoul.id },
-    { name: "B라인 (양식)", locationId: locationSeoul.id },
-    { name: "C라인 (특식)", locationId: locationSeoul.id },
-    { name: "D라인 (경기)", locationId: locationGyeonggi.id },
+    { code: "PL-001", name: "A라인 (한식)",  locationId: locationSeoul.id,    sortOrder: 10 },
+    { code: "PL-002", name: "B라인 (양식)",  locationId: locationSeoul.id,    sortOrder: 20 },
+    { code: "PL-003", name: "C라인 (특식)",  locationId: locationSeoul.id,    sortOrder: 30 },
+    { code: "PL-004", name: "D라인 (경기)",  locationId: locationGyeonggi.id, sortOrder: 40 },
   ];
   for (const pl of prodLines) {
-    const existing = await prisma.productionLine.findFirst({
-      where: { companyId: company.id, name: pl.name },
+    await prisma.productionLine.upsert({
+      where: { companyId_code: { companyId: company.id, code: pl.code } },
+      update: {},
+      create: {
+        companyId: company.id,
+        locationId: pl.locationId,
+        name: pl.name,
+        code: pl.code,
+        status: "ACTIVE",
+        sortOrder: pl.sortOrder,
+      },
     });
-    if (!existing) {
-      await prisma.productionLine.create({
-        data: { companyId: company.id, locationId: pl.locationId, name: pl.name, status: "ACTIVE" },
-      });
-    }
   }
   console.log("✅ ProductionLines: 4개 생성");
 

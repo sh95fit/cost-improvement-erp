@@ -286,6 +286,12 @@ enum SlotKind {
   @@map("slot_kind")
 }
 
+enum LocationType {
+  FACTORY    // 공장 (제조라인 보유, 직접 사용처)
+  WAREHOUSE  // 창고 (보관 전용)
+  HYBRID     // 겸용
+}
+
 // ============================================================
 // MODELS
 // ============================================================
@@ -346,19 +352,21 @@ model Company {
 }
 
 model Location {
-  id        String    @id @default(cuid())
-  companyId String    @map("company_id")
+  id        String       @id @default(cuid())
+  companyId String       @map("company_id")
   name      String
-  code      String
+  code      String                                       
+  type      LocationType @default(FACTORY)              
   address   String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  note      String?                                       
+  isActive  Boolean      @default(true) @map("is_active") 
+  sortOrder Int          @default(0)    @map("sort_order") 
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt      @map("updated_at")
+  deletedAt DateTime?    @map("deleted_at")
 
   company               Company                @relation(fields: [companyId], references: [id])
   productionLines       ProductionLine[]
-  // ⚠️ Step 2.5에서 LineupLocationMap 배제 — 향후 복원 시 주석 해제
-  // lineupLocationMaps LineupLocationMap[]
   inventoryLots         InventoryLot[]
   inventoryTransactions InventoryTransaction[]
   stockTakes            StockTake[]
@@ -368,6 +376,10 @@ model Location {
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([type])           
+  @@index([isActive])      
+  @@index([companyId, sortOrder])  
+  @@index([deletedAt])     
   @@map("locations")
 }
 
@@ -376,19 +388,28 @@ model ProductionLine {
   companyId  String               @map("company_id")
   locationId String               @map("location_id")
   name       String
+  code       String                                             
   status     ProductionLineStatus @default(ACTIVE)
+  sortOrder  Int                  @default(0) @map("sort_order") 
+  note       String?                                            
   createdAt  DateTime             @default(now()) @map("created_at")
-  updatedAt  DateTime             @updatedAt @map("updated_at")
+  updatedAt  DateTime             @updatedAt      @map("updated_at")
+  deletedAt  DateTime?            @map("deleted_at")            
 
   company       Company        @relation(fields: [companyId], references: [id])
   location      Location       @relation(fields: [locationId], references: [id])
   cookingPlans  CookingPlan[]
   mealPlanSlots MealPlanSlot[]
 
+  @@unique([companyId, code])             
   @@index([companyId])
   @@index([locationId])
+  @@index([status])                        
+  @@index([companyId, sortOrder])           
+  @@index([deletedAt])                      
   @@map("production_lines")
 }
+
 
 // ---- 2. 사용자 / 권한 ----
 
