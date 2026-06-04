@@ -82,6 +82,7 @@ import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-te
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
 import { getSubsidiariesAction as getMaterialSubsidiariesAction } from "@/features/material/actions/material.action";
 import { getRecipesAction } from "@/features/recipe/actions/recipe.action";
+import { getEligibleRecipesForContainerSlotAction } from "@/features/recipe/actions/recipe-bom.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
 import {
@@ -294,6 +295,10 @@ export default function MealPlansPage() {
     [],
   );
   const [recipeOptions, setRecipeOptions] = useState<RecipeOption[]>([]);
+  // Phase 7-F2/F3: (subsidiaryId:slotIndex) → 적격 레시피 캐시
+  const [eligibleRecipesCache, setEligibleRecipesCache] = useState<
+    Record<string, RecipeOption[]>
+  >({});
   const [productionLineOptions, setProductionLineOptions] = useState<
     ProductionLineOption[]
   >([]);
@@ -488,6 +493,53 @@ export default function MealPlansPage() {
       logger.error("[MealPlansPage.loadSlotEditorOptions]", err);
     }
   }, []);
+
+  // ══════════════════════════════════════════════════════════════
+  // Phase 7-F2/F3: 슬롯 컨텍스트별 적격 레시피 로더 (캐시 지원)
+  // ──────────────────────────────────────────────────────────────
+  // R1/R2/R3 조건을 만족하는 레시피만 서버에서 받아온다.
+  // - cacheKey: "{subsidiaryId}:{slotIndex}"
+  // - 동일 키 재호출 시 캐시 반환 (네트워크 절약)
+  // - 결과를 setEligibleRecipesCache로 저장하여 SearchableSelect가 즉시 반영
+  // ══════════════════════════════════════════════════════════════
+  const loadEligibleRecipesForSlot = useCallback(
+    async (
+      subsidiaryMasterId: string,
+      containerSlotIndex: number,
+    ): Promise<RecipeOption[]> => {
+      const cacheKey = `${subsidiaryMasterId}:${containerSlotIndex}`;
+      // 이미 캐시 존재 시 즉시 반환
+      const cached = eligibleRecipesCache[cacheKey];
+      if (cached) return cached;
+
+      try {
+        const result = await getEligibleRecipesForContainerSlotAction(
+          subsidiaryMasterId,
+          containerSlotIndex,
+        );
+        if (!result.success) {
+          logger.error(
+            "[MealPlansPage.loadEligibleRecipesForSlot]",
+            result.error?.message ?? "unknown",
+          );
+          setEligibleRecipesCache((prev) => ({ ...prev, [cacheKey]: [] }));
+          return [];
+        }
+        const opts: RecipeOption[] = result.data.map((r) => ({
+          id: r.id,
+          name: r.name,
+          code: r.code,
+        }));
+        setEligibleRecipesCache((prev) => ({ ...prev, [cacheKey]: opts }));
+        return opts;
+      } catch (err) {
+        logger.error("[MealPlansPage.loadEligibleRecipesForSlot]", err);
+        setEligibleRecipesCache((prev) => ({ ...prev, [cacheKey]: [] }));
+        return [];
+      }
+    },
+    [eligibleRecipesCache],
+  );
 
   // Phase 7-C2: 부자재 옵션 로드 (CONTAINER 제외 — ACCESSORY + CONSUMABLE)
   const loadAccessoryOptions = useCallback(async () => {
@@ -840,6 +892,13 @@ export default function MealPlansPage() {
       };
     }
     setBulkSlotRows(initial);
+
+    // Phase 7-F3: 용기의 각 슬롯에 대해 적격 레시피 사전 로드 (병렬)
+    void Promise.all(
+      c.slots.map((s) =>
+        loadEligibleRecipesForSlot(containerId, s.slotIndex),
+      ),
+    );
   };
 
   const updateBulkRow = (
@@ -988,6 +1047,17 @@ export default function MealPlansPage() {
       quantity: String(slot.quantity ?? 0),
       note: slot.note ?? "",
     });
+    // Phase 7-F2: CONTAINER 슬롯이면 (subsidiary, slotIndex) 적격 레시피 사전 로드
+    if (
+      slot.kind === "CONTAINER" &&
+      slot.subsidiaryMaster?.id &&
+      slot.containerSlotIndex !== null
+    ) {
+      void loadEligibleRecipesForSlot(
+        slot.subsidiaryMaster.id,
+        slot.containerSlotIndex,
+      );
+    }
   };
 
   const closeSlotEdit = () => {
@@ -1633,28 +1703,69 @@ export default function MealPlansPage() {
                                     <TableCell>
                                       {slot.kind === "CONTAINER" ? (
                                         <div className="space-y-1">
-                                          <SearchableSelect
-                                            options={recipeOptions.map<SearchableOption>(
-                                              (r) => ({
-                                                id: r.id,
-                                                label: r.name,
-                                                sublabel: r.code,
-                                              }),
-                                            )}
-                                            value={editSlotForm.recipeId}
-                                            onChange={(v) =>
-                                              setEditSlotForm({
-                                                ...editSlotForm,
-                                                recipeId: v,
-                                              })
-                                            }
-                                            placeholder="레시피 미배정"
-                                            searchPlaceholder="레시피 이름 또는 코드 검색..."
-                                            emptyText="등록된 레시피가 없습니다"
-                                            allowClear
-                                            clearLabel="미배정"
-                                            size="sm"
-                                          />
+                                          {(() => {
+                                            // Phase 7-F2: (subsidiary, slotIndex)별 적격 레시피만 표시
+                                            const cacheKey =
+                                              slot.subsidiaryMaster &&
+                                              slot.containerSlotIndex !== null
+                                                ? `${slot.subsidiaryMaster.id}:${slot.containerSlotIndex}`
+                                                : null;
+                                            const eligible = cacheKey
+                                              ? (eligibleRecipesCache[
+                                                  cacheKey
+                                                ] ?? null)
+                                              : null;
+                                            // 로드 중 (cacheKey는 있는데 캐시는 아직 없음)
+                                            const isLoading =
+                                              cacheKey !== null &&
+                                              eligible === null;
+                                            const hasNoEligible =
+                                              !isLoading &&
+                                              eligible !== null &&
+                                              eligible.length === 0;
+                                            return (
+                                              <>
+                                                <SearchableSelect
+                                                  options={(eligible ?? []).map<SearchableOption>(
+                                                    (r) => ({
+                                                      id: r.id,
+                                                      label: r.name,
+                                                      sublabel: r.code,
+                                                    }),
+                                                  )}
+                                                  value={editSlotForm.recipeId}
+                                                  onChange={(v) =>
+                                                    setEditSlotForm({
+                                                      ...editSlotForm,
+                                                      recipeId: v,
+                                                    })
+                                                  }
+                                                  placeholder={
+                                                    isLoading
+                                                      ? "적격 레시피 조회 중..."
+                                                      : hasNoEligible
+                                                        ? "배정 가능한 레시피 없음"
+                                                        : "레시피 미배정"
+                                                  }
+                                                  searchPlaceholder="레시피 이름 또는 코드 검색..."
+                                                  emptyText={
+                                                    hasNoEligible
+                                                      ? "이 용기 슬롯에 배정 가능한 레시피가 없습니다. 레시피 BOM에서 해당 용기 슬롯의 중량을 등록·확정하세요."
+                                                      : "등록된 레시피가 없습니다"
+                                                  }
+                                                  allowClear
+                                                  clearLabel="미배정"
+                                                  size="sm"
+                                                  disabled={isLoading}
+                                                />
+                                                {hasNoEligible && (
+                                                  <p className="text-[10px] text-amber-700">
+                                                    ⚠ 이 슬롯에 배정 가능한 ACTIVE BOM이 없습니다
+                                                  </p>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
                                           {slot.subsidiaryMaster && (
                                             <div className="text-xs text-gray-500">
                                               {slot.subsidiaryMaster.name}
@@ -2216,25 +2327,56 @@ export default function MealPlansPage() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                <SearchableSelect
-                                  options={recipeOptions.map<SearchableOption>(
-                                    (r) => ({
-                                      id: r.id,
-                                      label: r.name,
-                                      sublabel: r.code,
-                                    }),
-                                  )}
-                                  value={row.recipeId}
-                                  onChange={(v) =>
-                                    updateBulkRow(s.slotIndex, { recipeId: v })
-                                  }
-                                  placeholder="미배정"
-                                  searchPlaceholder="레시피 이름 또는 코드 검색..."
-                                  emptyText="등록된 레시피가 없습니다"
-                                  allowClear
-                                  clearLabel="미배정"
-                                  size="sm"
-                                />
+                                {(() => {
+                                  // Phase 7-F3: (선택된 용기, 슬롯)별 적격 레시피만 표시
+                                  const cacheKey = `${bulkSlotContainerId}:${s.slotIndex}`;
+                                  const eligible =
+                                    eligibleRecipesCache[cacheKey] ?? null;
+                                  const isLoading = eligible === null;
+                                  const hasNoEligible =
+                                    !isLoading && eligible.length === 0;
+                                  return (
+                                    <div className="space-y-1">
+                                      <SearchableSelect
+                                        options={(eligible ?? []).map<SearchableOption>(
+                                          (r) => ({
+                                            id: r.id,
+                                            label: r.name,
+                                            sublabel: r.code,
+                                          }),
+                                        )}
+                                        value={row.recipeId}
+                                        onChange={(v) =>
+                                          updateBulkRow(s.slotIndex, {
+                                            recipeId: v,
+                                          })
+                                        }
+                                        placeholder={
+                                          isLoading
+                                            ? "조회 중..."
+                                            : hasNoEligible
+                                              ? "배정 가능한 레시피 없음"
+                                              : "미배정"
+                                        }
+                                        searchPlaceholder="레시피 이름 또는 코드 검색..."
+                                        emptyText={
+                                          hasNoEligible
+                                            ? "이 슬롯에 배정 가능한 레시피가 없습니다"
+                                            : "등록된 레시피가 없습니다"
+                                        }
+                                        allowClear
+                                        clearLabel="미배정"
+                                        size="sm"
+                                        disabled={isLoading}
+                                      />
+                                      {hasNoEligible && (
+                                        <p className="text-[10px] text-amber-700">
+                                          ⚠ ACTIVE BOM 없음
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 <SearchableSelect
