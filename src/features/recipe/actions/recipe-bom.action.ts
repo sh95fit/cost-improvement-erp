@@ -331,3 +331,35 @@ export async function duplicateRecipeBOMAction(
     });
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// Phase 7-F1: 식단 슬롯 배정용 적격 레시피 조회
+// ════════════════════════════════════════════════════════════════
+export async function getEligibleRecipesForContainerSlotAction(
+  subsidiaryMasterId: string,
+  containerSlotIndex: number,
+): Promise<
+  ActionResult<
+    Awaited<
+      ReturnType<typeof recipeBomService.getEligibleRecipesForContainerSlot>
+    >
+  >
+> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "recipe", "READ");
+
+    if (!subsidiaryMasterId || containerSlotIndex == null || containerSlotIndex < 0) {
+      return actionOk([]);
+    }
+
+    const recipes = await recipeBomService.getEligibleRecipesForContainerSlot(
+      session.companyId,
+      subsidiaryMasterId,
+      containerSlotIndex,
+    );
+    return actionOk(recipes);
+  } catch (error) {
+    return handleActionError(error, "배정 가능한 레시피 조회에 실패했습니다");
+  }
+}

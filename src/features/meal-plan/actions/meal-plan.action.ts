@@ -323,12 +323,13 @@ export async function createMealPlanSlotAction(
     });
     return actionOk(slot);
   } catch (error) {
-    return handleActionError(error, "슬롯 추가에 실패했습니다", {
+    return handleActionError(error, "슬롯 생성에 실패했습니다", {
       NOT_FOUND: "식단을 찾을 수 없습니다",
-      PRODUCTION_LINE_NOT_FOUND: "생산 라인을 찾을 수 없습니다",
-      SUBSIDIARY_NOT_FOUND: "부자재(용기)를 찾을 수 없습니다",
+      SUBSIDIARY_NOT_FOUND: "용기를 찾을 수 없습니다",
       RECIPE_NOT_FOUND: "레시피를 찾을 수 없습니다",
-      SUPPLIER_ITEM_NOT_FOUND: "공급사 품목을 찾을 수 없습니다",
+      SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목을 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
+      BOM_NOT_MATCHED: "선택한 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다. 레시피 BOM을 등록·확정하고 해당 용기 슬롯의 중량을 0보다 크게 설정하세요",
     });
   }
 }
@@ -357,13 +358,14 @@ export async function updateMealPlanSlotAction(
   } catch (error) {
     return handleActionError(error, "슬롯 수정에 실패했습니다", {
       NOT_FOUND: "슬롯을 찾을 수 없습니다",
-      SLOT_KIND_MISMATCH:
-        "슬롯 종류는 변경할 수 없습니다 (삭제 후 재생성 필요)",
-      PRODUCTION_LINE_NOT_FOUND: "생산 라인을 찾을 수 없습니다",
-      SUBSIDIARY_NOT_FOUND: "부자재(용기)를 찾을 수 없습니다",
+      SLOT_KIND_MISMATCH: "슬롯 유형은 변경할 수 없습니다",
+      SUBSIDIARY_NOT_FOUND: "용기를 찾을 수 없습니다",
       RECIPE_NOT_FOUND: "레시피를 찾을 수 없습니다",
-      SUPPLIER_ITEM_NOT_FOUND: "공급사 품목을 찾을 수 없습니다",
-    });
+      SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목을 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
+      BOM_NOT_MATCHED: "선택한 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다",
+      CONTAINER_SLOT_INFO_MISSING: "용기 또는 슬롯 인덱스 정보가 누락되었습니다",
+    });    
   }
 }
 
@@ -449,11 +451,12 @@ export async function bulkCreateContainerSlotsAction(
     });
     return actionOk(slots);
   } catch (error) {
-    return handleActionError(error, "용기 그룹 일괄 배정에 실패했습니다", {
+    return handleActionError(error, "용기 슬롯 일괄 생성에 실패했습니다", {
       NOT_FOUND: "식단을 찾을 수 없습니다",
-      SUBSIDIARY_NOT_FOUND: "용기 그룹을 찾을 수 없습니다",
-      PRODUCTION_LINE_NOT_FOUND: "생산 라인을 찾을 수 없습니다",
-      RECIPE_NOT_FOUND: "일부 레시피를 찾을 수 없습니다",
+      SUBSIDIARY_NOT_FOUND: "용기를 찾을 수 없습니다",
+      RECIPE_NOT_FOUND: "레시피를 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
+      BOM_NOT_MATCHED: "일부 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다",
     });
   }
 }

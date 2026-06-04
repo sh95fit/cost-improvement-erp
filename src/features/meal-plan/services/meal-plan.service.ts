@@ -19,6 +19,8 @@ import type {
   CopyMealPlanGroupInput,
 } from "../schemas/meal-plan.schema";
 
+import { findMatchingActiveBom } from "@/features/recipe/services/recipe-bom.service";
+
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /**
@@ -153,6 +155,25 @@ async function assertMealPlanInCompany(
   });
   if (!plan) throw new Error("NOT_FOUND");
   return plan;
+}
+
+// ════════════════════════════════════════════════════════════════
+// Phase 7-F1: CONTAINER 슬롯 BOM 매칭 검증 헬퍼
+// ════════════════════════════════════════════════════════════════
+async function resolveAndAssertBomMatch(
+  recipeId: string,
+  subsidiaryMasterId: string,
+  containerSlotIndex: number,
+): Promise<string> {
+  const match = await findMatchingActiveBom(
+    recipeId,
+    subsidiaryMasterId,
+    containerSlotIndex,
+  );
+  if (!match) {
+    throw new Error("BOM_NOT_MATCHED");
+  }
+  return match.bomId;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -573,6 +594,13 @@ export async function createMealPlanSlot(
     if (!sub) throw new Error("SUBSIDIARY_NOT_FOUND");
     if (!recipe) throw new Error("RECIPE_NOT_FOUND");
 
+    // Phase 7-F1: BOM 매칭 검증 + recipeBomId 자동 결정
+    const resolvedBomId = await resolveAndAssertBomMatch(
+      input.recipeId,
+      input.subsidiaryMasterId,
+      input.containerSlotIndex,
+    );    
+
     return prisma.mealPlanSlot.create({
       data: {
         mealPlanId,
@@ -584,7 +612,7 @@ export async function createMealPlanSlot(
         subsidiaryMasterId: input.subsidiaryMasterId,
         containerSlotIndex: input.containerSlotIndex,
         recipeId: input.recipeId,
-        recipeBomId: input.recipeBomId,
+        recipeBomId: resolvedBomId, // Phase 7-F1: 서버가 결정한 값으로 덮어씀
       },
       include: SLOT_INCLUDE,
     });
@@ -629,7 +657,12 @@ export async function updateMealPlanSlot(
         mealPlanGroup: { companyId, deletedAt: null },
       },
     },
-    select: { id: true, kind: true },
+    select: {
+      id: true,
+      kind: true,
+      subsidiaryMasterId: true,
+      containerSlotIndex: true,
+    },
   });
   if (!existing) throw new Error("NOT_FOUND");
 
@@ -672,21 +705,34 @@ export async function updateMealPlanSlot(
     if (input.recipeId !== undefined) {
       if (input.recipeId === null) {
         data.recipe = { disconnect: true };
+        data.recipeBom = { disconnect: true };
       } else {
         const recipe = await prisma.recipe.findFirst({
           where: { id: input.recipeId, companyId, deletedAt: null },
           select: { id: true },
         });
         if (!recipe) throw new Error("RECIPE_NOT_FOUND");
+
+        // Phase 7-F1: 최종 (subsidiary, slotIndex)로 BOM 매칭 검증
+        const finalSubsidiaryId =
+          input.subsidiaryMasterId ?? existing.subsidiaryMasterId;
+        const finalSlotIndex =
+          input.containerSlotIndex ?? existing.containerSlotIndex;
+
+        if (!finalSubsidiaryId || finalSlotIndex === null || finalSlotIndex === undefined) {
+          throw new Error("CONTAINER_SLOT_INFO_MISSING");
+        }
+
+        const resolvedBomId = await resolveAndAssertBomMatch(
+          input.recipeId,
+          finalSubsidiaryId,
+          finalSlotIndex,
+        );
         data.recipe = { connect: { id: input.recipeId } };
+        data.recipeBom = { connect: { id: resolvedBomId } };
       }
     }
-    if (input.recipeBomId !== undefined) {
-      data.recipeBom =
-        input.recipeBomId === null
-          ? { disconnect: true }
-          : { connect: { id: input.recipeBomId } };
-    }
+    // Phase 7-F1: input.recipeBomId는 더 이상 사용하지 않음 (서버가 결정)
   } else if (input.supplierItemId) {
     const supplierItem = await prisma.supplierItem.findFirst({
       where: {
@@ -821,6 +867,22 @@ export async function bulkCreateContainerSlots(
     }
   }
 
+  // Phase 7-F1: recipeId가 있는 행마다 BOM 매칭 검증
+  const bomMatchMap = new Map<number, string>();
+  for (let i = 0; i < input.items.length; i++) {
+    const it = input.items[i];
+    if (!it.recipeId) continue;
+    const match = await findMatchingActiveBom(
+      it.recipeId,
+      input.subsidiaryMasterId,
+      it.containerSlotIndex,
+    );
+    if (!match) {
+      throw new Error("BOM_NOT_MATCHED");
+    }
+    bomMatchMap.set(i, match.bomId);
+  }
+
   // 4) sortOrder 시작점 계산
   const lastSlot = await prisma.mealPlanSlot.findFirst({
     where: { mealPlanId, deletedAt: null },
@@ -829,13 +891,14 @@ export async function bulkCreateContainerSlots(
   });
   let nextSortOrder = (lastSlot?.sortOrder ?? -1) + 1;
 
-  const data: Prisma.MealPlanSlotCreateManyInput[] = input.items.map((it) => ({
+  const data: Prisma.MealPlanSlotCreateManyInput[] = input.items.map((it, i) => ({
     mealPlanId,
     kind: "CONTAINER",
     sortOrder: nextSortOrder++,
     subsidiaryMasterId: input.subsidiaryMasterId,
     containerSlotIndex: it.containerSlotIndex,
     recipeId: it.recipeId ?? null,
+    recipeBomId: bomMatchMap.get(i) ?? null, // Phase 7-F1
     productionLineId:
       it.productionLineId ?? input.defaultProductionLineId ?? null,
     quantity: it.quantity ?? 0,

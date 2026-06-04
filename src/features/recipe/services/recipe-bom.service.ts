@@ -287,3 +287,84 @@ export async function duplicateRecipeBOM(companyId: string, sourceBomId: string)
     });
   });
 }
+
+// ════════════════════════════════════════════════════════════════
+// Phase 7-F1: 매칭 가능 ACTIVE RecipeBOM 조회
+// ────────────────────────────────────────────────────────────────
+// RecipeBOMSlot은 soft delete 미사용 (schema 확인). RecipeBOM만 deletedAt 존재.
+// ════════════════════════════════════════════════════════════════
+
+export async function findMatchingActiveBom(
+  recipeId: string,
+  subsidiaryMasterId: string,
+  containerSlotIndex: number,
+): Promise<{ bomId: string; slotId: string; totalWeightG: number } | null> {
+  const bom = await prisma.recipeBOM.findFirst({
+    where: {
+      recipeId,
+      status: "ACTIVE",
+      deletedAt: null,
+    },
+    include: {
+      slots: {
+        where: {
+          subsidiaryMasterId,
+          slotIndex: containerSlotIndex,
+        },
+        select: { id: true, totalWeightG: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (!bom) return null;
+  const slot = bom.slots[0];
+  if (!slot) return null;
+  if (slot.totalWeightG <= 0) return null;
+
+  return { bomId: bom.id, slotId: slot.id, totalWeightG: slot.totalWeightG };
+}
+
+export async function getEligibleRecipesForContainerSlot(
+  companyId: string,
+  subsidiaryMasterId: string,
+  containerSlotIndex: number,
+): Promise<
+  { id: string; code: string; name: string; bomId: string; totalWeightG: number }[]
+> {
+  const boms = await prisma.recipeBOM.findMany({
+    where: {
+      status: "ACTIVE",
+      deletedAt: null,
+      recipe: { companyId, deletedAt: null },
+      slots: {
+        some: {
+          subsidiaryMasterId,
+          slotIndex: containerSlotIndex,
+          totalWeightG: { gt: 0 },
+        },
+      },
+    },
+    include: {
+      recipe: { select: { id: true, code: true, name: true } },
+      slots: {
+        where: {
+          subsidiaryMasterId,
+          slotIndex: containerSlotIndex,
+          totalWeightG: { gt: 0 },
+        },
+        select: { totalWeightG: true },
+        take: 1,
+      },
+    },
+    orderBy: { recipe: { name: "asc" } },
+  });
+
+  return boms.map((b) => ({
+    id: b.recipe.id,
+    code: b.recipe.code,
+    name: b.recipe.name,
+    bomId: b.id,
+    totalWeightG: b.slots[0]?.totalWeightG ?? 0,
+  }));
+}
