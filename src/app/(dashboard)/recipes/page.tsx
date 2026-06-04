@@ -23,12 +23,15 @@ export default function RecipesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRecipeUpdated = () => {
-    setSelectedRecipe(null);
+    // Phase 7-D: 상세 다이얼로그를 닫지 않는다.
+    // - 재료/BOM 연속 추가 시 다이얼로그가 사라지는 회귀 방지
+    // - 다이얼로그 닫기는 사용자의 명시적 X 클릭(onOpenChange)에서만 처리
+    // - 리스트 데이터는 refreshKey 증가로 재조회됨
     setRefreshKey((k) => k + 1);
   };
 
   const handleSemiProductUpdated = () => {
-    setSelectedSemiProduct(null);
+    // Phase 7-D: 상세 다이얼로그를 닫지 않는다 (recipe와 동일 정책)
     setRefreshKey((k) => k + 1);
   };
 
