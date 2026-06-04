@@ -81,7 +81,6 @@ import {
 import { getMealTemplatesAction } from "@/features/meal-template/actions/meal-template.action";
 import { getContainerGroupsAction } from "@/features/container/actions/container.action";
 import { getSubsidiariesAction as getMaterialSubsidiariesAction } from "@/features/material/actions/material.action";
-import { getRecipesAction } from "@/features/recipe/actions/recipe.action";
 import { getEligibleRecipesForContainerSlotAction } from "@/features/recipe/actions/recipe-bom.action";
 import { loadAllPages } from "@/lib/action-helpers";
 import type { PaginatedFetcher } from "@/lib/action-helpers";
@@ -294,7 +293,6 @@ export default function MealPlansPage() {
   const [containerOptions, setContainerOptions] = useState<ContainerOption[]>(
     [],
   );
-  const [recipeOptions, setRecipeOptions] = useState<RecipeOption[]>([]);
   // Phase 7-F2/F3: (subsidiaryId:slotIndex) → 적격 레시피 캐시
   const [eligibleRecipesCache, setEligibleRecipesCache] = useState<
     Record<string, RecipeOption[]>
@@ -460,13 +458,9 @@ export default function MealPlansPage() {
   // Phase 5-R Step 7-A: 슬롯 에디터용 옵션(용기/레시피/생산라인) 로딩
   const loadSlotEditorOptions = useCallback(async () => {
     try {
-      const [containers, recipes, lines] = await Promise.all([
+      const [containers, lines] = await Promise.all([
         loadAllPages<ContainerOption>(
           getContainerGroupsAction as PaginatedFetcher<ContainerOption>,
-          "name",
-        ),
-        loadAllPages<RecipeOption>(
-          getRecipesAction as PaginatedFetcher<RecipeOption>,
           "name",
         ),
         getActiveProductionLinesAction(),
@@ -476,11 +470,6 @@ export default function MealPlansPage() {
       } else {
         setContainerOptions(containers.items);
       }
-      if (recipes.error) {
-        logger.error("[MealPlansPage.loadSlotEditorOptions.recipes]", recipes.error);
-      } else {
-        setRecipeOptions(recipes.items);
-      }
       if (lines.success) {
         setProductionLineOptions(lines.data);
       } else {
@@ -488,7 +477,7 @@ export default function MealPlansPage() {
           "[MealPlansPage.loadSlotEditorOptions.lines]",
           lines.error?.message ?? "unknown",
         );
-      }
+      }           
     } catch (err) {
       logger.error("[MealPlansPage.loadSlotEditorOptions]", err);
     }
