@@ -1468,6 +1468,58 @@ LineupMealTemplateMap을 폐기하기로 결정.
 - 템플릿 페이지(`/meal-templates`)의 부자재 selector도 동일 패턴으로 점검
 - MealPlanAccessory 백엔드 테스트 보강 (Phase 10 일부 선행 가능)
 
+---
+
+## 🚧 Sprint 2 보강 라운드 — 사용자 검수 발견 사항 (2026-06-04)
+
+Phase 7-C 완료 후 사용자 직접 검수에서 4개 영역 우려사항 정리.
+
+### Issue-7-D — 레시피 식자재 연속 추가 회귀 (High)
+- **증상**: 식자재 추가 시 "연속 추가" 체크박스는 존재하나 1건 저장 시 다이얼로그 자동 닫힘 → 매번 재열기 필요
+- **PROGRESS 기록**: Phase 6에서 "연속 추가 모드 + combobox 전환"으로 해소되었다고 기록
+- **추정 원인**: 체크박스 state가 저장 핸들러 클로저에 캡처되지 않거나, 저장 후 무조건 close되는 코드 잔존
+- **다음 액션**: `src/features/recipe/components/recipe-detail-dialog.tsx`의 ingredient 추가 핸들러 점검 및 패치
+
+### Issue-7-F — 식단 슬롯 메뉴 배정 무제약 (High, 데이터 무결성 핵심)
+- **증상**: 식단 슬롯에 레시피 배정 시 BOM 존재/슬롯 매칭 검증 없음, `MealPlanSlot.recipeBomId` 미연결
+- **요구 비즈니스 규칙**:
+  - R1: 식단 슬롯 메뉴 배정 시 해당 레시피의 ACTIVE RecipeBOM이 존재해야 함
+  - R2: ACTIVE BOM이 현재 슬롯의 `(subsidiaryMasterId, containerSlotIndex)`에 대해 RecipeBOMSlot 행(totalWeightG > 0)을 가져야 함
+  - R3: 슬롯 배정 시 `MealPlanSlot.recipeBomId`를 자동으로 ACTIVE BOM id로 채움
+- **구현 방향**:
+  - 신규 액션: `getEligibleRecipesForContainerSlotAction(subsidiaryMasterId, containerSlotIndex)`
+  - 백엔드 validation: `updateMealPlanSlotAction` / `bulkCreateContainerSlotsAction`
+  - 프론트: 레시피 SearchableSelect 옵션 필터링 + recipeBomId 자동 저장
+- **Phase 9 차단 위험**: 미구현 시 자동 소요량 산출(materialRequirement)이 어느 BOM을 참조할지 모호
+
+### Issue-7-E — BOM 슬롯 totalWeightG 수동 입력 (Mid)
+- **증상**: 자재를 연결해도 슬롯 총중량은 별도 수동 입력 (items.weightG 합산과 동기화되지 않음)
+- **요구**: items.weightG 합산값으로 자동 표시 (수동 입력 칸 → 읽기전용 자동 표시)
+- **구현 방향**: 서비스 레이어에서 RecipeBOMSlotItem CRUD 시 부모 slot의 totalWeightG 자동 갱신 (Option A — DB 컬럼 유지, 동기화)
+
+### Issue-7-G — 단위 환산 가드 부재 (Mid)
+- **정책 확인 사항**: 
+  - 자재 마스터 unit은 발주/재고 표시 단위 (kg/L 허용)
+  - BOM 계산은 g/mL 단위로 통일 (RecipeBOMSlotItem.unit 기본값 "g")
+  - SupplierItem.supplyUnit + supplyUnitQty → UnitConversion 경유 → 자재 unit → global UnitConversion → BOM 단위(g)
+- **현재 환산 가능성**: 구조적으로는 **2단계 환산(공급단위 → 자재 unit → BOM g)으로 모든 패키지 표현 가능**. seed에 global `kg→g`, `L→mL` 사전 등록됨.
+- **보완 필요 항목 (가드 부재)**:
+  - 가드-① SupplierItem 등록 시 `supplyUnit`의 unitCategory가 자재 마스터의 unitCategory와 일치하는지 검증 (현재 검증 없음)
+  - 가드-② UnitConversion 등록 시 fromUnit/toUnit이 자재 unitCategory와 일치하는지 검증 (현재 검증 없음)
+  - 가드-③ SupplierItem 등록 시 supplyUnit → 자재 unit 환산 경로 존재 여부 사전 확인 + 미존재 시 경고 (현재 미확인 — Phase 9 진입 시 폭발 위험)
+  - 가드-④ 자재 폼/SupplierItem 폼에 "이 단위는 ... 단계로 환산됩니다" 도움말 (UX)
+- **참고**: 자재 unit이 정책상 g 통일이 의도인지 / kg/L 허용 후 BOM 계산 시 g 환산이 의도인지 사용자 확인 필요. 후자라면 현재 시드/구조와 일치하므로 가드만 보완하면 됨.
+
+### 진행 순서 (권장)
+1. Phase 7-D — 식자재 연속 추가 (작고 빠른 가치, 사용자 호소 즉시 해소)
+2. Phase 7-F — BOM 매칭 제약 (데이터 무결성, Phase 9 사전 정비)
+3. Phase 7-E — 총중량 자동 합산 (UX 일관성)
+4. Phase 7-G — 단위 환산 가드 (Phase 9 진입 전 필수)
+
+각 Phase 완료 시 본 섹션의 해당 Issue를 ✅로 갱신.
+
+---
+
 ### Phase 8 — MealCount + MealPlanAccessory 서비스/UI ⬜
 - **예정일**: 2026-05-19 ~ 2026-05-20
 - **예상 시간**: 4h
