@@ -60,6 +60,13 @@
 - Step 6-3c-A: MealCount 입력 UI 최소 구현 (commit `9ba2d21`)
 - Step 6-3c-A2: MealCount × MealPlan 1:1 통합 뷰 (commit `9078d01`)
 
+- **Phase 7-A/B/C** 완료 (별도 섹션 — 슬롯 상세 에디터 1차)
+- **Phase 7-D** 완료: 레시피·반제품 상세 다이얼로그 자동 닫힘 회귀 제거 (commit `f36a630`)
+- **Phase 7-D hotfix** 완료: 반제품 BOM 자재 셀렉트 비어있던 회귀 해소 — `materialListQuery` limit max 준수 + `loadAllPages` 적용 (commit `d782f7b`)
+- **Phase 7-F1** 완료: `findMatchingActiveBom` + `getEligibleRecipesForContainerSlot` 도입, `createMealPlanSlot` / `updateMealPlanSlot` / `bulkCreateContainerSlots` 서버 가드 (R1 ACTIVE BOM, R2 슬롯 일치, R3 totalWeightG>0, R4 recipeBomId 자동 기록), 에러 코드 `BOM_NOT_MATCHED` / `BOM_SLOT_NOT_MATCHED` / `BOM_SLOT_WEIGHT_ZERO` / `CONTAINER_SLOT_INFO_MISSING` (commit `1f15999`)
+- **Phase 7-F2/F3** 완료: 인라인 편집 + 일괄 배정 SearchableSelect를 `eligibleRecipesCache`(`subsidiaryId:slotIndex` 키) 기반으로 교체, 로딩/적격 없음 상태 placeholder + amber 경고, `openSlotEdit` / `handleBulkContainerChange`에서 사전 로드 (commit `ff12ed6`)
+- **Phase 7-F2/F3 cleanup** 완료: 미사용 `recipeOptions` state 제거 (commit `<여기에 Commit A의 해시>`)
+
 ### 남은 작업
 #### Sprint 2 기존 미완료 작업
 - Phase 2-e — 부자재-공급업체 연결 UX (대기)
@@ -157,7 +164,7 @@
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
 | 30 | MealPlanGroup | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 날짜 그룹 단순화) |
 | 31 | MealPlan | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 식사타입 × lineup, companyMealSlotId 단일 키) |
-| 32 | MealPlanSlot | S2 | P3-4 / 5-R / 7-A~F | ✅ schema·service·action·UI 완료 (Phase 7-F까지: 슬롯 에디터 + BOM 적격 가드 + 적격 레시피 필터) |
+| 32 | MealPlanSlot | S2 | P3-4 / 5-R | ✅ schema 완료 / ⏳ UI Phase 7에서 슬롯 에디터 보강 예정 |
 | 33 | MealCount | S2 | P8 / 5-R | ✅ schema·service·action·UI 완료 (Step 6-3c-A2, MealPlan 1:1) |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
@@ -1474,12 +1481,26 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 Phase 7-C 완료 후 사용자 직접 검수에서 4개 영역 우려사항 정리.
 
-- **Phase 7-A/B/C** 완료 (별도 섹션 — 슬롯 상세 에디터 1차)
-- **Phase 7-D** 완료: 레시피·반제품 상세 다이얼로그 자동 닫힘 회귀 제거 (commit `f36a630`)
-- **Phase 7-D hotfix** 완료: 반제품 BOM 자재 셀렉트 비어있던 회귀 해소 — `materialListQuery` limit max 준수 + `loadAllPages` 적용 (commit `d782f7b`)
-- **Phase 7-F1** 완료: `findMatchingActiveBom` + `getEligibleRecipesForContainerSlot` 도입, `createMealPlanSlot` / `updateMealPlanSlot` / `bulkCreateContainerSlots` 서버 가드 (R1 ACTIVE BOM, R2 슬롯 일치, R3 totalWeightG>0, R4 recipeBomId 자동 기록), 에러 코드 `BOM_NOT_MATCHED` / `BOM_SLOT_NOT_MATCHED` / `BOM_SLOT_WEIGHT_ZERO` / `CONTAINER_SLOT_INFO_MISSING` (commit `1f15999`)
-- **Phase 7-F2/F3** 완료: 인라인 편집 + 일괄 배정 SearchableSelect를 `eligibleRecipesCache`(`subsidiaryId:slotIndex` 키) 기반으로 교체, 로딩/적격 없음 상태 placeholder + amber 경고, `openSlotEdit` / `handleBulkContainerChange`에서 사전 로드 (commit `ff12ed6`)
-- **Phase 7-F2/F3 cleanup** 완료: 미사용 `recipeOptions` state 제거 (commit `<여기에 Commit A의 해시>`)
+### Issue-7-D — 레시피 식자재 연속 추가 회귀 (High) ✅ 해소
+- **증상**: 식자재 추가 시 "연속 추가" 체크박스 활성화에도 1건 저장 시 다이얼로그 자동 닫힘
+- **원인**: 부모 페이지(`recipes/page.tsx`, `semi-products/page.tsx`)의 `handleRecipeUpdated` / `handleSemiProductUpdated`에서 `setSelectedRecipe(null)` / `setSelectedSemiProduct(null)`을 호출 → 자식 다이얼로그 unmount
+- **부수 회귀**: 반제품 BOM에서 자재 셀렉트가 비어있던 별건 회귀도 함께 발견 → `materialListQuerySchema.limit max=100` 초과(200)로 Zod 검증 실패
+- **해소**: 
+  - commit `f36a630` — 부모 `setSelectedX(null)` 제거, `refreshKey` 증가만 유지
+  - commit `d782f7b` — `loadAllPages` 적용 + 에러 토스트 보강
+
+### Issue-7-F — 식단 슬롯 메뉴 배정 무제약 (High, 데이터 무결성 핵심) ✅ 해소
+- **증상**: 식단 슬롯에 레시피 배정 시 BOM 존재/슬롯 매칭 검증 없음, `MealPlanSlot.recipeBomId` 미연결
+- **요구 비즈니스 규칙** (R1~R4 모두 구현됨):
+  - R1: ACTIVE RecipeBOM 존재 검증
+  - R2: 해당 `(subsidiaryMasterId, containerSlotIndex)`에 RecipeBOMSlot 행 존재
+  - R3: `totalWeightG > 0` 검증
+  - R4: `MealPlanSlot.recipeBomId` 서버 자동 기록 (클라이언트 입력값 무시)
+- **해소**:
+  - commit `1f15999` (7-F1) — 서버 가드: `findMatchingActiveBom`, `getEligibleRecipesForContainerSlot`, `createMealPlanSlot` / `updateMealPlanSlot` / `bulkCreateContainerSlots`에서 검증 + 자동 매핑. 에러 코드 `BOM_NOT_MATCHED` / `BOM_SLOT_NOT_MATCHED` / `BOM_SLOT_WEIGHT_ZERO` / `CONTAINER_SLOT_INFO_MISSING`
+  - commit `ff12ed6` (7-F2/F3) — UI: 인라인 편집 + 일괄 배정 SearchableSelect를 `eligibleRecipesCache` 기반으로 교체, 로딩·적격 없음 placeholder + amber 경고
+  - commit `f56b312` — 미사용 `recipeOptions` state cleanup
+- **Phase 9 차단 해제**: 자동 소요량 산출(materialRequirement)이 참조할 BOM이 결정적으로 확정됨
 
 ### Issue-7-E — BOM 슬롯 totalWeightG 수동 입력 (Mid)
 - **증상**: 자재를 연결해도 슬롯 총중량은 별도 수동 입력 (items.weightG 합산과 동기화되지 않음)
