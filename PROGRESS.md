@@ -65,8 +65,8 @@
 - **Phase 7-D hotfix** 완료: 반제품 BOM 자재 셀렉트 비어있던 회귀 해소 — `materialListQuery` limit max 준수 + `loadAllPages` 적용 (commit `d782f7b`)
 - **Phase 7-F1** 완료: `findMatchingActiveBom` + `getEligibleRecipesForContainerSlot` 도입, `createMealPlanSlot` / `updateMealPlanSlot` / `bulkCreateContainerSlots` 서버 가드 (R1 ACTIVE BOM, R2 슬롯 일치, R3 totalWeightG>0, R4 recipeBomId 자동 기록), 에러 코드 `BOM_NOT_MATCHED` / `BOM_SLOT_NOT_MATCHED` / `BOM_SLOT_WEIGHT_ZERO` / `CONTAINER_SLOT_INFO_MISSING` (commit `1f15999`)
 - **Phase 7-F2/F3** 완료: 인라인 편집 + 일괄 배정 SearchableSelect를 `eligibleRecipesCache`(`subsidiaryId:slotIndex` 키) 기반으로 교체, 로딩/적격 없음 상태 placeholder + amber 경고, `openSlotEdit` / `handleBulkContainerChange`에서 사전 로드 (commit `ff12ed6`)
-- **Phase 7-F2/F3 cleanup** 완료: 미사용 `recipeOptions` state 제거 (commit `<여기에 Commit A의 해시>`)
-- **Phase 8 Step 8-A** 완료: `meal-plan.service.test.ts` 신규 작성 — MealPlanAccessory CRUD + Phase 7-F1 BOM 가드 + MealCount upsert + applyMealTemplate 매핑 등 18+ 케이스 추가 (commit `<Step 8-A 해시>`)
+- **Phase 7-F2/F3 cleanup** 완료: 미사용 `recipeOptions` state 제거 (commit `f56b312`)
+- **Phase 8 Step 8-A** 완료: `meal-plan.service.test.ts` 신규 작성 — MealPlanAccessory CRUD + Phase 7-F1 BOM 가드 + MealCount upsert + applyMealTemplate 매핑 등 18 케이스 추가 (commit `6cef14e`)
 
 ### 남은 작업
 #### Sprint 2 기존 미완료 작업
@@ -166,7 +166,7 @@
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
 | 30 | MealPlanGroup | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 날짜 그룹 단순화) |
 | 31 | MealPlan | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 식사타입 × lineup, companyMealSlotId 단일 키) |
-| 32 | MealPlanSlot | S2 | P3-4 / 5-R | ✅ schema 완료 / ⏳ UI Phase 7에서 슬롯 에디터 보강 예정 |
+| 32 | MealPlanSlot | S2 | P3-4 / 5-R / 7-A~F | ✅ schema·service·action·UI 완료 (Phase 7-F까지: 슬롯 에디터 + BOM 적격 가드 + 적격 레시피 필터 + 서비스 테스트 Step 8-A) |
 | 33 | MealCount | S2 | P8 / 5-R | ✅ schema·service·action·UI 완료 (Step 6-3c-A2, MealPlan 1:1) |
 | 34 | MealPlanAccessory | S2 | P7-B2 / P8 | ✅ schema·service·action·UI 완료 (Phase 7-B2) + 테스트 (Step 8-A) |
 | 35 | Lineup | S6 | P5 | ⬜ |
