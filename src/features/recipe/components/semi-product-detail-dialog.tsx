@@ -59,6 +59,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SemiProductRow } from "./semi-product-list";
+import { loadAllPages, type PaginatedFetcher } from "@/lib/action-helpers";
+import { logger } from "@/lib/utils/logger";
 
 type BOMItemRow = {
   id: string;
@@ -147,11 +149,27 @@ export function SemiProductDetailDialog({ semiProduct, open, onOpenChange, onUpd
   }, [semiProduct.id]);
 
   const loadOptions = useCallback(async () => {
-    const matResult = await getMaterialsAction({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
-    if (matResult.success) {
-      setMaterialOptions(
-        matResult.data.items.map((m) => ({ id: m.id, name: m.name, code: m.code, unit: m.unit }))
+    try {
+      const matResult = await loadAllPages<{ id: string; name: string; code: string; unit: string }>(
+        getMaterialsAction as PaginatedFetcher<{ id: string; name: string; code: string; unit: string }>,
+        "name",
       );
+      if (matResult.error) {
+        logger.error("[SemiProductDetailDialog.loadOptions] 자재 로딩 실패:", matResult.error);
+        toast.error(`자재 목록 로딩 실패: ${matResult.error}`);
+        return;
+      }
+      setMaterialOptions(
+        matResult.items.map((m) => ({
+          id: m.id,
+          name: m.name,
+          code: m.code,
+          unit: m.unit,
+        })),
+      );
+    } catch (err) {
+      logger.error("[SemiProductDetailDialog.loadOptions] 예외:", err);
+      toast.error("자재 목록을 불러오지 못했습니다");
     }
   }, []);
 
