@@ -1,7 +1,7 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
-> 마지막 갱신: 2026-06-02 (Phase 7-C — 슬롯 그룹화 + 부자재 도메인 분리 + 부자재 수정 자유화 완료)
+> 마지막 갱신: 2026-06-04 (Phase 7-D 다이얼로그 유지 + 자재 셀렉트 회귀 해소 + Phase 7-F BOM 적격 가드 완료)
 
 ---
 
@@ -23,8 +23,8 @@
 ## 📍 현재 상태 요약 / 완료 범위 / 남은 작업 / 보류 범위 / handoff 기준
 
 ### 현재 상태 요약
-- **현재 기준 완료 지점**: Sprint 2 / Phase 7-C 완료 (슬롯 상세 에디터 UI 1차 완성: 일괄 배정 + 인라인 편집 + 부자재 CRUD + 슬롯 그룹화 + 부자재 도메인 분리)
-- **현재 프로젝트 상태**: Sprint 2 재개 진행 중 — Phase 2-e → 6 → **7 (진행 중, 7-D 다음 착수)** → 8 → 9 → 10 → 11작업으로 완료되었으며, 이제 원래 미완료 Phase를 재개한다.
+- **현재 기준 완료 지점**: Sprint 2 / Phase 7-D + 7-F 완료 (다이얼로그 유지·자재 셀렉트 회귀 해소·레시피×용기 BOM 적격 가드 + UI 적격 필터)
+- **현재 프로젝트 상태**: Sprint 2 재개 진행 중 — Phase 2-e → 6 → **7 (진행 중, 7-E 또는 8 다음 착수)** → 8 → 9 → 10 → 11
 - **현재 블로커**: 없음
 - **해소된 과거 블로커** (Phase 5-R 라운드에서 해결):
   1. ✅ `MealPlanGroup.lineupId` 제거 — Step 1.x에서 schema 분리
@@ -157,7 +157,7 @@
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
 | 30 | MealPlanGroup | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 날짜 그룹 단순화) |
 | 31 | MealPlan | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 식사타입 × lineup, companyMealSlotId 단일 키) |
-| 32 | MealPlanSlot | S2 | P3-4 / 5-R | ✅ schema 완료 / ⏳ UI Phase 7에서 슬롯 에디터 보강 예정 |
+| 32 | MealPlanSlot | S2 | P3-4 / 5-R / 7-A~F | ✅ schema·service·action·UI 완료 (Phase 7-F까지: 슬롯 에디터 + BOM 적격 가드 + 적격 레시피 필터) |
 | 33 | MealCount | S2 | P8 / 5-R | ✅ schema·service·action·UI 완료 (Step 6-3c-A2, MealPlan 1:1) |
 | 34 | MealPlanAccessory | S2 | P8 | ⬜ |
 | 35 | Lineup | S6 | P5 | ⬜ |
@@ -1474,23 +1474,12 @@ LineupMealTemplateMap을 폐기하기로 결정.
 
 Phase 7-C 완료 후 사용자 직접 검수에서 4개 영역 우려사항 정리.
 
-### Issue-7-D — 레시피 식자재 연속 추가 회귀 (High)
-- **증상**: 식자재 추가 시 "연속 추가" 체크박스는 존재하나 1건 저장 시 다이얼로그 자동 닫힘 → 매번 재열기 필요
-- **PROGRESS 기록**: Phase 6에서 "연속 추가 모드 + combobox 전환"으로 해소되었다고 기록
-- **추정 원인**: 체크박스 state가 저장 핸들러 클로저에 캡처되지 않거나, 저장 후 무조건 close되는 코드 잔존
-- **다음 액션**: `src/features/recipe/components/recipe-detail-dialog.tsx`의 ingredient 추가 핸들러 점검 및 패치
-
-### Issue-7-F — 식단 슬롯 메뉴 배정 무제약 (High, 데이터 무결성 핵심)
-- **증상**: 식단 슬롯에 레시피 배정 시 BOM 존재/슬롯 매칭 검증 없음, `MealPlanSlot.recipeBomId` 미연결
-- **요구 비즈니스 규칙**:
-  - R1: 식단 슬롯 메뉴 배정 시 해당 레시피의 ACTIVE RecipeBOM이 존재해야 함
-  - R2: ACTIVE BOM이 현재 슬롯의 `(subsidiaryMasterId, containerSlotIndex)`에 대해 RecipeBOMSlot 행(totalWeightG > 0)을 가져야 함
-  - R3: 슬롯 배정 시 `MealPlanSlot.recipeBomId`를 자동으로 ACTIVE BOM id로 채움
-- **구현 방향**:
-  - 신규 액션: `getEligibleRecipesForContainerSlotAction(subsidiaryMasterId, containerSlotIndex)`
-  - 백엔드 validation: `updateMealPlanSlotAction` / `bulkCreateContainerSlotsAction`
-  - 프론트: 레시피 SearchableSelect 옵션 필터링 + recipeBomId 자동 저장
-- **Phase 9 차단 위험**: 미구현 시 자동 소요량 산출(materialRequirement)이 어느 BOM을 참조할지 모호
+- **Phase 7-A/B/C** 완료 (별도 섹션 — 슬롯 상세 에디터 1차)
+- **Phase 7-D** 완료: 레시피·반제품 상세 다이얼로그 자동 닫힘 회귀 제거 (commit `f36a630`)
+- **Phase 7-D hotfix** 완료: 반제품 BOM 자재 셀렉트 비어있던 회귀 해소 — `materialListQuery` limit max 준수 + `loadAllPages` 적용 (commit `d782f7b`)
+- **Phase 7-F1** 완료: `findMatchingActiveBom` + `getEligibleRecipesForContainerSlot` 도입, `createMealPlanSlot` / `updateMealPlanSlot` / `bulkCreateContainerSlots` 서버 가드 (R1 ACTIVE BOM, R2 슬롯 일치, R3 totalWeightG>0, R4 recipeBomId 자동 기록), 에러 코드 `BOM_NOT_MATCHED` / `BOM_SLOT_NOT_MATCHED` / `BOM_SLOT_WEIGHT_ZERO` / `CONTAINER_SLOT_INFO_MISSING` (commit `1f15999`)
+- **Phase 7-F2/F3** 완료: 인라인 편집 + 일괄 배정 SearchableSelect를 `eligibleRecipesCache`(`subsidiaryId:slotIndex` 키) 기반으로 교체, 로딩/적격 없음 상태 placeholder + amber 경고, `openSlotEdit` / `handleBulkContainerChange`에서 사전 로드 (commit `ff12ed6`)
+- **Phase 7-F2/F3 cleanup** 완료: 미사용 `recipeOptions` state 제거 (commit `<여기에 Commit A의 해시>`)
 
 ### Issue-7-E — BOM 슬롯 totalWeightG 수동 입력 (Mid)
 - **증상**: 자재를 연결해도 슬롯 총중량은 별도 수동 입력 (items.weightG 합산과 동기화되지 않음)
