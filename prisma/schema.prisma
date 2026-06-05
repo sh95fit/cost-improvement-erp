@@ -373,6 +373,7 @@ model Location {
   transfersFrom         InventoryTransfer[]    @relation("TransferFrom")
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
   shippingOrders        ShippingOrder[]
+  materialRequirements  MaterialRequirement[] 
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -398,8 +399,9 @@ model ProductionLine {
 
   company       Company        @relation(fields: [companyId], references: [id])
   location      Location       @relation(fields: [locationId], references: [id])
-  cookingPlans  CookingPlan[]
-  mealPlanSlots MealPlanSlot[]
+  cookingPlans         CookingPlan[]
+  mealPlanSlots        MealPlanSlot[]
+  materialRequirements MaterialRequirement[]  
 
   @@unique([companyId, code])             
   @@index([companyId])
@@ -1181,20 +1183,33 @@ model AutoGenLog {
 }
 
 model MaterialRequirement {
-  id               String   @id @default(cuid())
-  companyId        String   @map("company_id")
-  mealPlanGroupId  String   @map("meal_plan_group_id")
-  materialMasterId String   @map("material_master_id")
-  requiredQty      Float    @map("required_qty")
-  unit             String
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(cuid())
+  companyId          String   @map("company_id")
+  mealPlanGroupId    String   @map("meal_plan_group_id")
+  // Phase 9-A: 라인/위치 롤업
+  productionLineId   String?  @map("production_line_id")
+  locationId         String?  @map("location_id")
+  materialMasterId   String   @map("material_master_id")
+  requiredQty        Float    @map("required_qty")
+  unit               String
+  // Phase 9-A: 재생성 버전 관리
+  generationVersion  Int      @default(1) @map("generation_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt      @map("updated_at")
 
-  company        Company        @relation(fields: [companyId], references: [id])
-  mealPlanGroup  MealPlanGroup  @relation(fields: [mealPlanGroupId], references: [id])
-  materialMaster MaterialMaster @relation(fields: [materialMasterId], references: [id])
+  company        Company         @relation(fields: [companyId], references: [id])
+  mealPlanGroup  MealPlanGroup   @relation(fields: [mealPlanGroupId], references: [id])
+  productionLine ProductionLine? @relation(fields: [productionLineId], references: [id])
+  location       Location?       @relation(fields: [locationId], references: [id])
+  materialMaster MaterialMaster  @relation(fields: [materialMasterId], references: [id])
+  purchaseOrderItems  PurchaseOrderItem[]  // PO 자동할당 추적  
 
+  // 자동생성 idempotency 보장
+  @@unique([mealPlanGroupId, productionLineId, materialMasterId], name: "uq_mr_group_line_material")
   @@index([companyId])
   @@index([mealPlanGroupId])
+  @@index([productionLineId])
+  @@index([locationId])
   @@index([materialMasterId])
   @@map("material_requirements")
 }
@@ -1241,7 +1256,10 @@ model PurchaseOrderItem {
   systemQuantity     Float?   @map("system_quantity")
   adjustedQuantity   Float?   @map("adjusted_quantity")
   adjustmentReason   String?  @map("adjustment_reason")
-  sourceType         String?  @map("source_type")
+  sourceType            String?  @map("source_type")
+  // 자동발주 추적용 (MR 1건 → POItem 1건 매핑)
+  materialRequirementId String?  @map("material_requirement_id")
+  quantity              Float
   quantity           Float
   unitPrice          Float    @map("unit_price")
   totalPrice         Float    @map("total_price")
@@ -1249,14 +1267,16 @@ model PurchaseOrderItem {
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  purchaseOrder      PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
-  supplierItem       SupplierItem        @relation(fields: [supplierItemId], references: [id])
-  materialMaster     MaterialMaster?     @relation(fields: [materialMasterId], references: [id])
-  subsidiaryMaster   SubsidiaryMaster?   @relation(fields: [subsidiaryMasterId], references: [id])
-  receivingNoteItems ReceivingNoteItem[]
+  purchaseOrder       PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  supplierItem        SupplierItem         @relation(fields: [supplierItemId], references: [id])
+  materialMaster      MaterialMaster?      @relation(fields: [materialMasterId], references: [id])
+  subsidiaryMaster    SubsidiaryMaster?    @relation(fields: [subsidiaryMasterId], references: [id])
+  materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
+  receivingNoteItems  ReceivingNoteItem[]
 
   @@index([purchaseOrderId])
   @@index([supplierItemId])
+  @@index([materialRequirementId])  
   @@map("purchase_order_items")
 }
 
