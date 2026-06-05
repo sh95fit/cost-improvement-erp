@@ -21,6 +21,7 @@ import {
   LayoutTemplate,
   Layers,
   Factory,
+  Cog,
 } from "lucide-react";
 
 const navigation = [
@@ -30,6 +31,7 @@ const navigation = [
   { name: "단위 관리", href: "/units", icon: Ruler },
   { name: "공급업체 관리", href: "/suppliers", icon: Building2 },
   { name: "공장/창고 관리", href: "/locations", icon: Factory },
+  { name: "생산라인 관리", href: "/production-lines", icon: Cog },
   { name: "용기 관리", href: "/containers", icon: PackageOpen },
   { name: "식단 템플릿", href: "/meal-templates", icon: LayoutTemplate },
   { name: "상품 라인업", href: "/lineups", icon: Layers }, 
