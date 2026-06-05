@@ -1259,7 +1259,6 @@ model PurchaseOrderItem {
   sourceType            String?  @map("source_type")
   // 자동발주 추적용 (MR 1건 → POItem 1건 매핑)
   materialRequirementId String?  @map("material_requirement_id")
-  quantity              Float
   quantity           Float
   unitPrice          Float    @map("unit_price")
   totalPrice         Float    @map("total_price")
