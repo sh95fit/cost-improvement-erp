@@ -1186,31 +1186,34 @@ model MaterialRequirement {
   id                 String   @id @default(cuid())
   companyId          String   @map("company_id")
   mealPlanGroupId    String   @map("meal_plan_group_id")
-  // Phase 9-A: 라인/위치 롤업
-  productionLineId   String?  @map("production_line_id")
-  locationId         String?  @map("location_id")
+  // Phase 9-A: 라인/위치 롤업 (NOT NULL 승급 — 라인 미배정 슬롯 산출 차단)
+  productionLineId   String   @map("production_line_id")
+  locationId         String   @map("location_id")
   materialMasterId   String   @map("material_master_id")
   requiredQty        Float    @map("required_qty")
   unit               String
-  // Phase 9-A: 재생성 버전 관리
-  generationVersion  Int      @default(1) @map("generation_version")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt      @map("updated_at")
+  // Phase 9-A: 재생성 버전 관리 + soft-delete (UNDELETE 패턴 지원)
+  generationVersion  Int       @default(1) @map("generation_version")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt      @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
 
   company        Company         @relation(fields: [companyId], references: [id])
   mealPlanGroup  MealPlanGroup   @relation(fields: [mealPlanGroupId], references: [id])
-  productionLine ProductionLine? @relation(fields: [productionLineId], references: [id])
-  location       Location?       @relation(fields: [locationId], references: [id])
+  productionLine ProductionLine  @relation(fields: [productionLineId], references: [id])
+  location       Location        @relation(fields: [locationId], references: [id])
   materialMaster MaterialMaster  @relation(fields: [materialMasterId], references: [id])
-  purchaseOrderItems  PurchaseOrderItem[]  // PO 자동할당 추적  
+  purchaseOrderItems  PurchaseOrderItem[]  // PO 자동할당 추적
 
   // 자동생성 idempotency 보장
+  // 같은 키 충돌은 서비스 레이어 UPSERT/UNDELETE 패턴으로 회피 (DB는 일반 unique 유지)
   @@unique([mealPlanGroupId, productionLineId, materialMasterId], name: "uq_mr_group_line_material")
   @@index([companyId])
   @@index([mealPlanGroupId])
   @@index([productionLineId])
   @@index([locationId])
   @@index([materialMasterId])
+  @@index([deletedAt])
   @@map("material_requirements")
 }
 
