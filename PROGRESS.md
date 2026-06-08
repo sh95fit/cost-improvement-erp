@@ -18,7 +18,48 @@
 | 3 | **프로세스 검증** | `npm run dev` 실행 → 해당 Phase의 기능을 UI에서 직접 조작하여 확인 | 모든 시나리오 통과 |
 | 4 | **테스트** | `npm run test` 실행 → 관련 서비스 테스트 통과 확인, 필요 시 새 테스트 작성 | 전체 테스트 PASS |
 | 5 | **보완** | 검증에서 발견된 버그·누락 수정 → 1~4 반복 | 재검증 통과 |
-| 6 | **PROGRESS.md 갱신 → 다음 단계** | 본 문서의 해당 Phase 상태를 ✅로 변경, 변경사항·이슈 기록 후 다음 Phase 진행 | 문서 커밋 완료 |
+| 6 | **PROGRESS.md 갱신** | 본 문서의 해당 Phase 상태를 ✅로 변경하고 커밋 해시·변경 파일·이슈를 기록. Sprint 진행 중에는 본 문서가 단일 진실 공급원(SSOT) | 본 문서 커밋·푸시 완료, GitHub에서 갱신 확인 |
+| 7 | **다음 단계 진행 또는 Sprint 종결 처리** | Phase가 Sprint 내부면 다음 Phase로 진행. Phase가 Sprint 마지막이면 아래 "스프린트 종결 절차"를 수행한 뒤 다음 Sprint 진입 | 다음 Phase 착수 또는 Sprint 아카이브 커밋 완료 |
+
+---
+
+### 📁 문서 최신화 정책 (SSOT 규칙)
+
+본 프로젝트의 진행 상태 문서는 **Sprint 단위 라이프사이클**을 따른다.
+
+#### 1. Sprint 진행 중 (Active Sprint)
+- 현재 진행 중인 Sprint의 모든 Phase 이력은 **`PROGRESS.md` 본문**에 직접 기록한다.
+- 모든 Phase 완료 시 다음 항목을 동일 커밋에 포함한다:
+  - 해당 Phase 상태 ✅ 표시 (또는 ⏳/⬜ 갱신)
+  - 커밋 해시(짧은 해시), 변경 파일 목록, 주요 의사결정/이슈
+  - 누적 테스트 수, TypeScript 오류 수, 미해결 후속 항목
+- 스키마 모델이 추가·확장되면 같은 커밋에서 **`docs/progress/SCHEMA_COVERAGE.md`** 의 해당 행 상태와 "변경 이력" 섹션을 함께 갱신한다.
+- **금지**: Sprint 진행 중에 해당 Sprint 이력을 `docs/progress/SPRINT{n}.md`에 미리 이동하지 않는다 (이중 기록 방지).
+
+#### 2. Sprint 종결 시점 (Sprint Closure)
+Sprint의 마지막 Phase + 최종 QA가 모두 ✅가 된 시점에 다음 절차를 수행한다.
+
+1. Sprint 통계 확정: 총 Phase 수, 커밋 수, 변경 파일 수, 테스트 수, TS 오류 수, any 사용 수, 해소 이슈 번호.
+2. `PROGRESS.md`에 누적되어 있는 해당 Sprint 상세 이력을 **`docs/progress/SPRINT{n}.md`** 로 이동(컷·앤·페이스트, 누락 금지).
+3. `PROGRESS.md` 본문에는 다음만 남긴다:
+   - Sprint 한 줄 요약 (기간, 총 Phase, 누적 테스트, 0 errors 등)
+   - `> 상세 이력 → docs/progress/SPRINT{n}.md` 링크
+4. `SCHEMA_COVERAGE.md` 변경 이력에 "Sprint {n} 종결" 라인을 추가한다.
+5. 커밋 메시지 컨벤션:
+   - `docs(progress): close sprint {n} — archive history to SPRINT{n}.md`
+6. 동일 푸시 안에서 다음 Sprint의 `PROGRESS.md` 상단 "현재 상태 요약"의 기준 Sprint 번호를 갱신한다.
+
+#### 3. 문서 책임 매트릭스
+
+| 문서 | Sprint 진행 중 갱신 | Sprint 종결 시 갱신 | 역할 |
+|------|---------------------|---------------------|------|
+| `PROGRESS.md` | 매 Phase 완료마다 | 해당 Sprint 섹션을 요약으로 축소 | 현재 상태 SSOT, 대시보드 |
+| `docs/progress/SPRINT{n}.md` | **갱신하지 않음** | Sprint 종결 시 일괄 이관 | 종결된 Sprint 아카이브 |
+| `docs/progress/SCHEMA_COVERAGE.md` | 모델 상태 변동 시마다 | "변경 이력" 라인 추가 | 모델 구현 현황 트래커 |
+
+#### 4. 예외
+- 핫픽스/회귀 수정은 진행 중인 Sprint에 새 Phase 번호(예: `7-D hotfix`)로 추가하고 동일 규칙을 따른다.
+- 이미 종결된 Sprint에 대한 회고/추가 메모는 해당 `SPRINT{n}.md` 하단에 "사후 추가" 섹션으로 append하되, `PROGRESS.md`는 건드리지 않는다.
 
 ---
 
