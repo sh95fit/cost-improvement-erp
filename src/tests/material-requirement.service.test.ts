@@ -81,7 +81,7 @@ describe("generateMaterialRequirements — 정상 산출", () => {
       generationVersion: 1,
     });
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -119,7 +119,7 @@ describe("generateMaterialRequirements — 정상 산출", () => {
       generationVersion: 1,
     });
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -144,7 +144,7 @@ describe("generateMaterialRequirements — 정상 산출", () => {
       generationVersion: 1,
     });
 
-    await generateMaterialRequirements({
+    await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "FINAL",
     });
@@ -170,7 +170,7 @@ describe("generateMaterialRequirements — 정상 산출", () => {
     mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: GROUP_ID,
         countSource: "ESTIMATED",
       }),
@@ -186,7 +186,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(null);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: "nope",
         countSource: "ESTIMATED",
       }),
@@ -201,7 +201,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     ]);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: GROUP_ID,
         countSource: "ESTIMATED",
       }),
@@ -216,7 +216,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([slot]);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: GROUP_ID,
         countSource: "ESTIMATED",
       }),
@@ -231,7 +231,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([makeContainerSlot()]);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: GROUP_ID,
         countSource: "ESTIMATED",
       }),
@@ -253,7 +253,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     mockPrisma.unitConversion.findFirst.mockResolvedValueOnce(null);
 
     await expect(
-      generateMaterialRequirements({
+      generateMaterialRequirements(COMPANY_ID, {
         mealPlanGroupId: GROUP_ID,
         countSource: "ESTIMATED",
       }),
@@ -281,7 +281,7 @@ describe("generateMaterialRequirements — 단위 환산", () => {
       generationVersion: 1,
     });
 
-    await generateMaterialRequirements({
+    await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -313,7 +313,7 @@ describe("generateMaterialRequirements — 단위 환산", () => {
       generationVersion: 1,
     });
 
-    await generateMaterialRequirements({
+    await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -351,7 +351,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       },
     ]);
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -386,7 +386,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       generationVersion: 3,
     });
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -425,7 +425,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       generationVersion: 3,
     });
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -478,7 +478,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       generationVersion: 2,
     });
 
-    const result = await generateMaterialRequirements({
+    const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
     });
@@ -505,7 +505,7 @@ describe("listMaterialRequirements", () => {
     mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
     mockPrisma.materialRequirement.count.mockResolvedValueOnce(0);
 
-    await listMaterialRequirements({
+    await listMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       activeOnly: true,
       page: 1,
@@ -526,7 +526,7 @@ describe("listMaterialRequirements", () => {
     mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
     mockPrisma.materialRequirement.count.mockResolvedValueOnce(0);
 
-    await listMaterialRequirements({
+    await listMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "FINAL",
       activeOnly: true,
@@ -544,13 +544,13 @@ describe("listMaterialRequirements", () => {
 
 describe("getMaterialRequirementById", () => {
   it("id로 단건 조회 (없으면 null)", async () => {
-    mockPrisma.materialRequirement.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.materialRequirement.findFirst.mockResolvedValueOnce(null);
 
-    const result = await getMaterialRequirementById({ id: "nope" });
+    const result = await getMaterialRequirementById(COMPANY_ID, { id: "nope" });
 
     expect(result).toBeNull();
-    expect(mockPrisma.materialRequirement.findUnique).toHaveBeenCalledWith({
-      where: { id: "nope" },
+    expect(mockPrisma.materialRequirement.findFirst).toHaveBeenCalledWith({
+      where: { id: "nope", companyId: COMPANY_ID },
     });
   });
 });

@@ -61,14 +61,15 @@ const EPSILON = 1e-6;
 // ============================================================
 
 export async function generateMaterialRequirements(
+  companyId: string,                                       
   input: GenerateMaterialRequirementsInput,
 ): Promise<GenerateResult> {
   const { mealPlanGroupId, countSource } = input;
 
   return await prisma.$transaction(async (tx) => {
-    // ---- Step 1-1. 그룹 조회 ----
+    // ---- Step 1-1. 그룹 조회 (회사 가드 포함) ----
     const group = await tx.mealPlanGroup.findFirst({
-      where: { id: mealPlanGroupId, deletedAt: null },
+      where: { id: mealPlanGroupId, companyId, deletedAt: null },  
       select: { id: true, companyId: true },
     });
     if (!group) {
@@ -216,6 +217,7 @@ export async function generateMaterialRequirements(
 // ============================================================
 
 export async function listMaterialRequirements(
+  companyId: string,      
   query: ListMaterialRequirementsQuery,
 ): Promise<{
   items: MaterialRequirement[];
@@ -234,6 +236,7 @@ export async function listMaterialRequirements(
   } = query;
 
   const where: Prisma.MaterialRequirementWhereInput = {
+    companyId, 
     mealPlanGroupId,
     ...(productionLineId ? { productionLineId } : {}),
     ...(materialMasterId ? { materialMasterId } : {}),
@@ -263,10 +266,11 @@ export async function listMaterialRequirements(
 // ============================================================
 
 export async function getMaterialRequirementById(
+  companyId: string,       
   input: GetMaterialRequirementByIdInput,
 ): Promise<MaterialRequirement | null> {
-  return await prisma.materialRequirement.findUnique({
-    where: { id: input.id },
+  return await prisma.materialRequirement.findFirst({     
+    where: { id: input.id, companyId },   
   });
 }
 
