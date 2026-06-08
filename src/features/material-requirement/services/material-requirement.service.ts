@@ -214,13 +214,49 @@ export async function generateMaterialRequirements(
 
 // ============================================================
 // 2. listMaterialRequirements
+// ------------------------------------------------------------
+// UI 표시용으로 materialMaster / productionLine / location 관계를
+// 한 번에 조회 (N+1 방지). 정렬은 라인 → 자재 → countSource 순.
 // ============================================================
 
+// UI 표시에 필요한 관계 include 형태
+const LIST_INCLUDE = {
+  materialMaster: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      unit: true,            // MaterialMaster.unit (예: "kg", "ea")
+      unitCategory: true,
+      materialType: true,
+    },
+  },
+  productionLine: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      locationId: true,
+    },
+  },
+  location: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+    },
+  },
+} satisfies Prisma.MaterialRequirementInclude;
+
+export type MaterialRequirementListItem = Prisma.MaterialRequirementGetPayload<{
+  include: typeof LIST_INCLUDE;
+}>;
+
 export async function listMaterialRequirements(
-  companyId: string,      
+  companyId: string,
   query: ListMaterialRequirementsQuery,
 ): Promise<{
-  items: MaterialRequirement[];
+  items: MaterialRequirementListItem[];
   total: number;
   page: number;
   limit: number;
@@ -236,7 +272,7 @@ export async function listMaterialRequirements(
   } = query;
 
   const where: Prisma.MaterialRequirementWhereInput = {
-    companyId, 
+    companyId,
     mealPlanGroupId,
     ...(productionLineId ? { productionLineId } : {}),
     ...(materialMasterId ? { materialMasterId } : {}),
@@ -247,9 +283,10 @@ export async function listMaterialRequirements(
   const [items, total] = await Promise.all([
     prisma.materialRequirement.findMany({
       where,
+      include: LIST_INCLUDE,
       orderBy: [
-        { productionLineId: "asc" },
-        { materialMasterId: "asc" },
+        { productionLine: { name: "asc" } },
+        { materialMaster: { name: "asc" } },
         { countSource: "asc" },
       ],
       skip: (page - 1) * limit,

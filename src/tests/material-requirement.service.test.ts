@@ -518,8 +518,66 @@ describe("listMaterialRequirements", () => {
           mealPlanGroupId: GROUP_ID,
           deletedAt: null,
         }),
+        include: expect.objectContaining({
+          materialMaster: expect.any(Object),
+          productionLine: expect.any(Object),
+          location: expect.any(Object),
+        }),
       }),
     );
+  });
+
+  it("응답에 materialMaster/productionLine/location 관계가 포함된다", async () => {
+    const mockRow = {
+      id: "mr-1",
+      companyId: COMPANY_ID,
+      mealPlanGroupId: GROUP_ID,
+      productionLineId: LINE_ID,
+      locationId: LOCATION_ID,
+      materialMasterId: MAT_ID,
+      requiredQty: 1000,
+      unit: "g",
+      countSource: "ESTIMATED",
+      generationVersion: 1,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      materialMaster: {
+        id: MAT_ID,
+        code: "MAT-001",
+        name: "양파",
+        unit: "kg",
+        unitCategory: "WEIGHT",
+        materialType: "RAW",
+      },
+      productionLine: {
+        id: LINE_ID,
+        code: "PL-1",
+        name: "1라인",
+        locationId: LOCATION_ID,
+      },
+      location: {
+        id: LOCATION_ID,
+        code: "LOC-1",
+        name: "본사창고",
+      },
+    };
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([
+      mockRow,
+    ] as never);
+    mockPrisma.materialRequirement.count.mockResolvedValueOnce(1);
+
+    const result = await listMaterialRequirements(COMPANY_ID, {
+      mealPlanGroupId: GROUP_ID,
+      activeOnly: true,
+      page: 1,
+      limit: 50,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].materialMaster.name).toBe("양파");
+    expect(result.items[0].productionLine.name).toBe("1라인");
+    expect(result.items[0].location.name).toBe("본사창고");
   });
 
   it("countSource 필터를 전달하면 where에 반영된다", async () => {

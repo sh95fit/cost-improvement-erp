@@ -16,6 +16,9 @@ import {
 } from "../schemas/material-requirement.schema";
 import * as materialRequirementService from "../services/material-requirement.service";
 
+// UI에서 사용할 List 응답 타입 re-export
+export type { MaterialRequirementListItem } from "../services/material-requirement.service";
+
 // ══════════════════════════════════════════════════════════════
 // Phase 9-A-4: MaterialRequirement Server Actions
 // ------------------------------------------------------------
