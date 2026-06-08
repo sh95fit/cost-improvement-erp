@@ -53,6 +53,10 @@ export const mockPrisma = {
   location: createModelMock(),
   lineupLocationMap: createModelMock(),
   // lineupMealTemplateMap: createModelMock(),
+  // ★ Phase 8.5: 라인/위치 마스터 (이미 location은 있음, productionLine 신규)
+  productionLine: createModelMock(),
+  // ★ Phase 9-A: 소요량 산출 대상
+  materialRequirement: createModelMock(),
   shippingOrder: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn(),
