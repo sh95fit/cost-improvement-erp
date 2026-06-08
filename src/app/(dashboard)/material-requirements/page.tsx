@@ -2,21 +2,17 @@
 "use client";
 
 import { useState } from "react";
+import { format } from "date-fns";
 import { MaterialRequirementBreadcrumb } from "@/features/material-requirement/components/material-requirement-breadcrumb";
-import { MaterialRequirementGroupList } from "@/features/material-requirement/components/material-requirement-group-list";
-
-type MealPlanGroupSummary = {
-  id: string;
-  planDate: string | Date;
-  status: string;
-  note: string | null;
-};
+import {
+  MaterialRequirementGroupList,
+  type MealPlanGroupRow,
+} from "@/features/material-requirement/components/material-requirement-group-list";
+import { MaterialRequirementDetail } from "@/features/material-requirement/components/material-requirement-detail";
 
 type View =
   | { mode: "list" }
-  // 9-B-2에서 추가 예정:
-  // | { mode: "detail"; group: MealPlanGroupSummary };
-  ;
+  | { mode: "detail"; group: MealPlanGroupRow };
 
 export default function MaterialRequirementsPage() {
   const [view, setView] = useState<View>({ mode: "list" });
@@ -26,12 +22,26 @@ export default function MaterialRequirementsPage() {
       label: "자재 소요량",
       onClick: () => setView({ mode: "list" }),
     };
-    // 9-B-2 detail 진입 시:
-    // if (view.mode === "detail") return [root, { label: format(view.group.planDate) }];
+    if (view.mode === "detail") {
+      const dateLabel = format(new Date(view.group.planDate), "yyyy.MM.dd");
+      return [root, { label: `${dateLabel} 그룹` }];
+    }
     return [root];
   };
 
   const breadcrumbItems = getBreadcrumb();
+
+  if (view.mode === "detail") {
+    return (
+      <div className="space-y-4">
+        <MaterialRequirementBreadcrumb items={breadcrumbItems} />
+        <MaterialRequirementDetail
+          group={view.group}
+          onBack={() => setView({ mode: "list" })}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -43,15 +53,9 @@ export default function MaterialRequirementsPage() {
           여기서 산출된 결과가 발주 관리 및 작업 지시서의 산출 근거가 됩니다.
         </p>
       </div>
-
-      {view.mode === "list" && (
-        <MaterialRequirementGroupList
-          onSelect={(group: MealPlanGroupSummary) => {
-            // 9-B-2에서 setView({ mode: "detail", group })로 변경
-            console.log("선택된 그룹:", group);
-          }}
-        />
-      )}
+      <MaterialRequirementGroupList
+        onSelect={(group) => setView({ mode: "detail", group })}
+      />
     </div>
   );
 }
