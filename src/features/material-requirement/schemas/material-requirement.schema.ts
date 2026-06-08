@@ -30,7 +30,7 @@ export const generateMaterialRequirementsSchema = z.object({
   // Phase 9-A-1.5: 1차(ESTIMATED) / 2차(FINAL) 산출 흐름 분기
   // - ESTIMATED: MealCount.estimatedCount 기준 → 발주/작업지시 (기본)
   // - FINAL:     MealCount.finalCount 기준     → 원가 비교
-  countSource: z.nativeEnum(MealCountSource).default(MealCountSource.ESTIMATED),
+  countSource: z.enum(MealCountSource).default(MealCountSource.ESTIMATED),
   // 향후 옵션 확장 여지 (예: dryRun 미리보기, force 재산출 등)
 });
 
@@ -46,7 +46,7 @@ export const listMaterialRequirementsSchema = z.object({
   productionLineId: z.string().optional(),
   materialMasterId: z.string().optional(),
   // Phase 9-A-1.5: 산출 흐름 필터 (미지정 시 양쪽 모두 반환)
-  countSource: z.nativeEnum(MealCountSource).optional(),
+  countSource: z.enum(MealCountSource).optional(),
   // 활성 행만 보여줄지 (기본 true). false면 soft-deleted 포함.
   activeOnly: z.boolean().default(true),
   // 페이지네이션 (선택). 대량 조회를 막기 위해 기본 50건, 최대 200건.
@@ -77,7 +77,7 @@ export type GetMaterialRequirementByIdInput = z.infer<
 export const generateResultSchema = z.object({
   mealPlanGroupId: z.string(),
   // Phase 9-A-1.5: 이번 산출이 어느 흐름이었는지 명시
-  countSource: z.nativeEnum(MealCountSource),
+  countSource: z.enum(MealCountSource),
   generationVersion: z.number().int().nonnegative(),
   stats: z.object({
     inserted: z.number().int().nonnegative(),
