@@ -1218,7 +1218,8 @@ model MaterialRequirement {
   purchaseOrderItems  PurchaseOrderItem[]
 
   // Phase 9-A-1.5: countSource 포함 합성 유니크 (1차/2차 행 공존 허용)
-  @@unique([mealPlanGroupId, productionLineId, materialMasterId, countSource])
+  // PostgreSQL 63자 제한 회피 + 가독성 위해 명시적 짧은 이름 사용
+  @@unique([mealPlanGroupId, productionLineId, materialMasterId, countSource], map: "uq_mr_group_line_material_source")
   @@index([companyId])
   @@index([mealPlanGroupId])
   @@index([productionLineId])
