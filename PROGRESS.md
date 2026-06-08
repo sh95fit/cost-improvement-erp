@@ -3,7 +3,7 @@
 > 이 문서는 매 작업 단계 완료 시 반드시 갱신한다.
 > Sprint 1·2 Phase별 상세 이력은 `docs/progress/SPRINT1.md`, `docs/progress/SPRINT2.md` 에 보관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에 보관한다.
-> 마지막 갱신: 2026-06-05 (Phase 8.5 — Location / ProductionLine 마스터 완성)
+> 마지막 갱신: 2026-06-08 (작업 프로세스 규칙에 문서 최신화 SSOT 정책 추가)
 
 ---
 
