@@ -85,10 +85,20 @@ export const generateResultSchema = z.object({
     undeleted: z.number().int().nonnegative(),
     softDeleted: z.number().int().nonnegative(),
     unchanged: z.number().int().nonnegative(),
-    // 진단/감사용 — 산출에 실제로 영향을 준 슬롯/제외된 슬롯 수
     recipeContainerSlots: z.number().int().nonnegative(),
     directSlotsSkipped: z.number().int().nonnegative(),
-  }),
+    // ★ Phase 9-C-Fix-H
+    slotQuantityMismatchWarnings: z.number().int().nonnegative().default(0),
+    mismatchDetails: z
+      .array(
+        z.object({
+          mealPlanId: z.string(),
+          mealCount: z.number(),
+          slotsSum: z.number(),
+        }),
+      )
+      .default([]),
+  }),  
 });
 
 export type GenerateResult = z.infer<typeof generateResultSchema>;

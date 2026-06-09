@@ -51,6 +51,13 @@ interface AggregatedRequirement {
 interface CalculationStats {
   recipeContainerSlots: number;
   directSlotsSkipped: number;
+  // ★ Phase 9-C-Fix-H: 슬롯 수량 합계 ≠ MealCount 인 MealPlan 경고
+  slotQuantityMismatchWarnings: number;
+  mismatchDetails: Array<{
+    mealPlanId: string;
+    mealCount: number;
+    slotsSum: number;
+  }>;
 }
 
 // 부동소수점 비교 허용 오차 (g 단위)
@@ -200,13 +207,12 @@ export async function generateMaterialRequirements(
       countSource,
       generationVersion: maxVersion,
       stats: {
-        inserted,
-        updated,
-        undeleted,
-        softDeleted,
-        unchanged,
+        inserted, updated, undeleted, softDeleted, unchanged,
         recipeContainerSlots: stats.recipeContainerSlots,
         directSlotsSkipped: stats.directSlotsSkipped,
+        // ★ Phase 9-C-Fix-H
+        slotQuantityMismatchWarnings: stats.slotQuantityMismatchWarnings,
+        mismatchDetails: stats.mismatchDetails,
       },
     };
   });
@@ -388,13 +394,36 @@ async function calculateRequirementsForGroup(
   const required = new Map<string, AggregatedRequirement>();
   let recipeContainerSlots = 0;
   let directSlotsSkipped = 0;
-
+  let slotQuantityMismatchWarnings = 0;
+  const mismatchDetails: Array<{ mealPlanId: string; mealCount: number; slotsSum: number }> = [];
+  
+  // ★ Phase 9-C-Fix-H (a): MealPlan 단위 슬롯 quantity 합계 ≠ MealCount 검사
+  const containerSlots = slots.filter((s) => s.kind === SlotKind.CONTAINER);
+  const slotsByMealPlan = new Map<string, typeof containerSlots>();
+  for (const s of containerSlots) {
+    const arr = slotsByMealPlan.get(s.mealPlanId) ?? [];
+    arr.push(s);
+    slotsByMealPlan.set(s.mealPlanId, arr);
+  }
+  for (const [mealPlanId, list] of slotsByMealPlan) {
+    const first = list[0];
+    const countKey = `${first.mealPlan.companyMealSlotId}::${first.mealPlan.lineupId}`;
+    const mc = countMap.get(countKey);
+    if (mc == null) continue; // 인분수 누락은 본 루프에서 throw
+    const slotsSum = list.reduce((acc, s) => acc + (s.quantity ?? 0), 0);
+    // 모든 슬롯 quantity=0 이면 fallback이라 미스매치 아님
+    if (slotsSum > 0 && Math.abs(slotsSum - mc) > EPSILON) {
+      slotQuantityMismatchWarnings++;
+      mismatchDetails.push({ mealPlanId, mealCount: mc, slotsSum });
+    }
+  }
+  
+  // ★ Phase 9-C-Fix-H (b): 본 루프 — slot.quantity 우선, 0이면 MealCount fallback
   for (const slot of slots) {
     if (slot.kind === SlotKind.DIRECT) {
       directSlotsSkipped++;
       continue;
     }
-    // CONTAINER
     if (!slot.productionLineId || !slot.productionLine) {
       throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_PRODUCTION_LINE);
     }
@@ -404,27 +433,27 @@ async function calculateRequirementsForGroup(
     if (slot.recipeBom.status !== BOMStatus.ACTIVE) {
       throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
     }
-
+  
     const productionLineId = slot.productionLineId;
     const locationId = slot.productionLine.locationId;
     if (!locationId) {
       throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_LOCATION);
     }
-
-    // 인분수 조회
+  
     const countKey = `${slot.mealPlan.companyMealSlotId}::${slot.mealPlan.lineupId}`;
     const mealCount = countMap.get(countKey);
     if (mealCount == null) {
       throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_MEAL_COUNT);
     }
-
+  
+    // ★ 핵심 변경: slot.quantity > 0 이면 우선 사용
+    const effectiveCount =
+      slot.quantity != null && slot.quantity > 0 ? slot.quantity : mealCount;
+  
     recipeContainerSlots++;
-
-    // BOM 슬롯 → 슬롯 아이템 펼치기
+  
     for (const bomSlot of slot.recipeBom.slots) {
       for (const item of bomSlot.items) {
-        // 입력 weightG를 g로 정규화 (자재 단위가 아닌 BOM 슬롯 아이템 단위)
-        // 자재 환산표는 materialMasterId 기준이지만, weightG의 단위가 'g'이면 그대로 사용.
         const slotWeightG = await convertToG(
           item.weightG,
           item.unit,
@@ -432,13 +461,12 @@ async function calculateRequirementsForGroup(
           companyId,
           tx,
         );
-
+  
         if (item.ingredientType === IngredientType.MATERIAL) {
           if (!item.materialMasterId) {
-            // 데이터 무결성 위반 — 이론상 발생하지 않지만 방어
             throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
           }
-          const addQty = slotWeightG * mealCount;
+          const addQty = slotWeightG * effectiveCount; // ★ effectiveCount 사용
           accumulate(required, {
             productionLineId,
             locationId,
@@ -449,7 +477,6 @@ async function calculateRequirementsForGroup(
           if (!item.semiProductId) {
             throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
           }
-          // 반제품 ACTIVE BOM 1건
           const spBom = await tx.bOM.findFirst({
             where: {
               semiProductId: item.semiProductId,
@@ -471,8 +498,6 @@ async function calculateRequirementsForGroup(
           if (!spBom) {
             throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
           }
-
-          // 반제품 기준량을 g로 환산 (단위환산표 또는 kg→g 자동)
           const baseQtyG = await convertToG(
             spBom.baseQuantity,
             spBom.baseUnit,
@@ -483,10 +508,7 @@ async function calculateRequirementsForGroup(
           if (baseQtyG <= 0) {
             throw new Error(MATERIAL_REQUIREMENT_ERRORS.INVALID_UNIT);
           }
-
-          // 반제품 1g 당 비율 = slotWeightG / baseQtyG
           const ratio = slotWeightG / baseQtyG;
-
           for (const bomItem of spBom.items) {
             const itemQtyG = await convertToG(
               bomItem.quantity,
@@ -495,7 +517,7 @@ async function calculateRequirementsForGroup(
               companyId,
               tx,
             );
-            const addQty = itemQtyG * ratio * mealCount;
+            const addQty = itemQtyG * ratio * effectiveCount; // ★ effectiveCount 사용
             accumulate(required, {
               productionLineId,
               locationId,
@@ -507,13 +529,18 @@ async function calculateRequirementsForGroup(
       }
     }
   }
-
+  
   return {
     required,
-    stats: { recipeContainerSlots, directSlotsSkipped },
+    stats: {
+      recipeContainerSlots,
+      directSlotsSkipped,
+      slotQuantityMismatchWarnings,
+      mismatchDetails,
+    },
   };
-}
-
+} 
+  
 // ============================================================
 // 헬퍼: 단위 환산 (→ "g")
 // ------------------------------------------------------------

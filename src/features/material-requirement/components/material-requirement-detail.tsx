@@ -93,6 +93,29 @@ export function MaterialRequirementDetail({ group, onBack }: Props) {
       // 산출한 source 탭으로 자동 전환 + 결과 패널 리프레시
       setCountSource(source);
       setRefreshKey((k) => k + 1);
+
+      // ★ Phase 9-C-Fix-H: 슬롯 수량 미스매치 경고 토스트
+      if (stats.slotQuantityMismatchWarnings > 0) {
+        const sample = stats.mismatchDetails.slice(0, 3);
+        const detail = sample
+          .map(
+            (d) =>
+              `· 식수 ${d.mealCount.toLocaleString()} ↔ 슬롯합 ${d.slotsSum.toLocaleString()}`,
+          )
+          .join("\n");
+        toast.warning(
+          `슬롯 수량이 식수와 다른 식단 ${stats.slotQuantityMismatchWarnings}건`,
+          {
+            description:
+              `산출은 완료되었으나 수량 검토 권장.\n${detail}` +
+              (stats.mismatchDetails.length > 3
+                ? `\n외 ${stats.mismatchDetails.length - 3}건`
+                : ""),
+            duration: 12000,
+          },
+        );
+      }
+
     } finally {
       setGenerating(null);
     }
