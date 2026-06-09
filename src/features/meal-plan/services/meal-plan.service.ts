@@ -24,6 +24,8 @@ import {
   diagnoseBomMatch,
 } from "@/features/recipe/services/recipe-bom.service";
 
+import { MealPlanStatus } from "@prisma/client";
+
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /**
@@ -344,6 +346,84 @@ export async function createMealPlanGroup(
   }
 }
 
+/**
+ * Phase 9-C-Fix-K2: 그룹 단위 슬롯 수량 검증.
+ * 각 MealPlan 의 CONTAINER 슬롯에 대해 validateSlotQuantitiesForMealPlan 을
+ * 호출하고, 하나라도 실패하면 즉시 throw.
+ *
+ * @throws Error("GROUP_SLOT_QTY_PARTIAL_INPUT::<mealPlanId>::<zeroCount>")
+ * @throws Error("GROUP_SLOT_QTY_SUM_MISMATCH::<mealPlanId>::<mealCount>::<slotsSum>")
+ * @throws Error("GROUP_MISSING_MEAL_COUNT::<mealPlanId>")
+ */
+async function assertGroupSlotQuantitiesValid(
+  tx: DbClient,
+  mealPlanGroupId: string,
+): Promise<void> {
+  const mealPlans = await tx.mealPlan.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: {
+      id: true,
+      companyMealSlotId: true,
+      lineupId: true,
+      slots: {
+        where: { deletedAt: null },
+        select: { id: true, kind: true, quantity: true },
+      },
+    },
+  });
+
+  // 식수 맵
+  const mealCounts = await tx.mealCount.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: {
+      companyMealSlotId: true,
+      lineupId: true,
+      estimatedCount: true,
+      finalCount: true,
+    },
+  });
+  // 상태 전환 시점에서는 finalCount 가 아직 비어있을 수 있으므로
+  // estimatedCount 우선, 없으면 finalCount fallback.
+  const countMap = new Map<string, number>();
+  for (const mc of mealCounts) {
+    const v = mc.estimatedCount ?? mc.finalCount;
+    if (v == null) continue;
+    countMap.set(`${mc.companyMealSlotId}::${mc.lineupId}`, v);
+  }
+
+  for (const mp of mealPlans) {
+    const containerSlots = mp.slots.filter((s) => s.kind === "CONTAINER");
+    if (containerSlots.length === 0) continue;
+
+    const mc = countMap.get(`${mp.companyMealSlotId}::${mp.lineupId}`);
+    if (mc == null) {
+      throw new Error(`GROUP_MISSING_MEAL_COUNT::${mp.id}`);
+    }
+
+    const result = validateSlotQuantitiesForMealPlan(
+      mp.id,
+      mc,
+      containerSlots.map((s) => ({
+        id: s.id,
+        quantity: s.quantity ?? 0,
+        kind: "CONTAINER",
+      })),
+    );
+    if (!result.ok) {
+      if (result.reason === "PARTIAL_INPUT") {
+        throw new Error(
+          `GROUP_SLOT_QTY_PARTIAL_INPUT::${mp.id}::${result.zeroSlotIds.length}`,
+        );
+      }
+      if (result.reason === "SUM_MISMATCH") {
+        throw new Error(
+          `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${result.mealCount}::${result.slotsSum}`,
+        );
+      }
+    }
+  }
+}
+
 export async function updateMealPlanGroup(
   companyId: string,
   id: string,
@@ -351,9 +431,23 @@ export async function updateMealPlanGroup(
 ) {
   const existing = await prisma.mealPlanGroup.findFirst({
     where: { id, companyId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!existing) throw new Error("NOT_FOUND");
+
+  // ★ Phase 9-C-Fix-K2: DRAFT → CONFIRMED / IN_PROGRESS 전환 시 슬롯 수량 검증
+  //    정책:
+  //      - DRAFT 상태에서 다른 상태로 전환되는 순간 식단 데이터 무결성을 검증
+  //      - CANCELLED 로 전환은 검증 면제 (취소는 언제든 허용)
+  //      - 검증 항목: 각 MealPlan 의 slot.quantity 부분 입력 / 합계 불일치
+  if (
+    input.status &&
+    input.status !== existing.status &&
+    existing.status === MealPlanStatus.DRAFT &&
+    input.status !== MealPlanStatus.CANCELLED
+  ) {
+    await assertGroupSlotQuantitiesValid(prisma, id);
+  }
 
   return prisma.mealPlanGroup.update({
     where: { id },

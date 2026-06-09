@@ -116,6 +116,30 @@ export async function updateMealPlanGroupAction(
     });
     return actionOk(group);
   } catch (error) {
+    const msg = error instanceof Error ? error.message : "";
+
+    // Phase 9-C-Fix-K2: 상태 전환 시 슬롯 수량 검증 실패
+    if (msg.startsWith("GROUP_SLOT_QTY_PARTIAL_INPUT::")) {
+      const [, , zeroCount] = msg.split("::");
+      return handleActionError(
+        error,
+        `상태를 변경할 수 없습니다. 일부 슬롯에만 수량이 입력된 식단이 있습니다 (${zeroCount}개 슬롯 미입력). 모두 입력하거나 모두 비워주세요.`,
+      );
+    }
+    if (msg.startsWith("GROUP_SLOT_QTY_SUM_MISMATCH::")) {
+      const [, , mc, sum] = msg.split("::");
+      return handleActionError(
+        error,
+        `상태를 변경할 수 없습니다. 슬롯 수량 합계(${Number(sum).toLocaleString()})가 예상식수(${Number(mc).toLocaleString()})와 일치하지 않습니다.`,
+      );
+    }
+    if (msg.startsWith("GROUP_MISSING_MEAL_COUNT::")) {
+      return handleActionError(
+        error,
+        "상태를 변경할 수 없습니다. 예상식수가 입력되지 않은 식단이 있습니다.",
+      );
+    }
+
     return handleActionError(error, "식단 그룹 수정에 실패했습니다", {
       NOT_FOUND: "식단 그룹을 찾을 수 없습니다",
     });
