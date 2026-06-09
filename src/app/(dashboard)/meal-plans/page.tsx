@@ -687,9 +687,110 @@ export default function MealPlansPage() {
       setCopySaving(false);
     }
   };
+  
+  // ══════════════════════════════════════════════════════════════
+  // Phase 9-C-Fix-H2 + K3: 슬롯 수량 ↔ 예상식수 검증 헬퍼
+  // ──────────────────────────────────────────────────────────────
+  // 서버 validateSlotQuantitiesForMealPlan 와 동일 정책:
+  //   - CONTAINER 슬롯 0개 → NO_SLOTS
+  //   - 모든 CONTAINER 슬롯 quantity = 0 → OK_FALLBACK (전량 mealCount 적용)
+  //   - 전부 양수 + 합계 = mealCount → OK_DISTRIBUTED
+  //   - 전부 양수 + 합계 ≠ mealCount → SUM_MISMATCH
+  //   - 일부만 양수, 일부 0 → PARTIAL_INPUT
+  //   - mealCount 없음 → NO_MEAL_COUNT
+  // ══════════════════════════════════════════════════════════════
+  type SlotQtyCheck =
+    | { kind: "OK_FALLBACK"; mealCount: number }
+    | { kind: "OK_DISTRIBUTED"; mealCount: number; slotsSum: number }
+    | { kind: "NO_SLOTS" }
+    | { kind: "NO_MEAL_COUNT" }
+    | { kind: "PARTIAL_INPUT"; zeroCount: number; mealCount: number }
+    | { kind: "SUM_MISMATCH"; mealCount: number; slotsSum: number };
+
+  const checkMealPlanSlotQty = useCallback(
+    (mp: MealPlanRow, mealCount: number | null): SlotQtyCheck => {
+      const containers = mp.slots.filter((s) => s.kind === "CONTAINER");
+      if (containers.length === 0) return { kind: "NO_SLOTS" };
+      if (mealCount == null) return { kind: "NO_MEAL_COUNT" };
+      const positive = containers.filter((s) => s.quantity > 0);
+      const zero = containers.filter((s) => s.quantity === 0);
+      if (positive.length === 0) return { kind: "OK_FALLBACK", mealCount };
+      if (zero.length > 0) {
+        return {
+          kind: "PARTIAL_INPUT",
+          zeroCount: zero.length,
+          mealCount,
+        };
+      }
+      const sum = positive.reduce((a, s) => a + s.quantity, 0);
+      if (sum !== mealCount) {
+        return { kind: "SUM_MISMATCH", mealCount, slotsSum: sum };
+      }
+      return { kind: "OK_DISTRIBUTED", mealCount, slotsSum: sum };
+    },
+    [],
+  );
+
+  /**
+   * 그룹 단위 위반 식단 수집 — 상태 변경 사전 안내용.
+   * 서버 K-2 정책과 정합: estimatedCount 우선, 없으면 finalCount fallback.
+   */
+  const collectGroupSlotQtyIssues = useCallback(
+    (
+      group: MealPlanGroupRow,
+    ): Array<{ mp: MealPlanRow; check: SlotQtyCheck }> => {
+      if (!group.mealPlans) return [];
+      const issues: Array<{ mp: MealPlanRow; check: SlotQtyCheck }> = [];
+      for (const mp of group.mealPlans) {
+        const mc = group.mealCounts?.find(
+          (c) =>
+            c.companyMealSlotId === mp.companyMealSlotId &&
+            c.lineupId === mp.lineupId,
+        );
+        const mealCount = mc?.estimatedCount ?? mc?.finalCount ?? null;
+        const check = checkMealPlanSlotQty(mp, mealCount);
+        if (
+          check.kind === "PARTIAL_INPUT" ||
+          check.kind === "SUM_MISMATCH" ||
+          (check.kind === "NO_MEAL_COUNT" &&
+            mp.slots.some((s) => s.kind === "CONTAINER"))
+        ) {
+          issues.push({ mp, check });
+        }
+      }
+      return issues;
+    },
+    [checkMealPlanSlotQty],
+  );
 
   const handleStatusChange = async () => {
     if (!statusChangeTarget || !newStatus) return;
+
+    // ★ Phase 9-C-Fix-K3: DRAFT → 그 외(CANCELLED 제외) 전환 시 클라이언트 사전 검증
+    if (
+      statusChangeTarget.currentStatus === "DRAFT" &&
+      newStatus !== "DRAFT" &&
+      newStatus !== "CANCELLED" &&
+      detailGroup?.id === statusChangeTarget.id
+    ) {
+      const issues = collectGroupSlotQtyIssues(detailGroup);
+      if (issues.length > 0) {
+        const first = issues[0];
+        const label = `${first.mp.companyMealSlot?.displayName ?? "-"} · ${first.mp.lineup?.name ?? "—"}`;
+        let detail = "";
+        if (first.check.kind === "PARTIAL_INPUT") {
+          detail = `${label}: ${first.check.zeroCount}개 슬롯 수량 미입력`;
+        } else if (first.check.kind === "SUM_MISMATCH") {
+          detail = `${label}: 합계 ${first.check.slotsSum.toLocaleString()} ≠ 예상식수 ${first.check.mealCount.toLocaleString()}`;
+        } else if (first.check.kind === "NO_MEAL_COUNT") {
+          detail = `${label}: 예상식수 미입력`;
+        }
+        const more = issues.length > 1 ? ` 외 ${issues.length - 1}건` : "";
+        toast.error(`상태를 변경할 수 없습니다. ${detail}${more}`);
+        return;
+      }
+    }
+
     try {
       const result = await updateMealPlanGroupAction(statusChangeTarget.id, {
         status: newStatus,
@@ -859,6 +960,21 @@ export default function MealPlansPage() {
   const selectedBulkContainer = containerOptions.find(
     (c) => c.id === bulkSlotContainerId,
   );
+
+  // ★ Phase 9-C-Fix-H2: 일괄 슬롯 다이얼로그의 placeholder 용 예상식수
+  const bulkSlotMealCount = (() => {
+    if (!bulkSlotMealPlan || !detailGroup) return null;
+    const mp = detailGroup.mealPlans?.find(
+      (m) => m.id === bulkSlotMealPlan.mealPlanId,
+    );
+    if (!mp) return null;
+    const mc = detailGroup.mealCounts?.find(
+      (c) =>
+        c.companyMealSlotId === mp.companyMealSlotId &&
+        c.lineupId === mp.lineupId,
+    );
+    return mc?.estimatedCount ?? mc?.finalCount ?? null;
+  })();
 
   // 용기 그룹 변경 시 슬롯 행 초기화 (각 슬롯에 빈 입력값 채움)
   const handleBulkContainerChange = (containerId: string) => {
@@ -1526,12 +1642,106 @@ export default function MealPlansPage() {
                     </div>
                   </div>
 
+                  {/* ★ Phase 9-C-Fix-H2 + K3: 슬롯 수량 ↔ 예상식수 검증 배지 */}
+                  {(() => {
+                    const _mc = detailGroup.mealCounts?.find(
+                      (c) =>
+                        c.companyMealSlotId === mp.companyMealSlotId &&
+                        c.lineupId === mp.lineupId,
+                    );
+                    const _mealCount =
+                      _mc?.estimatedCount ?? _mc?.finalCount ?? null;
+                    const _check = checkMealPlanSlotQty(mp, _mealCount);
+                    if (_check.kind === "NO_SLOTS") return null;
+                    let label = "";
+                    let cls = "";
+                    if (_check.kind === "OK_FALLBACK") {
+                      label = `전량 ${_check.mealCount.toLocaleString()}식 일괄 처리`;
+                      cls =
+                        "bg-blue-50 text-blue-700 border-blue-200";
+                    } else if (_check.kind === "OK_DISTRIBUTED") {
+                      label = `분배: ${_check.slotsSum.toLocaleString()} / ${_check.mealCount.toLocaleString()}식 ✓`;
+                      cls =
+                        "bg-emerald-50 text-emerald-700 border-emerald-200";
+                    } else if (_check.kind === "PARTIAL_INPUT") {
+                      label = `⚠ ${_check.zeroCount}개 슬롯 수량 미입력 (모두 입력하거나 모두 비우세요)`;
+                      cls =
+                        "bg-amber-50 text-amber-700 border-amber-200";
+                    } else if (_check.kind === "SUM_MISMATCH") {
+                      label = `⚠ 합계 ${_check.slotsSum.toLocaleString()} ≠ 예상식수 ${_check.mealCount.toLocaleString()}`;
+                      cls =
+                        "bg-red-50 text-red-700 border-red-200";
+                    } else if (_check.kind === "NO_MEAL_COUNT") {
+                      label = "⚠ 예상식수가 입력되지 않았습니다";
+                      cls =
+                        "bg-amber-50 text-amber-700 border-amber-200";
+                    }
+                    return (
+                      <div
+                        className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs ${cls}`}
+                      >
+                        {label}
+                      </div>
+                    );
+                  })()}
+
                   {/* 슬롯 테이블 */}
-                  {mp.slots.length === 0 ? (
-                    <p className="mt-3 text-sm text-gray-400">
-                      배정된 슬롯이 없습니다.
-                    </p>
-                  ) : (
+                  {(() => {
+                    // ── Phase 9-C-Fix-H2: 이 MealPlan의 예상식수 조회 ──
+                    const _mcRow = detailGroup.mealCounts?.find(
+                      (c) =>
+                        c.companyMealSlotId === mp.companyMealSlotId &&
+                        c.lineupId === mp.lineupId,
+                    );
+                    const _mealCountForMp =
+                      _mcRow?.estimatedCount ?? _mcRow?.finalCount ?? null;
+
+                    // ── Phase 9-C-Fix-K3: 슬롯 수량 실시간 검증 배지 ──
+                    const _check = checkMealPlanSlotQty(mp, _mealCountForMp);
+                    const _badge = (() => {
+                      if (_check.kind === "NO_SLOTS") return null;
+                      if (_check.kind === "OK_FALLBACK")
+                        return {
+                          cls: "border-blue-300 bg-blue-50 text-blue-700",
+                          text: `예상식수 ${_check.mealCount.toLocaleString()}식 전량 적용`,
+                        };
+                      if (_check.kind === "OK_DISTRIBUTED")
+                        return {
+                          cls: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                          text: `슬롯 분배 합계 일치 (${_check.slotsSum.toLocaleString()}식)`,
+                        };
+                      if (_check.kind === "NO_MEAL_COUNT")
+                        return {
+                          cls: "border-amber-300 bg-amber-50 text-amber-700",
+                          text: "예상식수 미입력",
+                        };
+                      if (_check.kind === "PARTIAL_INPUT")
+                        return {
+                          cls: "border-red-300 bg-red-50 text-red-700",
+                          text: `수량 미입력 슬롯 ${_check.zeroCount}개 (예상식수 ${_check.mealCount.toLocaleString()}식)`,
+                        };
+                      if (_check.kind === "SUM_MISMATCH")
+                        return {
+                          cls: "border-red-300 bg-red-50 text-red-700",
+                          text: `합계 ${_check.slotsSum.toLocaleString()} ≠ 예상식수 ${_check.mealCount.toLocaleString()}`,
+                        };
+                      return null;
+                    })();
+
+                    return (
+                      <>
+                        {_badge && (
+                          <div
+                            className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs ${_badge.cls}`}
+                          >
+                            {_badge.text}
+                          </div>
+                        )}
+                        {mp.slots.length === 0 ? (
+                          <p className="mt-3 text-sm text-gray-400">
+                            배정된 슬롯이 없습니다.
+                          </p>
+                        ) : (
                     <Table className="mt-3">
                       <TableHeader>
                         <TableRow>
@@ -1842,6 +2052,16 @@ export default function MealPlansPage() {
                                             quantity: e.target.value,
                                           })
                                         }
+                                        placeholder={
+                                          _mealCountForMp != null
+                                            ? String(_mealCountForMp)
+                                            : "0"
+                                        }
+                                        title={
+                                          _mealCountForMp != null
+                                            ? `비워두거나 0 입력 시 예상식수 ${_mealCountForMp.toLocaleString()}식이 전량 적용됩니다`
+                                            : undefined
+                                        }
                                         className="h-7 w-20 text-right text-xs"
                                       />
                                     </TableCell>
@@ -1942,7 +2162,20 @@ export default function MealPlansPage() {
                                     {slot.productionLine?.name ?? "—"}
                                   </TableCell>
                                   <TableCell className="text-right">
-                                    {slot.quantity}
+                                    {slot.quantity > 0 ? (
+                                      <span className="font-medium">
+                                        {slot.quantity.toLocaleString()}
+                                      </span>
+                                    ) : _mealCountForMp != null ? (
+                                      <span
+                                        className="italic text-gray-400"
+                                        title={`수량 미입력 → 예상식수 ${_mealCountForMp.toLocaleString()}식 전량 적용`}
+                                      >
+                                        {_mealCountForMp.toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-300">—</span>
+                                    )}
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-0.5">
@@ -1979,7 +2212,10 @@ export default function MealPlansPage() {
                         })()}
                       </TableBody>
                     </Table>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* 부자재 */}
                   <div className="mt-3 border-t pt-3">
@@ -2222,12 +2458,20 @@ export default function MealPlansPage() {
         >
           <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
-              <DialogTitle>용기 그룹 일괄 배정</DialogTitle>
+            <DialogTitle>용기 그룹 일괄 배정</DialogTitle>
               <DialogDescription>
                 <strong>{bulkSlotMealPlan?.title}</strong> 식단에 용기 그룹을
                 추가합니다. 선택한 용기 그룹의 모든 슬롯이 한 번에 펼쳐지며,
                 슬롯별로 레시피·생산라인을 지정합니다. 레시피를 비워두면 "미배정"
                 슬롯으로 저장됩니다 (나중에 채울 수 있음).
+                {bulkSlotMealCount != null && (
+                  <span className="mt-1 block text-xs text-gray-600">
+                    ※ 수량을 0으로 두면 예상식수{" "}
+                    <b>{bulkSlotMealCount.toLocaleString()}식</b>이 전량
+                    적용됩니다. 입력 시 모든 슬롯의 합계가 예상식수와 일치해야
+                    합니다.
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
 
@@ -2399,6 +2643,16 @@ export default function MealPlansPage() {
                                     updateBulkRow(s.slotIndex, {
                                       quantity: e.target.value,
                                     })
+                                  }
+                                  placeholder={
+                                    bulkSlotMealCount != null
+                                      ? String(bulkSlotMealCount)
+                                      : "0"
+                                  }
+                                  title={
+                                    bulkSlotMealCount != null
+                                      ? `비워두거나 0 입력 시 예상식수 ${bulkSlotMealCount.toLocaleString()}식이 전량 적용됩니다`
+                                      : undefined
                                   }
                                   className="h-8 w-20 text-right text-xs"
                                 />
