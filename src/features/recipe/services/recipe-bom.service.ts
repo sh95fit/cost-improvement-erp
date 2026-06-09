@@ -368,3 +368,89 @@ export async function getEligibleRecipesForContainerSlot(
     totalWeightG: b.slots[0]?.totalWeightG ?? 0,
   }));
 }
+
+// ════════════════════════════════════════════════════════════════
+// Phase 9-C-Fix-A: BOM 매칭 실패 원인 진단
+// ────────────────────────────────────────────────────────────────
+// findMatchingActiveBom은 boolean 매칭만 알려주지만,
+// diagnoseBomMatch는 실패 원인을 3가지로 구분해 알려준다.
+// 1) NO_ACTIVE_BOM    : 레시피에 ACTIVE 상태 BOM이 없음
+// 2) NO_MATCHING_SLOT : ACTIVE BOM은 있으나 (용기, slotIndex) 일치 슬롯 없음
+// 3) ZERO_TOTAL_WEIGHT: 매칭 슬롯은 있으나 totalWeightG <= 0
+// ════════════════════════════════════════════════════════════════
+
+export type BomMatchDiagnosis =
+  | { ok: true; bomId: string; slotId: string; totalWeightG: number }
+  | { ok: false; reason: "NO_ACTIVE_BOM" }
+  | {
+      ok: false;
+      reason: "NO_MATCHING_SLOT";
+      bomId: string;
+      availableSlots: Array<{
+        subsidiaryMasterId: string;
+        subsidiaryName: string;
+        slotIndex: number;
+        totalWeightG: number;
+      }>;
+    }
+  | { ok: false; reason: "ZERO_TOTAL_WEIGHT"; bomId: string; slotId: string };
+
+export async function diagnoseBomMatch(
+  recipeId: string,
+  subsidiaryMasterId: string,
+  containerSlotIndex: number,
+): Promise<BomMatchDiagnosis> {
+  const bom = await prisma.recipeBOM.findFirst({
+    where: { recipeId, status: "ACTIVE", deletedAt: null },
+    include: {
+      slots: {
+        select: {
+          id: true,
+          slotIndex: true,
+          totalWeightG: true,
+          subsidiaryMaster: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  if (!bom) {
+    return { ok: false, reason: "NO_ACTIVE_BOM" };
+  }
+
+  const exact = bom.slots.find(
+    (s) =>
+      s.subsidiaryMaster.id === subsidiaryMasterId &&
+      s.slotIndex === containerSlotIndex,
+  );
+
+  if (!exact) {
+    return {
+      ok: false,
+      reason: "NO_MATCHING_SLOT",
+      bomId: bom.id,
+      availableSlots: bom.slots.map((s) => ({
+        subsidiaryMasterId: s.subsidiaryMaster.id,
+        subsidiaryName: s.subsidiaryMaster.name,
+        slotIndex: s.slotIndex,
+        totalWeightG: s.totalWeightG,
+      })),
+    };
+  }
+
+  if (exact.totalWeightG <= 0) {
+    return {
+      ok: false,
+      reason: "ZERO_TOTAL_WEIGHT",
+      bomId: bom.id,
+      slotId: exact.id,
+    };
+  }
+
+  return {
+    ok: true,
+    bomId: bom.id,
+    slotId: exact.id,
+    totalWeightG: exact.totalWeightG,
+  };
+}

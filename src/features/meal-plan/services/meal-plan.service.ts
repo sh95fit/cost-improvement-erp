@@ -19,7 +19,10 @@ import type {
   CopyMealPlanGroupInput,
 } from "../schemas/meal-plan.schema";
 
-import { findMatchingActiveBom } from "@/features/recipe/services/recipe-bom.service";
+import {
+  findMatchingActiveBom,
+  diagnoseBomMatch,
+} from "@/features/recipe/services/recipe-bom.service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -158,22 +161,42 @@ async function assertMealPlanInCompany(
 }
 
 // ════════════════════════════════════════════════════════════════
-// Phase 7-F1: CONTAINER 슬롯 BOM 매칭 검증 헬퍼
+// Phase 7-F1 + 9-C-Fix-A: CONTAINER 슬롯 BOM 매칭 검증 헬퍼
+// ────────────────────────────────────────────────────────────────
+// 실패 시 원인을 3가지로 구분해 throw:
+//   - BOM_NOT_MATCHED_NO_ACTIVE_BOM
+//   - BOM_NOT_MATCHED_ZERO_WEIGHT
+//   - BOM_NOT_MATCHED_NO_SLOT::<hint>   (콜론 2개로 prefix/suffix 구분)
+// action 레이어가 위 키를 사용자 메시지로 매핑.
 // ════════════════════════════════════════════════════════════════
 async function resolveAndAssertBomMatch(
   recipeId: string,
   subsidiaryMasterId: string,
   containerSlotIndex: number,
 ): Promise<string> {
-  const match = await findMatchingActiveBom(
+  const d = await diagnoseBomMatch(
     recipeId,
     subsidiaryMasterId,
     containerSlotIndex,
   );
-  if (!match) {
-    throw new Error("BOM_NOT_MATCHED");
+
+  if (d.ok) return d.bomId;
+
+  if (d.reason === "NO_ACTIVE_BOM") {
+    throw new Error("BOM_NOT_MATCHED_NO_ACTIVE_BOM");
   }
-  return match.bomId;
+  if (d.reason === "ZERO_TOTAL_WEIGHT") {
+    throw new Error("BOM_NOT_MATCHED_ZERO_WEIGHT");
+  }
+  // NO_MATCHING_SLOT — hint를 메시지에 포함
+  const hint = d.availableSlots
+    .slice(0, 5)
+    .map((s) => `${s.subsidiaryName}#${s.slotIndex}(${s.totalWeightG}g)`)
+    .join(", ");
+  // 한 줄 문장. action 매핑이 안 잡혀도 사용자가 읽을 수 있음.
+  throw new Error(
+    `선택한 (용기, 슬롯) 조합이 ACTIVE BOM에 정의되어 있지 않습니다. 사용 가능한 슬롯: ${hint || "없음"}`,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -867,20 +890,35 @@ export async function bulkCreateContainerSlots(
     }
   }
 
-  // Phase 7-F1: recipeId가 있는 행마다 BOM 매칭 검증
+  // Phase 7-F1 + 9-C-Fix-A: 행별 BOM 매칭 검증 (실패 시 행 번호와 원인 명시)
   const bomMatchMap = new Map<number, string>();
   for (let i = 0; i < input.items.length; i++) {
     const it = input.items[i];
     if (!it.recipeId) continue;
-    const match = await findMatchingActiveBom(
+    const d = await diagnoseBomMatch(
       it.recipeId,
       input.subsidiaryMasterId,
       it.containerSlotIndex,
     );
-    if (!match) {
-      throw new Error("BOM_NOT_MATCHED");
+    if (d.ok) {
+      bomMatchMap.set(i, d.bomId);
+      continue;
     }
-    bomMatchMap.set(i, match.bomId);
+    // 어떤 행에서 실패했는지 사용자가 알도록 1-based 행 번호 포함
+    const rowLabel = `행 ${i + 1} (slotIndex=${it.containerSlotIndex})`;
+    if (d.reason === "NO_ACTIVE_BOM") {
+      throw new Error(`BOM_NOT_MATCHED_NO_ACTIVE_BOM::${rowLabel}`);
+    }
+    if (d.reason === "ZERO_TOTAL_WEIGHT") {
+      throw new Error(`BOM_NOT_MATCHED_ZERO_WEIGHT::${rowLabel}`);
+    }
+    const hint = d.availableSlots
+      .slice(0, 5)
+      .map((s) => `${s.subsidiaryName}#${s.slotIndex}(${s.totalWeightG}g)`)
+      .join(", ");
+    throw new Error(
+      `BOM_NOT_MATCHED_NO_SLOT::${rowLabel} / 사용 가능: ${hint || "없음"}`,
+    );
   }
 
   // 4) sortOrder 시작점 계산

@@ -190,6 +190,12 @@ export function MaterialRequirementResultPanel({
     });
   };
 
+  const uniqueMaterialCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of filteredItems) set.add(row.materialMasterId);
+    return set.size;
+  }, [filteredItems]);    
+
   // ── 렌더 ───────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -222,29 +228,23 @@ export function MaterialRequirementResultPanel({
         <>
           {/* 그룹 총계 카드 */}
           <div className="rounded-md border bg-white px-4 py-3 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              총 <strong>{tree.length}</strong>개 공장 ·{" "}
-              <strong>
-                {tree.reduce((s, loc) => s + loc.lines.length, 0)}
-              </strong>
-              개 라인 ·{" "}
-              <strong>
-                {tree.reduce(
-                  (s, loc) =>
-                    s + loc.lines.reduce((ss, ln) => ss + ln.rows.length, 0),
-                  0,
-                )}
-              </strong>
-              개 자재 행
-            </div>
-            <div className="text-sm">
-              <span className="text-gray-500">그룹 합계: </span>
-              <strong className="tabular-nums">{formatGrams(grandTotal)}</strong>{" "}
-              <span className="text-xs text-gray-400">
-                {formatGramsAuxiliary(grandTotal)}
-              </span>
-            </div>
+          <div className="text-sm text-gray-600">
+            총 <strong>{tree.length}</strong>개 공장 ·{" "}
+            <strong>{tree.reduce((s, l) => s + l.lines.length, 0)}</strong>개 라인
           </div>
+          <div className="flex items-center gap-6 text-sm">
+            <span>
+              <span className="text-gray-500">유니크 자재: </span>
+              <strong className="tabular-nums">{uniqueMaterialCount}</strong>종
+            </span>
+            <span>
+              <span className="text-gray-500">자재 행: </span>
+              <strong className="tabular-nums">
+                {tree.reduce((s, l) => s + l.lines.reduce((ss, ln) => ss + ln.rows.length, 0), 0)}
+              </strong>건
+            </span>
+          </div>
+        </div>
 
           {/* 공장 → 라인 → 자재 트리 */}
           {tree.map((loc) => {

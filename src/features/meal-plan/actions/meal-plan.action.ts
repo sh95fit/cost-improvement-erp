@@ -329,7 +329,12 @@ export async function createMealPlanSlotAction(
       RECIPE_NOT_FOUND: "레시피를 찾을 수 없습니다",
       SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목을 찾을 수 없습니다",
       PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
-      BOM_NOT_MATCHED: "선택한 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다. 레시피 BOM을 등록·확정하고 해당 용기 슬롯의 중량을 0보다 크게 설정하세요",
+      BOM_NOT_MATCHED:
+        "선택한 레시피의 ACTIVE BOM에서 이 용기 슬롯을 찾을 수 없습니다",
+      BOM_NOT_MATCHED_NO_ACTIVE_BOM:
+        "선택한 레시피에 사용중(ACTIVE) BOM이 없습니다. 레시피 > BOM 관리에서 BOM을 ACTIVE로 변경해 주세요",
+      BOM_NOT_MATCHED_ZERO_WEIGHT:
+        "BOM의 해당 슬롯 총 중량이 0g입니다. 레시피 BOM에서 슬롯의 totalWeightG를 0보다 크게 설정해 주세요",
     });
   }
 }
@@ -364,6 +369,8 @@ export async function updateMealPlanSlotAction(
       SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목을 찾을 수 없습니다",
       PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
       BOM_NOT_MATCHED: "선택한 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다",
+      BOM_NOT_MATCHED_NO_ACTIVE_BOM: "선택한 레시피에 사용중(ACTIVE) BOM이 없습니다. 레시피 > BOM 관리에서 BOM을 ACTIVE로 변경해 주세요",
+      BOM_NOT_MATCHED_ZERO_WEIGHT: "BOM의 해당 슬롯 총 중량이 0g입니다. 레시피 BOM에서 슬롯의 totalWeightG를 0보다 크게 설정해 주세요",      
       CONTAINER_SLOT_INFO_MISSING: "용기 또는 슬롯 인덱스 정보가 누락되었습니다",
     });    
   }
@@ -457,6 +464,8 @@ export async function bulkCreateContainerSlotsAction(
       RECIPE_NOT_FOUND: "레시피를 찾을 수 없습니다",
       PRODUCTION_LINE_NOT_FOUND: "생산라인을 찾을 수 없습니다",
       BOM_NOT_MATCHED: "일부 레시피는 이 용기 슬롯에 등록된 ACTIVE BOM이 없습니다",
+      BOM_NOT_MATCHED_NO_ACTIVE_BOM: "일부 레시피에 사용중(ACTIVE) BOM이 없습니다",
+    BOM_NOT_MATCHED_ZERO_WEIGHT: "일부 슬롯의 BOM 총 중량이 0g입니다",      
     });
   }
 }
