@@ -13,18 +13,17 @@ import type {
 // Phase 9-C-Fix-B: soft-delete된 레시피도 포함해 채번 충돌 방지.
 // 추가로 RCP-숫자 패턴에 맞는 모든 코드 중 최댓값+1을 사용 (정렬 의존 제거).
 async function generateRecipeCode(companyId: string): Promise<string> {
-  // RCP-숫자 패턴인 코드만 모아 최댓값을 계산.
-  // deletedAt 필터를 빼서 soft-deleted 레코드의 코드도 회피.
-  const recipes = await prisma.recipe.findMany({
-    where: {
-      companyId,
-      code: { startsWith: "RCP-" },
-    },
-    select: { code: true },
-  });
+  // ★ Phase 9-C-Fix-B2: soft-delete extension의 자동 필터를 우회하기 위해 raw SQL 사용.
+  //    extension이 findMany에 deletedAt IS NULL을 자동 주입하여,
+  //    soft-deleted 레시피의 code가 보이지 않아 채번 충돌이 무한 반복되는 문제 해결.
+  const rows = await prisma.$queryRaw<Array<{ code: string }>>`
+    SELECT code FROM recipes
+    WHERE company_id = ${companyId}
+      AND code LIKE 'RCP-%'
+  `;
 
   let maxNumber = 0;
-  for (const r of recipes) {
+  for (const r of rows) {
     const m = r.code.match(/^RCP-(\d+)$/);
     if (!m) continue;
     const n = parseInt(m[1], 10);
@@ -132,14 +131,14 @@ export async function createRecipe(companyId: string, input: CreateRecipeInput) 
       });
     } catch (e) {
       lastError = e;
-      // Prisma P2002 = unique constraint violation
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2002"
-      ) {
-        // (companyId, code) 충돌 — 다음 번호로 재시도
-        continue;
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        console.warn(
+          `[createRecipe] P2002 attempt=${attempt + 1} code=${code} target=`,
+          e.meta?.target,
+        );
+        continue; // 다음 루프에서 generateRecipeCode가 다시 호출되어 새 max 기준 채번
       }
+      console.error(`[createRecipe] non-P2002 attempt=${attempt + 1}:`, e);
       throw e;
     }
   }

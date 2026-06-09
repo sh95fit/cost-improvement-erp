@@ -7,9 +7,7 @@
 //   또는
 //   npx ts-node prisma/scripts/backfill-bom-slot-total-weight.ts
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../src/lib/prisma";
 
 async function main() {
   const slots = await prisma.recipeBOMSlot.findMany({
