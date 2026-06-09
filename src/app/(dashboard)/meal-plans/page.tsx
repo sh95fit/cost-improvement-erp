@@ -1642,49 +1642,6 @@ export default function MealPlansPage() {
                     </div>
                   </div>
 
-                  {/* ★ Phase 9-C-Fix-H2 + K3: 슬롯 수량 ↔ 예상식수 검증 배지 */}
-                  {(() => {
-                    const _mc = detailGroup.mealCounts?.find(
-                      (c) =>
-                        c.companyMealSlotId === mp.companyMealSlotId &&
-                        c.lineupId === mp.lineupId,
-                    );
-                    const _mealCount =
-                      _mc?.estimatedCount ?? _mc?.finalCount ?? null;
-                    const _check = checkMealPlanSlotQty(mp, _mealCount);
-                    if (_check.kind === "NO_SLOTS") return null;
-                    let label = "";
-                    let cls = "";
-                    if (_check.kind === "OK_FALLBACK") {
-                      label = `전량 ${_check.mealCount.toLocaleString()}식 일괄 처리`;
-                      cls =
-                        "bg-blue-50 text-blue-700 border-blue-200";
-                    } else if (_check.kind === "OK_DISTRIBUTED") {
-                      label = `분배: ${_check.slotsSum.toLocaleString()} / ${_check.mealCount.toLocaleString()}식 ✓`;
-                      cls =
-                        "bg-emerald-50 text-emerald-700 border-emerald-200";
-                    } else if (_check.kind === "PARTIAL_INPUT") {
-                      label = `⚠ ${_check.zeroCount}개 슬롯 수량 미입력 (모두 입력하거나 모두 비우세요)`;
-                      cls =
-                        "bg-amber-50 text-amber-700 border-amber-200";
-                    } else if (_check.kind === "SUM_MISMATCH") {
-                      label = `⚠ 합계 ${_check.slotsSum.toLocaleString()} ≠ 예상식수 ${_check.mealCount.toLocaleString()}`;
-                      cls =
-                        "bg-red-50 text-red-700 border-red-200";
-                    } else if (_check.kind === "NO_MEAL_COUNT") {
-                      label = "⚠ 예상식수가 입력되지 않았습니다";
-                      cls =
-                        "bg-amber-50 text-amber-700 border-amber-200";
-                    }
-                    return (
-                      <div
-                        className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs ${cls}`}
-                      >
-                        {label}
-                      </div>
-                    );
-                  })()}
-
                   {/* 슬롯 테이블 */}
                   {(() => {
                     // ── Phase 9-C-Fix-H2: 이 MealPlan의 예상식수 조회 ──
