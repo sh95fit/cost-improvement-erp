@@ -1,5 +1,6 @@
 // src/features/recipe/services/recipe.service.ts
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { withTransaction } from "@/lib/auth/transaction";
 import type {
   CreateRecipeInput,
@@ -9,17 +10,29 @@ import type {
   RecipeListQuery,
 } from "../schemas/recipe.schema";
 
+// Phase 9-C-Fix-B: soft-delete된 레시피도 포함해 채번 충돌 방지.
+// 추가로 RCP-숫자 패턴에 맞는 모든 코드 중 최댓값+1을 사용 (정렬 의존 제거).
 async function generateRecipeCode(companyId: string): Promise<string> {
-  const lastRecipe = await prisma.recipe.findFirst({
-    where: { companyId, deletedAt: null },
-    orderBy: { code: "desc" },
+  // RCP-숫자 패턴인 코드만 모아 최댓값을 계산.
+  // deletedAt 필터를 빼서 soft-deleted 레코드의 코드도 회피.
+  const recipes = await prisma.recipe.findMany({
+    where: {
+      companyId,
+      code: { startsWith: "RCP-" },
+    },
     select: { code: true },
   });
-  if (!lastRecipe) return "RCP-001";
-  const match = lastRecipe.code.match(/^RCP-(\d+)$/);
-  if (!match) return "RCP-001";
-  const nextNumber = parseInt(match[1], 10) + 1;
-  return `RCP-${String(nextNumber).padStart(3, "0")}`;
+
+  let maxNumber = 0;
+  for (const r of recipes) {
+    const m = r.code.match(/^RCP-(\d+)$/);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (!Number.isNaN(n) && n > maxNumber) maxNumber = n;
+  }
+
+  const next = maxNumber + 1;
+  return `RCP-${String(next).padStart(3, "0")}`;
 }
 
 export async function getRecipes(companyId: string, query: RecipeListQuery) {
@@ -105,9 +118,34 @@ export async function getRecipeByCode(companyId: string, code: string) {
   return prisma.recipe.findFirst({ where: { companyId, code, deletedAt: null } });
 }
 
+// Phase 9-C-Fix-B: 채번 충돌(P2002) 시 최대 5회 재시도.
+// race condition 또는 채번 누락 케이스에서 자동 복구.
 export async function createRecipe(companyId: string, input: CreateRecipeInput) {
-  const code = await generateRecipeCode(companyId);
-  return prisma.recipe.create({ data: { ...input, companyId, code } });
+  const MAX_ATTEMPTS = 5;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const code = await generateRecipeCode(companyId);
+    try {
+      return await prisma.recipe.create({
+        data: { ...input, companyId, code },
+      });
+    } catch (e) {
+      lastError = e;
+      // Prisma P2002 = unique constraint violation
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        // (companyId, code) 충돌 — 다음 번호로 재시도
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  // 5회 시도 모두 실패 — 진짜 비정상 상태
+  throw new Error("RECIPE_CODE_GENERATION_FAILED");
 }
 
 export async function updateRecipe(companyId: string, id: string, input: UpdateRecipeInput) {

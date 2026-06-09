@@ -68,7 +68,10 @@ export async function createRecipeAction(
     });
     return actionOk(recipe);
   } catch (error) {
-    return handleActionError(error, "레시피 생성에 실패했습니다");
+    return handleActionError(error, "레시피 생성에 실패했습니다", {
+      RECIPE_CODE_GENERATION_FAILED:
+        "레시피 코드 채번에 반복 실패했습니다. 잠시 후 다시 시도하거나 관리자에게 문의해주세요",
+    });
   }
 }
 
