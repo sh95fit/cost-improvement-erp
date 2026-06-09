@@ -345,8 +345,11 @@ describe("recipe-bom.service", () => {
   });
 
   // ── RecipeBOMSlotItem ──
+  // Phase 9-C-Fix-D: add/update/delete 모두 withTransaction + 부모 슬롯 totalWeightG 재계산.
+  // 트랜잭션 내부에서 recipeBOMSlotItem.aggregate와 recipeBOMSlot.update가 호출되므로
+  // 해당 mock도 함께 준비해야 한다.
   describe("RecipeBOMSlotItem CRUD", () => {
-    it("addRecipeBOMSlotItem - 슬롯 아이템을 추가한다", async () => {
+    it("addRecipeBOMSlotItem - 슬롯 아이템을 추가하고 부모 슬롯 totalWeightG를 재계산한다", async () => {
       const mockItem = {
         id: "si1",
         recipeBomSlotId: "s1",
@@ -355,6 +358,14 @@ describe("recipe-bom.service", () => {
         weightG: 100,
       };
       mockPrisma.recipeBOMSlotItem.create.mockResolvedValue(mockItem);
+      // recompute용 mock
+      mockPrisma.recipeBOMSlotItem.aggregate.mockResolvedValue({
+        _sum: { weightG: 100 },
+      });
+      mockPrisma.recipeBOMSlot.update.mockResolvedValue({
+        id: "s1",
+        totalWeightG: 100,
+      });
 
       const result = await addRecipeBOMSlotItem("s1", {
         ingredientType: "MATERIAL" as const,
@@ -364,26 +375,89 @@ describe("recipe-bom.service", () => {
         sortOrder: 0,
       });
 
-      expect(result.weightG).toBe(100);
+      expect(result).not.toBeNull();
+      expect(result!.weightG).toBe(100);
+      expect(mockPrisma.recipeBOMSlotItem.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { recipeBomSlotId: "s1" },
+          _sum: { weightG: true },
+        }),
+      );
+      expect(mockPrisma.recipeBOMSlot.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "s1" },
+          data: { totalWeightG: 100 },
+        }),
+      );
     });
 
-    it("updateRecipeBOMSlotItem - 슬롯 아이템을 수정한다", async () => {
+    it("updateRecipeBOMSlotItem - 슬롯 아이템을 수정하고 부모 슬롯 totalWeightG를 재계산한다", async () => {
       mockPrisma.recipeBOMSlotItem.update.mockResolvedValue({
         id: "si1",
+        recipeBomSlotId: "s1",
         weightG: 150,
+      });
+      mockPrisma.recipeBOMSlotItem.aggregate.mockResolvedValue({
+        _sum: { weightG: 150 },
+      });
+      mockPrisma.recipeBOMSlot.update.mockResolvedValue({
+        id: "s1",
+        totalWeightG: 150,
       });
 
       const result = await updateRecipeBOMSlotItem("si1", { weightG: 150 });
 
-      expect(result.weightG).toBe(150);
+      expect(result).not.toBeNull();
+      expect(result!.weightG).toBe(150);
+      expect(mockPrisma.recipeBOMSlot.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "s1" },
+          data: { totalWeightG: 150 },
+        }),
+      );
     });
 
-    it("deleteRecipeBOMSlotItem - 슬롯 아이템을 삭제한다", async () => {
+    it("deleteRecipeBOMSlotItem - 슬롯 아이템을 삭제하고 부모 슬롯 totalWeightG를 재계산한다", async () => {
+      // findUnique로 recipeBomSlotId를 먼저 조회
+      mockPrisma.recipeBOMSlotItem.findUnique.mockResolvedValue({
+        recipeBomSlotId: "s1",
+      });
       mockPrisma.recipeBOMSlotItem.delete.mockResolvedValue({ id: "si1" });
+      // 삭제 후 합계는 0 (또는 남은 아이템 합계)
+      mockPrisma.recipeBOMSlotItem.aggregate.mockResolvedValue({
+        _sum: { weightG: 0 },
+      });
+      mockPrisma.recipeBOMSlot.update.mockResolvedValue({
+        id: "s1",
+        totalWeightG: 0,
+      });
 
       const result = await deleteRecipeBOMSlotItem("si1");
 
-      expect(result.id).toBe("si1");
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe("si1");
+      expect(mockPrisma.recipeBOMSlotItem.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "si1" },
+        }),
+      );
+      expect(mockPrisma.recipeBOMSlot.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "s1" },
+          data: { totalWeightG: 0 },
+        }),
+      );
+    });
+
+    it("deleteRecipeBOMSlotItem - 존재하지 않는 아이템은 null을 반환한다", async () => {
+      mockPrisma.recipeBOMSlotItem.findUnique.mockResolvedValue(null);
+
+      const result = await deleteRecipeBOMSlotItem("nonexistent");
+
+      expect(result).toBeNull();
+      // 삭제·재계산은 호출되지 않아야 함
+      expect(mockPrisma.recipeBOMSlotItem.delete).not.toHaveBeenCalled();
+      expect(mockPrisma.recipeBOMSlot.update).not.toHaveBeenCalled();
     });
   });
 });

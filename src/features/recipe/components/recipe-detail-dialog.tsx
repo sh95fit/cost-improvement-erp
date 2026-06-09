@@ -304,7 +304,7 @@ export function RecipeDetailDialog({
   const [savingBaseWeight, setSavingBaseWeight] = useState<string | null>(null);
 
   // ★ Phase 6: 슬롯 인라인 편집 (totalWeightG, note)
-  const [editingSlot, setEditingSlot] = useState<Record<string, { totalWeightG?: string; note?: string }>>({});
+  const [editingSlot, setEditingSlot] = useState<Record<string, { note?: string }>>({});
   const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
 
   // ★ Phase 6: 슬롯별 재료 추가
@@ -727,14 +727,7 @@ export function RecipeDetailDialog({
     const edits = editingSlot[slotId];
     if (!edits) return;
     const input: Record<string, unknown> = {};
-    if (edits.totalWeightG !== undefined) {
-      const w = parseFloat(edits.totalWeightG);
-      if (isNaN(w) || w < 0) {
-        toast.error("올바른 중량 값을 입력해 주세요");
-        return;
-      }
-      input.totalWeightG = w;
-    }
+    // Phase 9-C-Fix-D: totalWeightG는 자동 산출이므로 더 이상 전송하지 않음 (note만)
     if (edits.note !== undefined) {
       input.note = edits.note || undefined;
     }
@@ -1056,7 +1049,7 @@ export function RecipeDetailDialog({
                             : `Slot ${slot.slotIndex}`}
                         </span>
                         <span className="ml-auto font-mono text-blue-700 text-xs">
-                          {weightSum}g / {slot.totalWeightG}g
+                          {slot.totalWeightG}g <span className="text-gray-400">(자동 산출)</span>
                         </span>
                       </div>
                       {slot.items.length > 0 && (
@@ -1510,15 +1503,8 @@ export function RecipeDetailDialog({
                                       : `Slot ${slot.slotIndex}`}
                                   </span>
                                   {/* ★ Phase 6: 중량 합계 / 총 중량 표시 */}
-                                  <span
-                                    className={cn(
-                                      "font-mono text-xs",
-                                      weightSum > slot.totalWeightG && slot.totalWeightG > 0
-                                        ? "text-red-600"
-                                        : "text-blue-700"
-                                    )}
-                                  >
-                                    {weightSum}g / {slot.totalWeightG}g
+                                  <span className="text-blue-700 font-mono">
+                                    {slot.totalWeightG}g
                                   </span>
                                   {slot.note && (
                                     <span className="text-xs text-gray-400">
@@ -1562,34 +1548,18 @@ export function RecipeDetailDialog({
                                 </div>
                               </div>
 
-                              {/* ★ Phase 6-b: DRAFT+ACTIVE 슬롯 인라인 편집 (totalWeightG, note) */}
+                              {/* ★ Phase 9-C-Fix-D: totalWeightG는 슬롯 아이템 합계로 자동 산출.
+                                  수동 입력 필드 제거하고 자동 산출 라벨 + 메모 입력만 유지. */}
                               {bom.status !== "ARCHIVED" && (
                                 <div className="flex items-center gap-3 text-xs">
-                                  <Label className="whitespace-nowrap text-gray-500">총 중량(g):</Label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    step="any"
-                                    className="h-6 w-20 text-xs"
-                                    value={
-                                      slotEdits?.totalWeightG !== undefined
-                                        ? slotEdits.totalWeightG
-                                        : String(slot.totalWeightG)
-                                    }
-                                    onChange={(e) =>
-                                      setEditingSlot((prev) => ({
-                                        ...prev,
-                                        [slot.id]: {
-                                          ...prev[slot.id],
-                                          totalWeightG: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") handleSaveSlot(slot.id);
-                                    }}
-                                  />
-                                  <Label className="whitespace-nowrap text-gray-500">메모:</Label>
+                                  <span className="whitespace-nowrap text-gray-500">
+                                    총 중량:{" "}
+                                    <strong className="font-mono text-gray-700">
+                                      {slot.totalWeightG}g
+                                    </strong>
+                                    <span className="ml-1 text-gray-400">(재료 합계 자동)</span>
+                                  </span>
+                                  <Label className="ml-3 whitespace-nowrap text-gray-500">메모:</Label>
                                   <Input
                                     className="h-6 flex-1 text-xs"
                                     placeholder="메모"

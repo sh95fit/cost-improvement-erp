@@ -24,6 +24,32 @@ const SLOT_INCLUDE = {
 } as const;
 
 // ════════════════════════════════════════
+// Phase 9-C-Fix-D: 슬롯 총 중량 자동 산출 헬퍼
+// ────────────────────────────────────────
+// slot.items[].weightG의 합으로 totalWeightG를 갱신.
+// 단위는 항상 "g" 기준 (RecipeBOMSlotItem.unit은 "g"로 통일되어 있음).
+// 트랜잭션 클라이언트를 받아 동일 트랜잭션 내에서 재계산.
+// ════════════════════════════════════════
+
+import type { Prisma } from "@prisma/client";
+
+async function recomputeSlotTotalWeight(
+  tx: Prisma.TransactionClient,
+  recipeBomSlotId: string,
+): Promise<number> {
+  const agg = await tx.recipeBOMSlotItem.aggregate({
+    where: { recipeBomSlotId },
+    _sum: { weightG: true },
+  });
+  const total = agg._sum.weightG ?? 0;
+  await tx.recipeBOMSlot.update({
+    where: { id: recipeBomSlotId },
+    data: { totalWeightG: total },
+  });
+  return total;
+}
+
+// ════════════════════════════════════════
 // RecipeBOM
 // ════════════════════════════════════════
 
@@ -179,6 +205,9 @@ export async function addRecipeBOMSlotWithIngredients(recipeBomId: string, input
       });
     }
 
+    // Phase 9-C-Fix-D: 일관성을 위해 재계산 (초기 아이템은 모두 0g이라 결과적으로 0)
+    await recomputeSlotTotalWeight(tx, slot.id);
+
     return tx.recipeBOMSlot.findUnique({
       where: { id: slot.id },
       include: {
@@ -196,7 +225,12 @@ export async function addRecipeBOMSlotWithIngredients(recipeBomId: string, input
 }
 
 export async function updateRecipeBOMSlot(id: string, input: UpdateRecipeBOMSlotInput) {
-  return prisma.recipeBOMSlot.update({ where: { id }, data: input });
+  // Phase 9-C-Fix-D: totalWeightG는 자동 산출 필드이므로 클라이언트 입력은 무시.
+  // note, sortOrder 등 기타 필드만 갱신.
+  const { totalWeightG: _ignored, ...rest } =
+    input as UpdateRecipeBOMSlotInput & { totalWeightG?: number };
+  void _ignored;
+  return prisma.recipeBOMSlot.update({ where: { id }, data: rest });
 }
 
 export async function deleteRecipeBOMSlot(id: string) {
@@ -211,21 +245,45 @@ export async function deleteRecipeBOMSlot(id: string) {
 // ════════════════════════════════════════
 
 export async function addRecipeBOMSlotItem(recipeBomSlotId: string, input: CreateRecipeBOMSlotItemInput) {
-  return prisma.recipeBOMSlotItem.create({
-    data: { ...input, recipeBomSlotId },
-    include: {
-      materialMaster: { select: { id: true, name: true, code: true, unit: true } },
-      semiProduct: { select: { id: true, name: true, code: true, unit: true } },
-    },
+  return withTransaction(async (tx) => {
+    const item = await tx.recipeBOMSlotItem.create({
+      data: { ...input, recipeBomSlotId },
+      include: {
+        materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+        semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+      },
+    });
+    await recomputeSlotTotalWeight(tx, recipeBomSlotId);
+    return item;
   });
 }
 
 export async function updateRecipeBOMSlotItem(id: string, input: UpdateRecipeBOMSlotItemInput) {
-  return prisma.recipeBOMSlotItem.update({ where: { id }, data: input });
+  return withTransaction(async (tx) => {
+    const updated = await tx.recipeBOMSlotItem.update({
+      where: { id },
+      data: input,
+      include: {
+        materialMaster: { select: { id: true, name: true, code: true, unit: true } },
+        semiProduct: { select: { id: true, name: true, code: true, unit: true } },
+      },
+    });
+    await recomputeSlotTotalWeight(tx, updated.recipeBomSlotId);
+    return updated;
+  });
 }
 
 export async function deleteRecipeBOMSlotItem(id: string) {
-  return prisma.recipeBOMSlotItem.delete({ where: { id } });
+  return withTransaction(async (tx) => {
+    const target = await tx.recipeBOMSlotItem.findUnique({
+      where: { id },
+      select: { recipeBomSlotId: true },
+    });
+    if (!target) return null;
+    const deleted = await tx.recipeBOMSlotItem.delete({ where: { id } });
+    await recomputeSlotTotalWeight(tx, target.recipeBomSlotId);
+    return deleted;
+  });
 }
 
 // ════════════════════════════════════════
