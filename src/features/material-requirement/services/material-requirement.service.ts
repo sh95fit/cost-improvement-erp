@@ -17,6 +17,8 @@ import {
   type ListMaterialRequirementsQuery,
 } from "../schemas/material-requirement.schema";
 
+import { validateSlotQuantitiesForMealPlan } from "@/features/meal-plan/services/meal-plan.service";
+
 // ============================================================
 // Phase 9-A-2: MaterialRequirement Service
 // ------------------------------------------------------------
@@ -397,7 +399,7 @@ async function calculateRequirementsForGroup(
   let slotQuantityMismatchWarnings = 0;
   const mismatchDetails: Array<{ mealPlanId: string; mealCount: number; slotsSum: number }> = [];
   
-  // ★ Phase 9-C-Fix-H (a): MealPlan 단위 슬롯 quantity 합계 ≠ MealCount 검사
+  // ★ Phase 9-C-Fix-K1: MealPlan 단위 슬롯 quantity 검증 (산출 차단)
   const containerSlots = slots.filter((s) => s.kind === SlotKind.CONTAINER);
   const slotsByMealPlan = new Map<string, typeof containerSlots>();
   for (const s of containerSlots) {
@@ -409,12 +411,28 @@ async function calculateRequirementsForGroup(
     const first = list[0];
     const countKey = `${first.mealPlan.companyMealSlotId}::${first.mealPlan.lineupId}`;
     const mc = countMap.get(countKey);
-    if (mc == null) continue; // 인분수 누락은 본 루프에서 throw
-    const slotsSum = list.reduce((acc, s) => acc + (s.quantity ?? 0), 0);
-    // 모든 슬롯 quantity=0 이면 fallback이라 미스매치 아님
-    if (slotsSum > 0 && Math.abs(slotsSum - mc) > EPSILON) {
-      slotQuantityMismatchWarnings++;
-      mismatchDetails.push({ mealPlanId, mealCount: mc, slotsSum });
+    if (mc == null) continue; // 본 루프에서 throw MISSING_MEAL_COUNT
+
+    const result = validateSlotQuantitiesForMealPlan(
+      mealPlanId,
+      mc,
+      list.map((s) => ({
+        id: s.id,
+        quantity: s.quantity ?? 0,
+        kind: "CONTAINER",
+      })),
+    );
+    if (!result.ok) {
+      if (result.reason === "PARTIAL_INPUT") {
+        throw new Error(
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${result.zeroSlotIds.length}`,
+        );
+      }
+      if (result.reason === "SUM_MISMATCH") {
+        throw new Error(
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${result.mealCount}::${result.slotsSum}`,
+        );
+      }
     }
   }
   

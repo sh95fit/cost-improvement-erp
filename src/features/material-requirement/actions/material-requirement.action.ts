@@ -95,12 +95,30 @@ export async function generateMaterialRequirementsAction(
 
     return actionOk(result);
   } catch (error) {
+    const msg = error instanceof Error ? error.message : "";
+    
+    // Phase 9-C-Fix-K1: 슬롯 수량 검증 실패
+    if (msg.startsWith("MR_SLOT_QTY_PARTIAL_INPUT::")) {
+      const [, mealPlanId, zeroCount] = msg.split("::");
+      return handleActionError(
+        error,
+        `슬롯 수량을 일부만 입력한 식단이 있습니다 (${zeroCount}개 슬롯 미입력). 모두 입력하거나 모두 비워주세요.`,
+      );
+    }
+    if (msg.startsWith("MR_SLOT_QTY_SUM_MISMATCH::")) {
+      const [, mealPlanId, mc, sum] = msg.split("::");
+      return handleActionError(
+        error,
+        `슬롯 수량 합계(${Number(sum).toLocaleString()})가 예상식수(${Number(mc).toLocaleString()})와 일치하지 않습니다. 식단을 수정한 뒤 다시 산출하세요.`,
+      );
+    }
+    
     return handleActionError(
       error,
       "소요량 산출에 실패했습니다",
       MR_DOMAIN_ERRORS,
     );
-  }
+  }  
 }
 
 // ══════════════════════════════════════════════════════════════

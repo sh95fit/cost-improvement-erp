@@ -160,6 +160,59 @@ async function assertMealPlanInCompany(
   return plan;
 }
 
+export type SlotQuantityValidation =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "PARTIAL_INPUT" | "SUM_MISMATCH";
+      mealPlanId: string;
+      mealCount: number;
+      slotsSum: number;
+      zeroSlotIds: string[];
+    };
+
+export function validateSlotQuantitiesForMealPlan(
+  mealPlanId: string,
+  mealCount: number,
+  slots: Array<{ id: string; quantity: number; kind: "CONTAINER" | "DIRECT" }>,
+): SlotQuantityValidation {
+  const containerSlots = slots.filter((s) => s.kind === "CONTAINER");
+  if (containerSlots.length === 0) return { ok: true };
+
+  const positive = containerSlots.filter((s) => s.quantity > 0);
+  const zero = containerSlots.filter((s) => s.quantity === 0);
+
+  // 전부 0 → fallback (OK)
+  if (positive.length === 0) return { ok: true };
+
+  // 부분 입력 → 금지
+  if (zero.length > 0) {
+    return {
+      ok: false,
+      reason: "PARTIAL_INPUT",
+      mealPlanId,
+      mealCount,
+      slotsSum: positive.reduce((a, s) => a + s.quantity, 0),
+      zeroSlotIds: zero.map((s) => s.id),
+    };
+  }
+
+  // 전부 입력 → 합계 검사
+  const sum = positive.reduce((a, s) => a + s.quantity, 0);
+  if (Math.abs(sum - mealCount) > 0) {
+    return {
+      ok: false,
+      reason: "SUM_MISMATCH",
+      mealPlanId,
+      mealCount,
+      slotsSum: sum,
+      zeroSlotIds: [],
+    };
+  }
+
+  return { ok: true };
+}
+
 // ════════════════════════════════════════════════════════════════
 // Phase 7-F1 + 9-C-Fix-A: CONTAINER 슬롯 BOM 매칭 검증 헬퍼
 // ────────────────────────────────────────────────────────────────
