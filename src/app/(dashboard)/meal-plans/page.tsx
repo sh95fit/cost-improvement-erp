@@ -689,58 +689,118 @@ export default function MealPlansPage() {
   };
   
   // ══════════════════════════════════════════════════════════════
-  // Phase 9-C-Fix-H2 + K3: 슬롯 수량 ↔ 예상식수 검증 헬퍼
+  // Phase 9-C-Fix-R1-5: 레시피 그룹 단위 슬롯 수량 검증
   // ──────────────────────────────────────────────────────────────
-  // 서버 validateSlotQuantitiesForMealPlan 와 동일 정책:
-  //   - CONTAINER 슬롯 0개 → NO_SLOTS
-  //   - 모든 CONTAINER 슬롯 quantity = 0 → OK_FALLBACK (전량 mealCount 적용)
+  // 서버 validateSlotQuantitiesForMealPlan 와 동일 정책 (recipeId 그룹화):
+  //   - 그룹 내 모두 quantity=0      → OK_FALLBACK
+  //   - 그룹 내 일부 0 + 일부 양수    → PARTIAL_INPUT
+  //   - 동일 레시피 ≥ 2슬롯 + 0 포함  → MULTI_LINE_REQUIRES_QUANTITY
   //   - 전부 양수 + 합계 = mealCount → OK_DISTRIBUTED
   //   - 전부 양수 + 합계 ≠ mealCount → SUM_MISMATCH
-  //   - 일부만 양수, 일부 0 → PARTIAL_INPUT
-  //   - mealCount 없음 → NO_MEAL_COUNT
   // ══════════════════════════════════════════════════════════════
-  type SlotQtyCheck =
-    | { kind: "OK_FALLBACK"; mealCount: number }
-    | { kind: "OK_DISTRIBUTED"; mealCount: number; slotsSum: number }
+  type RecipeGroupCheck =
+    | { kind: "OK_FALLBACK"; recipeId: string | null; recipeName: string; mealCount: number; slotCount: number }
+    | { kind: "OK_DISTRIBUTED"; recipeId: string | null; recipeName: string; mealCount: number; slotsSum: number; slotCount: number }
+    | { kind: "PARTIAL_INPUT"; recipeId: string | null; recipeName: string; mealCount: number; zeroCount: number; slotCount: number }
+    | { kind: "SUM_MISMATCH"; recipeId: string | null; recipeName: string; mealCount: number; slotsSum: number; slotCount: number }
+    | { kind: "MULTI_LINE_REQUIRES_QUANTITY"; recipeId: string | null; recipeName: string; mealCount: number; slotCount: number };
+
+  type MealPlanCheckResult =
     | { kind: "NO_SLOTS" }
     | { kind: "NO_MEAL_COUNT" }
-    | { kind: "PARTIAL_INPUT"; zeroCount: number; mealCount: number }
-    | { kind: "SUM_MISMATCH"; mealCount: number; slotsSum: number };
+    | { kind: "BY_RECIPE"; groups: RecipeGroupCheck[]; hasViolation: boolean };
 
   const checkMealPlanSlotQty = useCallback(
-    (mp: MealPlanRow, mealCount: number | null): SlotQtyCheck => {
+    (mp: MealPlanRow, mealCount: number | null): MealPlanCheckResult => {
       const containers = mp.slots.filter((s) => s.kind === "CONTAINER");
       if (containers.length === 0) return { kind: "NO_SLOTS" };
       if (mealCount == null) return { kind: "NO_MEAL_COUNT" };
-      const positive = containers.filter((s) => s.quantity > 0);
-      const zero = containers.filter((s) => s.quantity === 0);
-      if (positive.length === 0) return { kind: "OK_FALLBACK", mealCount };
-      if (zero.length > 0) {
-        return {
-          kind: "PARTIAL_INPUT",
-          zeroCount: zero.length,
-          mealCount,
-        };
+
+      // recipeId별 그룹화 (미배정은 null 키)
+      const groupMap = new Map<string | null, MealPlanSlotRow[]>();
+      for (const s of containers) {
+        const key = s.recipe?.id ?? null;
+        const arr = groupMap.get(key) ?? [];
+        arr.push(s);
+        groupMap.set(key, arr);
       }
-      const sum = positive.reduce((a, s) => a + s.quantity, 0);
-      if (sum !== mealCount) {
-        return { kind: "SUM_MISMATCH", mealCount, slotsSum: sum };
+
+      const groups: RecipeGroupCheck[] = [];
+      for (const [recipeId, slots] of groupMap.entries()) {
+        const recipeName =
+          slots[0].recipe?.name ?? (recipeId === null ? "(미배정)" : "—");
+        const positive = slots.filter((s) => s.quantity > 0);
+        const zero = slots.filter((s) => s.quantity === 0);
+
+        // 동일 레시피가 2개 이상 슬롯에 걸쳐 있고 0이 섞이면 MULTI_LINE
+        if (slots.length >= 2 && positive.length > 0 && zero.length > 0) {
+          groups.push({
+            kind: "MULTI_LINE_REQUIRES_QUANTITY",
+            recipeId, recipeName, mealCount, slotCount: slots.length,
+          });
+          continue;
+        }
+        if (positive.length === 0) {
+          groups.push({
+            kind: "OK_FALLBACK",
+            recipeId, recipeName, mealCount, slotCount: slots.length,
+          });
+          continue;
+        }
+        if (zero.length > 0) {
+          groups.push({
+            kind: "PARTIAL_INPUT",
+            recipeId, recipeName, mealCount,
+            zeroCount: zero.length, slotCount: slots.length,
+          });
+          continue;
+        }
+        const sum = positive.reduce((a, s) => a + s.quantity, 0);
+        if (sum !== mealCount) {
+          groups.push({
+            kind: "SUM_MISMATCH",
+            recipeId, recipeName, mealCount, slotsSum: sum, slotCount: slots.length,
+          });
+          continue;
+        }
+        groups.push({
+          kind: "OK_DISTRIBUTED",
+          recipeId, recipeName, mealCount, slotsSum: sum, slotCount: slots.length,
+        });
       }
-      return { kind: "OK_DISTRIBUTED", mealCount, slotsSum: sum };
+
+      const hasViolation = groups.some(
+        (g) =>
+          g.kind === "PARTIAL_INPUT" ||
+          g.kind === "SUM_MISMATCH" ||
+          g.kind === "MULTI_LINE_REQUIRES_QUANTITY",
+      );
+      return { kind: "BY_RECIPE", groups, hasViolation };
     },
     [],
   );
 
+  // R1-5: 위반 그룹을 사람이 읽을 수 있는 문자열로 요약
+  const describeRecipeGroupIssue = (g: RecipeGroupCheck): string => {
+    if (g.kind === "PARTIAL_INPUT")
+      return `[${g.recipeName}] ${g.zeroCount}/${g.slotCount} 슬롯 수량 미입력`;
+    if (g.kind === "SUM_MISMATCH")
+      return `[${g.recipeName}] 합계 ${g.slotsSum.toLocaleString()} ≠ 예상식수 ${g.mealCount.toLocaleString()}`;
+    if (g.kind === "MULTI_LINE_REQUIRES_QUANTITY")
+      return `[${g.recipeName}] 다중 라인 ${g.slotCount}개 — 모든 슬롯 수량 입력 필요`;
+    return "";
+  };
+
   /**
-   * 그룹 단위 위반 식단 수집 — 상태 변경 사전 안내용.
-   * 서버 K-2 정책과 정합: estimatedCount 우선, 없으면 finalCount fallback.
+   * R1-5: 그룹 단위 위반 식단 수집 — 레시피 그룹별 위반을 평탄화.
+   * 서버 K-2/R1-6 정책과 정합: estimatedCount 우선, 없으면 finalCount fallback.
    */
   const collectGroupSlotQtyIssues = useCallback(
     (
       group: MealPlanGroupRow,
-    ): Array<{ mp: MealPlanRow; check: SlotQtyCheck }> => {
+    ): Array<{ mp: MealPlanRow; issue: RecipeGroupCheck | { kind: "NO_MEAL_COUNT" } }> => {
       if (!group.mealPlans) return [];
-      const issues: Array<{ mp: MealPlanRow; check: SlotQtyCheck }> = [];
+      const issues: Array<{ mp: MealPlanRow; issue: RecipeGroupCheck | { kind: "NO_MEAL_COUNT" } }> = [];
       for (const mp of group.mealPlans) {
         const mc = group.mealCounts?.find(
           (c) =>
@@ -749,13 +809,22 @@ export default function MealPlansPage() {
         );
         const mealCount = mc?.estimatedCount ?? mc?.finalCount ?? null;
         const check = checkMealPlanSlotQty(mp, mealCount);
+
         if (
-          check.kind === "PARTIAL_INPUT" ||
-          check.kind === "SUM_MISMATCH" ||
-          (check.kind === "NO_MEAL_COUNT" &&
-            mp.slots.some((s) => s.kind === "CONTAINER"))
+          check.kind === "NO_MEAL_COUNT" &&
+          mp.slots.some((s) => s.kind === "CONTAINER")
         ) {
-          issues.push({ mp, check });
+          issues.push({ mp, issue: { kind: "NO_MEAL_COUNT" } });
+        } else if (check.kind === "BY_RECIPE") {
+          for (const g of check.groups) {
+            if (
+              g.kind === "PARTIAL_INPUT" ||
+              g.kind === "SUM_MISMATCH" ||
+              g.kind === "MULTI_LINE_REQUIRES_QUANTITY"
+            ) {
+              issues.push({ mp, issue: g });
+            }
+          }
         }
       }
       return issues;
@@ -763,31 +832,77 @@ export default function MealPlansPage() {
     [checkMealPlanSlotQty],
   );
 
+  // R1-5: 허용 상태 전환 표 (서버 정책과 1:1 정합)
+  const ALLOWED_FORWARD_TRANSITIONS: Record<string, string[]> = {
+    DRAFT: ["CONFIRMED", "CANCELLED"],
+    CONFIRMED: ["IN_PROGRESS", "DRAFT", "CANCELLED"],
+    IN_PROGRESS: ["COMPLETED", "CONFIRMED", "CANCELLED"],
+    COMPLETED: ["IN_PROGRESS", "CANCELLED"],
+    CANCELLED: ["DRAFT"],
+  };
+
   const handleStatusChange = async () => {
     if (!statusChangeTarget || !newStatus) return;
 
-    // ★ Phase 9-C-Fix-K3: DRAFT → 그 외(CANCELLED 제외) 전환 시 클라이언트 사전 검증
-    if (
-      statusChangeTarget.currentStatus === "DRAFT" &&
-      newStatus !== "DRAFT" &&
-      newStatus !== "CANCELLED" &&
-      detailGroup?.id === statusChangeTarget.id
-    ) {
-      const issues = collectGroupSlotQtyIssues(detailGroup);
-      if (issues.length > 0) {
-        const first = issues[0];
-        const label = `${first.mp.companyMealSlot?.displayName ?? "-"} · ${first.mp.lineup?.name ?? "—"}`;
-        let detail = "";
-        if (first.check.kind === "PARTIAL_INPUT") {
-          detail = `${label}: ${first.check.zeroCount}개 슬롯 수량 미입력`;
-        } else if (first.check.kind === "SUM_MISMATCH") {
-          detail = `${label}: 합계 ${first.check.slotsSum.toLocaleString()} ≠ 예상식수 ${first.check.mealCount.toLocaleString()}`;
-        } else if (first.check.kind === "NO_MEAL_COUNT") {
-          detail = `${label}: 예상식수 미입력`;
+    // ── R1-5 (1): 허용 전환 검사 ──
+    const allowed = ALLOWED_FORWARD_TRANSITIONS[statusChangeTarget.currentStatus] ?? [];
+    if (!allowed.includes(newStatus)) {
+      toast.error(
+        `${STATUS_LABEL[statusChangeTarget.currentStatus]} → ${STATUS_LABEL[newStatus]} 전환은 허용되지 않습니다`,
+      );
+      return;
+    }
+
+    // ── R1-5 (2): 서버 R1-6 정책과 정합한 사전 검증 ──
+    if (detailGroup?.id === statusChangeTarget.id) {
+      // CONFIRMED → IN_PROGRESS: 슬롯 수량 + 예상식수 전체
+      if (
+        statusChangeTarget.currentStatus === "CONFIRMED" &&
+        newStatus === "IN_PROGRESS"
+      ) {
+        const issues = collectGroupSlotQtyIssues(detailGroup);
+        if (issues.length > 0) {
+          const first = issues[0];
+          const label = `${first.mp.companyMealSlot?.displayName ?? "-"} · ${first.mp.lineup?.name ?? "—"}`;
+          const detail =
+            first.issue.kind === "NO_MEAL_COUNT"
+              ? "예상식수 미입력"
+              : describeRecipeGroupIssue(first.issue);
+          const more = issues.length > 1 ? ` 외 ${issues.length - 1}건` : "";
+          toast.error(`진행중 전환 불가: ${label} — ${detail}${more}`);
+          return;
         }
-        const more = issues.length > 1 ? ` 외 ${issues.length - 1}건` : "";
-        toast.error(`상태를 변경할 수 없습니다. ${detail}${more}`);
-        return;
+        // 예상식수 전체 입력 확인
+        const missing = (detailGroup.mealPlans ?? []).filter((mp) => {
+          const mc = detailGroup.mealCounts?.find(
+            (c) =>
+              c.companyMealSlotId === mp.companyMealSlotId &&
+              c.lineupId === mp.lineupId,
+          );
+          return mc?.estimatedCount == null;
+        });
+        if (missing.length > 0) {
+          toast.error(`예상식수 미입력 식단 ${missing.length}건 — 모두 입력 후 진행하세요`);
+          return;
+        }
+      }
+      // IN_PROGRESS → COMPLETED: 확정식수 전체
+      if (
+        statusChangeTarget.currentStatus === "IN_PROGRESS" &&
+        newStatus === "COMPLETED"
+      ) {
+        const missing = (detailGroup.mealPlans ?? []).filter((mp) => {
+          const mc = detailGroup.mealCounts?.find(
+            (c) =>
+              c.companyMealSlotId === mp.companyMealSlotId &&
+              c.lineupId === mp.lineupId,
+          );
+          return mc?.finalCount == null;
+        });
+        if (missing.length > 0) {
+          toast.error(`확정식수 미입력 식단 ${missing.length}건 — 모두 입력 후 완료하세요`);
+          return;
+        }
       }
     }
 
@@ -1655,43 +1770,67 @@ export default function MealPlansPage() {
 
                     // ── Phase 9-C-Fix-K3: 슬롯 수량 실시간 검증 배지 ──
                     const _check = checkMealPlanSlotQty(mp, _mealCountForMp);
-                    const _badge = (() => {
-                      if (_check.kind === "NO_SLOTS") return null;
-                      if (_check.kind === "OK_FALLBACK")
-                        return {
-                          cls: "border-blue-300 bg-blue-50 text-blue-700",
-                          text: `예상식수 ${_check.mealCount.toLocaleString()}식 전량 적용`,
-                        };
-                      if (_check.kind === "OK_DISTRIBUTED")
-                        return {
-                          cls: "border-emerald-300 bg-emerald-50 text-emerald-700",
-                          text: `슬롯 분배 합계 일치 (${_check.slotsSum.toLocaleString()}식)`,
-                        };
-                      if (_check.kind === "NO_MEAL_COUNT")
-                        return {
-                          cls: "border-amber-300 bg-amber-50 text-amber-700",
-                          text: "예상식수 미입력",
-                        };
-                      if (_check.kind === "PARTIAL_INPUT")
-                        return {
-                          cls: "border-red-300 bg-red-50 text-red-700",
-                          text: `수량 미입력 슬롯 ${_check.zeroCount}개 (예상식수 ${_check.mealCount.toLocaleString()}식)`,
-                        };
-                      if (_check.kind === "SUM_MISMATCH")
-                        return {
-                          cls: "border-red-300 bg-red-50 text-red-700",
-                          text: `합계 ${_check.slotsSum.toLocaleString()} ≠ 예상식수 ${_check.mealCount.toLocaleString()}`,
-                        };
-                      return null;
-                    })();
 
                     return (
                       <>
-                        {_badge && (
-                          <div
-                            className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs ${_badge.cls}`}
-                          >
-                            {_badge.text}
+                        {/* R1-5: 레시피 그룹별 배지 — 검증 결과별 색상 분기 */}
+                        {_check.kind === "NO_MEAL_COUNT" && (
+                          <div className="mt-2 inline-flex items-center rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                            예상식수 미입력 — 상태 진행 전 입력 필요
+                          </div>
+                        )}
+                        {_check.kind === "BY_RECIPE" && _check.groups.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {_check.groups.map((g, idx) => {
+                              const base =
+                                "inline-flex items-center rounded border px-2 py-0.5 text-xs";
+                              if (g.kind === "OK_FALLBACK")
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`${base} border-blue-300 bg-blue-50 text-blue-700`}
+                                  >
+                                    [{g.recipeName}] 예상식수 {g.mealCount.toLocaleString()}식 전량 적용
+                                  </span>
+                                );
+                              if (g.kind === "OK_DISTRIBUTED")
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`${base} border-emerald-300 bg-emerald-50 text-emerald-700`}
+                                  >
+                                    [{g.recipeName}] 슬롯 분배 합계 일치 ({g.slotsSum.toLocaleString()}식)
+                                  </span>
+                                );
+                              if (g.kind === "PARTIAL_INPUT")
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`${base} border-orange-300 bg-orange-50 text-orange-700`}
+                                  >
+                                    [{g.recipeName}] {g.zeroCount}/{g.slotCount}개 슬롯 수량 미입력
+                                  </span>
+                                );
+                              if (g.kind === "SUM_MISMATCH")
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`${base} border-rose-300 bg-rose-50 text-rose-700`}
+                                  >
+                                    [{g.recipeName}] 합계 {g.slotsSum.toLocaleString()} ≠ 예상식수 {g.mealCount.toLocaleString()}
+                                  </span>
+                                );
+                              if (g.kind === "MULTI_LINE_REQUIRES_QUANTITY")
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`${base} border-red-300 bg-red-50 text-red-700`}
+                                  >
+                                    [{g.recipeName}] 다중 라인 — 모든 슬롯 수량 입력 필요 ({g.slotCount}개)
+                                  </span>
+                                );
+                              return null;
+                            })}
                           </div>
                         )}
                         {mp.slots.length === 0 ? (
@@ -2873,13 +3012,14 @@ export default function MealPlansPage() {
                     <SelectValue placeholder="상태 선택" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(STATUS_LABEL)
-                      .filter(([k]) => k !== statusChangeTarget?.currentStatus)
-                      .map(([k, v]) => (
-                        <SelectItem key={k} value={k}>
-                          {v}
-                        </SelectItem>
-                      ))}
+                    {(statusChangeTarget
+                      ? ALLOWED_FORWARD_TRANSITIONS[statusChangeTarget.currentStatus] ?? []
+                      : []
+                    ).map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {STATUS_LABEL[k]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
