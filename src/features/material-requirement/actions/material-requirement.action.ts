@@ -16,8 +16,6 @@ import {
 } from "../schemas/material-requirement.schema";
 import * as materialRequirementService from "../services/material-requirement.service";
 
-import { formatSlotQuantityError } from "@/features/meal-plan/utils/slot-quantity-error-formatter";
-
 // UI에서 사용할 List 응답 타입 re-export
 export type { MaterialRequirementListItem } from "../services/material-requirement.service";
 
@@ -99,25 +97,24 @@ export async function generateMaterialRequirementsAction(
   } catch (error) {
     const msg = error instanceof Error ? error.message : "";
 
-    // ★ Phase 9-C-Fix-R1-4: 슬롯 수량 검증 실패 (K1 + R1-3 통합)
-    const formatted = await formatSlotQuantityError(
-      msg,
-      {
-        partial: MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT,
-        sumMismatch: MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH,
-        multiLine: MATERIAL_REQUIREMENT_ERRORS.MULTI_LINE_REQUIRES_QUANTITY,
-      },
-      "소요량 산출에 실패했습니다. ",
-    );
-    if (formatted) {
-      return handleActionError(error, formatted);
+    // ★ Phase 9-C-Fix-R1-4-Cleanup: 책임 단일화
+    //   슬롯 수량 / 식수 정합성은 식단 IN_PROGRESS 진입 가드(K-2)에서 모두 검증됨.
+    //   산출 시점에 이 에러가 도달했다면 비정상 경로 (가드 우회 / 동시성 / 직접 호출).
+    //   친절한 메시지는 식단 화면에서 이미 노출되므로 여기서는 안내만 짧게.
+    if (
+      msg.startsWith(`${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::`) ||
+      msg.startsWith(`${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::`) ||
+      msg.startsWith(`${MATERIAL_REQUIREMENT_ERRORS.MULTI_LINE_REQUIRES_QUANTITY}::`)
+    ) {
+      return handleActionError(
+        error,
+        "식단 데이터 정합성 오류로 산출할 수 없습니다. 식단 화면에서 수량/라인 입력을 확인 후 진행중 상태로 다시 전환해주세요.",
+      );
     }
-
-    // ★ R1-4: MISSING_MEAL_COUNT도 mealPlanId 포함된 새 포맷 처리
     if (msg.startsWith(`${MATERIAL_REQUIREMENT_ERRORS.MISSING_MEAL_COUNT}::`)) {
       return handleActionError(
         error,
-        "예상식수가 입력되지 않은 식단이 있습니다. 모든 식단에 예상식수를 입력 후 다시 산출하세요.",
+        "예상식수가 입력되지 않은 식단이 있습니다. 식단 화면에서 예상식수를 입력 후 진행중 상태로 다시 전환해주세요.",
       );
     }
 
