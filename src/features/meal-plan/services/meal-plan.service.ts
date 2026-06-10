@@ -162,57 +162,148 @@ async function assertMealPlanInCompany(
   return plan;
 }
 
-export type SlotQuantityValidation =
-  | { ok: true }
+// ════════════════════════════════════════════════════════════════
+// Phase 9-C-Fix-R1: 슬롯 수량 검증 — 레시피 그룹 단위
+// ────────────────────────────────────────────────────────────────
+// 정책 (PROGRESS.md "Phase 9-C 결정사항" 참조):
+//   - CONTAINER 슬롯을 recipeId로 그룹핑하여 각 레시피별 독립 판정
+//   - 그룹 내 모든 슬롯 quantity=0 → OK_FALLBACK (그 레시피만 mealCount 전량 적용)
+//   - 모두 quantity>0, 합계 = mealCount → OK_DISTRIBUTED
+//   - 모두 quantity>0, 합계 ≠ mealCount → SUM_MISMATCH (차단)
+//   - 일부만 quantity>0 → PARTIAL_INPUT (차단)
+//   - recipeId=null 슬롯 → 검증 제외 (산출에서도 자연 제외됨)
+//   - ProductionLine은 그룹핑 키에 포함하지 않음 (식수 정합성은 라인 무관)
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * 슬롯 수량 검증 입력 단위.
+ * - kind는 호출부 호환을 위해 유지하되, CONTAINER만 실제 검증 대상.
+ * - recipeId는 그룹핑 키. null이면 검증에서 제외.
+ */
+export type SlotQuantityValidationInput = {
+  id: string;
+  quantity: number;
+  kind: "CONTAINER" | "DIRECT";
+  recipeId: string | null;
+};
+
+/**
+ * 레시피 그룹별 위반 상세.
+ * action 레이어에서 레시피명 조회용으로 recipeId를 그대로 들고 올라간다.
+ */
+export type RecipeGroupViolation =
   | {
-      ok: false;
-      reason: "PARTIAL_INPUT" | "SUM_MISMATCH";
-      mealPlanId: string;
+      kind: "PARTIAL_INPUT";
+      recipeId: string;
+      zeroSlotIds: string[];
+      totalSlotCount: number;
+      mealCount: number;
+    }
+  | {
+      kind: "SUM_MISMATCH";
+      recipeId: string;
       mealCount: number;
       slotsSum: number;
-      zeroSlotIds: string[];
+    };
+
+/**
+ * 그룹별 OK 결과 (산출 단계에서 effectiveCount 계산에 사용).
+ */
+export type RecipeGroupOk = {
+  recipeId: string;
+  mode: "FALLBACK" | "DISTRIBUTED";
+  effectiveCount: number; // FALLBACK이면 mealCount, DISTRIBUTED면 슬롯 합계
+};
+
+export type SlotQuantityValidation =
+  | {
+      ok: true;
+      mealPlanId: string;
+      groups: RecipeGroupOk[];
+    }
+  | {
+      ok: false;
+      mealPlanId: string;
+      mealCount: number;
+      violations: RecipeGroupViolation[];
+      // 성공한 그룹도 함께 반환 (UI 배지에 활용)
+      okGroups: RecipeGroupOk[];
     };
 
 export function validateSlotQuantitiesForMealPlan(
   mealPlanId: string,
   mealCount: number,
-  slots: Array<{ id: string; quantity: number; kind: "CONTAINER" | "DIRECT" }>,
+  slots: Array<SlotQuantityValidationInput>,
 ): SlotQuantityValidation {
-  const containerSlots = slots.filter((s) => s.kind === "CONTAINER");
-  if (containerSlots.length === 0) return { ok: true };
-
-  const positive = containerSlots.filter((s) => s.quantity > 0);
-  const zero = containerSlots.filter((s) => s.quantity === 0);
-
-  // 전부 0 → fallback (OK)
-  if (positive.length === 0) return { ok: true };
-
-  // 부분 입력 → 금지
-  if (zero.length > 0) {
-    return {
-      ok: false,
-      reason: "PARTIAL_INPUT",
-      mealPlanId,
-      mealCount,
-      slotsSum: positive.reduce((a, s) => a + s.quantity, 0),
-      zeroSlotIds: zero.map((s) => s.id),
-    };
+  // CONTAINER + recipeId 있는 슬롯만 그룹핑 대상
+  const targets = slots.filter(
+    (s) => s.kind === "CONTAINER" && s.recipeId != null,
+  );
+  if (targets.length === 0) {
+    return { ok: true, mealPlanId, groups: [] };
   }
 
-  // 전부 입력 → 합계 검사
-  const sum = positive.reduce((a, s) => a + s.quantity, 0);
-  if (Math.abs(sum - mealCount) > 0) {
-    return {
-      ok: false,
-      reason: "SUM_MISMATCH",
-      mealPlanId,
-      mealCount,
-      slotsSum: sum,
-      zeroSlotIds: [],
-    };
+  // recipeId로 그룹핑
+  const groupMap = new Map<string, SlotQuantityValidationInput[]>();
+  for (const s of targets) {
+    const key = s.recipeId as string;
+    const arr = groupMap.get(key) ?? [];
+    arr.push(s);
+    groupMap.set(key, arr);
   }
 
-  return { ok: true };
+  const okGroups: RecipeGroupOk[] = [];
+  const violations: RecipeGroupViolation[] = [];
+
+  for (const [recipeId, list] of groupMap) {
+    const positive = list.filter((s) => s.quantity > 0);
+    const zero = list.filter((s) => s.quantity === 0);
+
+    // (a) 전부 0 → fallback
+    if (positive.length === 0) {
+      okGroups.push({
+        recipeId,
+        mode: "FALLBACK",
+        effectiveCount: mealCount,
+      });
+      continue;
+    }
+
+    // (b) 부분 입력 → 차단
+    if (zero.length > 0) {
+      violations.push({
+        kind: "PARTIAL_INPUT",
+        recipeId,
+        zeroSlotIds: zero.map((s) => s.id),
+        totalSlotCount: list.length,
+        mealCount,
+      });
+      continue;
+    }
+
+    // (c) 전부 입력 → 합계 검사
+    const sum = positive.reduce((a, s) => a + s.quantity, 0);
+    if (sum !== mealCount) {
+      violations.push({
+        kind: "SUM_MISMATCH",
+        recipeId,
+        mealCount,
+        slotsSum: sum,
+      });
+      continue;
+    }
+
+    okGroups.push({
+      recipeId,
+      mode: "DISTRIBUTED",
+      effectiveCount: sum,
+    });
+  }
+
+  if (violations.length === 0) {
+    return { ok: true, mealPlanId, groups: okGroups };
+  }
+  return { ok: false, mealPlanId, mealCount, violations, okGroups };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -400,24 +491,28 @@ async function assertGroupSlotQuantitiesValid(
       throw new Error(`GROUP_MISSING_MEAL_COUNT::${mp.id}`);
     }
 
+    // ★ R1-1 임시: recipeId는 null로 채워 검증 자체가 비활성됨
+    //   (모든 슬롯이 검증 제외되어 ok=true). R1-2에서 slot 조회에 recipeId 추가.
     const result = validateSlotQuantitiesForMealPlan(
       mp.id,
       mc,
       containerSlots.map((s) => ({
         id: s.id,
         quantity: s.quantity ?? 0,
-        kind: "CONTAINER",
+        kind: "CONTAINER" as const,
+        recipeId: null,
       })),
     );
     if (!result.ok) {
-      if (result.reason === "PARTIAL_INPUT") {
+      const first = result.violations[0];
+      if (first.kind === "PARTIAL_INPUT") {
         throw new Error(
-          `GROUP_SLOT_QTY_PARTIAL_INPUT::${mp.id}::${result.zeroSlotIds.length}`,
+          `GROUP_SLOT_QTY_PARTIAL_INPUT::${mp.id}::${first.recipeId}::${first.zeroSlotIds.length}::${first.totalSlotCount}`,
         );
       }
-      if (result.reason === "SUM_MISMATCH") {
+      if (first.kind === "SUM_MISMATCH") {
         throw new Error(
-          `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${result.mealCount}::${result.slotsSum}`,
+          `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${first.recipeId}::${first.mealCount}::${first.slotsSum}`,
         );
       }
     }

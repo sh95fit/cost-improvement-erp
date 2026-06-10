@@ -413,24 +413,28 @@ async function calculateRequirementsForGroup(
     const mc = countMap.get(countKey);
     if (mc == null) continue; // 본 루프에서 throw MISSING_MEAL_COUNT
 
+    // ★ R1-1 임시: recipeId는 null로 채워 검증이 비활성됨.
+    //   R1-2에서 slot 조회에 recipeId 추가 → 정상 동작 복귀.
     const result = validateSlotQuantitiesForMealPlan(
       mealPlanId,
       mc,
       list.map((s) => ({
         id: s.id,
         quantity: s.quantity ?? 0,
-        kind: "CONTAINER",
+        kind: "CONTAINER" as const,
+        recipeId: null,
       })),
     );
     if (!result.ok) {
-      if (result.reason === "PARTIAL_INPUT") {
+      const first = result.violations[0];
+      if (first.kind === "PARTIAL_INPUT") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${result.zeroSlotIds.length}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${first.recipeId}::${first.zeroSlotIds.length}`,
         );
       }
-      if (result.reason === "SUM_MISMATCH") {
+      if (first.kind === "SUM_MISMATCH") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${result.mealCount}::${result.slotsSum}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${first.recipeId}::${first.mealCount}::${first.slotsSum}`,
         );
       }
     }
