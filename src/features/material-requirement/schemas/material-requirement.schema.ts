@@ -120,6 +120,11 @@ export const MATERIAL_REQUIREMENT_ERRORS = {
   SLOT_QTY_SUM_MISMATCH: "MR_SLOT_QTY_SUM_MISMATCH",
   // ★ Phase 9-C-Fix-R1-3: 같은 레시피가 여러 라인에 걸쳐 있으면 quantity 명시 필수
   MULTI_LINE_REQUIRES_QUANTITY: "MR_MULTI_LINE_REQUIRES_QUANTITY",
+  // ★ Phase 9-C-Fix-R1-6: 상태 기반 가드 (책임 단일 포인트)
+  //   - ESTIMATED 산출은 IN_PROGRESS / COMPLETED 상태만 허용
+  //   - FINAL 산출은 COMPLETED 상태만 허용
+  INVALID_STATUS_FOR_ESTIMATED: "MR_INVALID_STATUS_FOR_ESTIMATED",
+  INVALID_STATUS_FOR_FINAL: "MR_INVALID_STATUS_FOR_FINAL",
 } as const;
 
 export type MaterialRequirementErrorCode =

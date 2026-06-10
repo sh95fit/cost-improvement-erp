@@ -53,6 +53,11 @@ const MR_DOMAIN_ERRORS: Record<string, string> = {
     "식수(예상/확정)가 입력되지 않은 슬롯이 있습니다",
   [MATERIAL_REQUIREMENT_ERRORS.INVALID_UNIT]:
     "단위 환산표가 등록되지 않아 산출할 수 없는 단위가 있습니다",
+  // ★ Phase 9-C-Fix-R1-6: 상태 기반 가드
+  [MATERIAL_REQUIREMENT_ERRORS.INVALID_STATUS_FOR_ESTIMATED]:
+    "식단이 '진행중' 또는 '완료' 상태일 때만 예상식수 기반 소요량을 산출할 수 있습니다. 식단 화면에서 상태를 전환한 후 다시 시도해주세요.",
+  [MATERIAL_REQUIREMENT_ERRORS.INVALID_STATUS_FOR_FINAL]:
+    "식단이 '완료' 상태일 때만 확정식수 기반 소요량을 산출할 수 있습니다. 확정식수를 모두 입력하고 완료 상태로 전환한 후 다시 시도해주세요.",
 };
 
 // ══════════════════════════════════════════════════════════════

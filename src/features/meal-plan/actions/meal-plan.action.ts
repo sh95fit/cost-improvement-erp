@@ -141,6 +141,32 @@ export async function updateMealPlanGroupAction(
       );
     }
 
+    // ★ Phase 9-C-Fix-R1-6: 상태 전환 가드 에러 매핑
+    if (msg.startsWith("GROUP_ESTIMATED_COUNT_MISSING::")) {
+      const parts = msg.split("::");
+      const more = Number(parts[2] ?? 0);
+      const suffix = more > 0 ? ` 외 ${more}건` : "";
+      return handleActionError(
+        error,
+        `상태를 변경할 수 없습니다. 예상식수가 입력되지 않은 식단이 있습니다${suffix}. 모든 식단에 예상식수를 입력 후 다시 시도해주세요.`,
+      );
+    }
+    if (msg.startsWith("GROUP_FINAL_COUNT_MISSING::")) {
+      const parts = msg.split("::");
+      const more = Number(parts[2] ?? 0);
+      const suffix = more > 0 ? ` 외 ${more}건` : "";
+      return handleActionError(
+        error,
+        `상태를 변경할 수 없습니다. 확정식수가 입력되지 않은 식단이 있습니다${suffix}. 모든 식단에 확정식수를 입력 후 다시 시도해주세요.`,
+      );
+    }
+    if (msg === "GROUP_NO_MEAL_PLAN") {
+      return handleActionError(
+        error,
+        "상태를 변경할 수 없습니다. 식단이 하나도 작성되지 않았습니다.",
+      );
+    }
+
     return handleActionError(error, "식단 그룹 수정에 실패했습니다", {
       NOT_FOUND: "식단 그룹을 찾을 수 없습니다",
     });

@@ -4,6 +4,7 @@ import {
   BOMStatus,
   IngredientType,
   MealCountSource,
+  MealPlanStatus,        // ★ Phase 9-C-Fix-R1-6
   Prisma,
   SlotKind,
   type MaterialRequirement,
@@ -81,11 +82,32 @@ export async function generateMaterialRequirements(
   return await prisma.$transaction(async (tx) => {
     // ---- Step 1-1. 그룹 조회 (회사 가드 포함) ----
     const group = await tx.mealPlanGroup.findFirst({
-      where: { id: mealPlanGroupId, companyId, deletedAt: null },  
-      select: { id: true, companyId: true },
+      where: { id: mealPlanGroupId, companyId, deletedAt: null },
+      select: { id: true, companyId: true, status: true }, // ★ R1-6: status 추가
     });
     if (!group) {
       throw new Error(MATERIAL_REQUIREMENT_ERRORS.GROUP_NOT_FOUND);
+    }
+
+    // ★ Phase 9-C-Fix-R1-6: 상태 기반 가드 (책임 단일 포인트)
+    //   정합성 검증은 IN_PROGRESS 진입 시 K-2 에서 단일 검증됨.
+    //   여기서는 상태만 확인.
+    //     - ESTIMATED: IN_PROGRESS / COMPLETED 만 허용
+    //     - FINAL:     COMPLETED 만 허용
+    if (countSource === MealCountSource.ESTIMATED) {
+      if (
+        group.status !== MealPlanStatus.IN_PROGRESS &&
+        group.status !== MealPlanStatus.COMPLETED
+      ) {
+        throw new Error(
+          MATERIAL_REQUIREMENT_ERRORS.INVALID_STATUS_FOR_ESTIMATED,
+        );
+      }
+    } else {
+      // FINAL
+      if (group.status !== MealPlanStatus.COMPLETED) {
+        throw new Error(MATERIAL_REQUIREMENT_ERRORS.INVALID_STATUS_FOR_FINAL);
+      }
     }
 
     // ---- Step 1-2. 소요량 계산 ----

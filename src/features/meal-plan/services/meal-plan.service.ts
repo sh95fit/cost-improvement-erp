@@ -460,6 +460,106 @@ export async function createMealPlanGroup(
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Phase 9-C-Fix-R1-6: 상태 전환 가드용 신규 헬퍼
+// ────────────────────────────────────────────────────────────────
+// 정책: 식단 데이터 정합성은 IN_PROGRESS 진입 시점에 단일 검증.
+// - assertAllEstimatedCountsFilled: CONFIRMED → IN_PROGRESS 진입 시
+// - assertAllFinalCountsFilled:     IN_PROGRESS → COMPLETED 진입 시
+//
+// 에러 포맷:
+//   GROUP_ESTIMATED_COUNT_MISSING::<firstMealPlanId>::<moreCount>
+//   GROUP_FINAL_COUNT_MISSING::<firstMealPlanId>::<moreCount>
+//   GROUP_NO_MEAL_PLAN  (식단이 하나도 없음)
+// ════════════════════════════════════════════════════════════════
+
+async function assertAllEstimatedCountsFilled(
+  tx: DbClient,
+  mealPlanGroupId: string,
+): Promise<void> {
+  const mealPlans = await tx.mealPlan.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: { id: true, companyMealSlotId: true, lineupId: true },
+  });
+  if (mealPlans.length === 0) {
+    throw new Error("GROUP_NO_MEAL_PLAN");
+  }
+
+  const counts = await tx.mealCount.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: { companyMealSlotId: true, lineupId: true, estimatedCount: true },
+  });
+  const countMap = new Map<string, number | null>();
+  for (const c of counts) {
+    countMap.set(`${c.companyMealSlotId}::${c.lineupId}`, c.estimatedCount);
+  }
+
+  const missing: string[] = [];
+  for (const mp of mealPlans) {
+    const v = countMap.get(`${mp.companyMealSlotId}::${mp.lineupId}`);
+    if (v == null) missing.push(mp.id);
+  }
+  if (missing.length > 0) {
+    const more = missing.length - 1;
+    throw new Error(`GROUP_ESTIMATED_COUNT_MISSING::${missing[0]}::${more}`);
+  }
+}
+
+async function assertAllFinalCountsFilled(
+  tx: DbClient,
+  mealPlanGroupId: string,
+): Promise<void> {
+  const mealPlans = await tx.mealPlan.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: { id: true, companyMealSlotId: true, lineupId: true },
+  });
+  if (mealPlans.length === 0) {
+    throw new Error("GROUP_NO_MEAL_PLAN");
+  }
+
+  const counts = await tx.mealCount.findMany({
+    where: { mealPlanGroupId, deletedAt: null },
+    select: { companyMealSlotId: true, lineupId: true, finalCount: true },
+  });
+  const countMap = new Map<string, number | null>();
+  for (const c of counts) {
+    countMap.set(`${c.companyMealSlotId}::${c.lineupId}`, c.finalCount);
+  }
+
+  const missing: string[] = [];
+  for (const mp of mealPlans) {
+    const v = countMap.get(`${mp.companyMealSlotId}::${mp.lineupId}`);
+    if (v == null) missing.push(mp.id);
+  }
+  if (missing.length > 0) {
+    const more = missing.length - 1;
+    throw new Error(`GROUP_FINAL_COUNT_MISSING::${missing[0]}::${more}`);
+  }
+}
+
+/**
+ * Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+ *
+ * 정책:
+ *   - 그룹이 DRAFT 일 때 식단/슬롯/식수/부자재 mutation 발생 시 호출
+ *   - DRAFT 가 아니면 no-op (idempotent)
+ *   - 실패는 본 mutation 결과에 영향 주지 않도록 호출부에서 swallow
+ */
+async function promoteDraftToConfirmedIfNeeded(
+  tx: DbClient,
+  mealPlanGroupId: string,
+): Promise<void> {
+  const g = await tx.mealPlanGroup.findFirst({
+    where: { id: mealPlanGroupId, deletedAt: null },
+    select: { status: true },
+  });
+  if (!g || g.status !== MealPlanStatus.DRAFT) return;
+  await tx.mealPlanGroup.update({
+    where: { id: mealPlanGroupId },
+    data: { status: MealPlanStatus.CONFIRMED },
+  });
+}
+
 /**
  * Phase 9-C-Fix-K2: 그룹 단위 슬롯 수량 검증.
  * 각 MealPlan 의 CONTAINER 슬롯에 대해 validateSlotQuantitiesForMealPlan 을
@@ -568,18 +668,29 @@ export async function updateMealPlanGroup(
   });
   if (!existing) throw new Error("NOT_FOUND");
 
-  // ★ Phase 9-C-Fix-K2: DRAFT → CONFIRMED / IN_PROGRESS 전환 시 슬롯 수량 검증
+  // ★ Phase 9-C-Fix-R1-6: 상태 전환 가드 (책임 단일 포인트)
   //    정책:
-  //      - DRAFT 상태에서 다른 상태로 전환되는 순간 식단 데이터 무결성을 검증
-  //      - CANCELLED 로 전환은 검증 면제 (취소는 언제든 허용)
-  //      - 검증 항목: 각 MealPlan 의 slot.quantity 부분 입력 / 합계 불일치
-  if (
-    input.status &&
-    input.status !== existing.status &&
-    existing.status === MealPlanStatus.DRAFT &&
-    input.status !== MealPlanStatus.CANCELLED
-  ) {
-    await assertGroupSlotQuantitiesValid(prisma, id);
+  //      - DRAFT → CONFIRMED: 자동 승격 경로(promoteDraftToConfirmedIfNeeded)
+  //        에서만 발생하므로 본 분기에서 검증 면제 (수동 호출 시도 시도 면제)
+  //      - CONFIRMED → IN_PROGRESS (전진): 예상식수 전체 입력 + 슬롯 수량 검증
+  //      - IN_PROGRESS → COMPLETED (전진): 확정식수 전체 입력
+  //      - 그 외(역행, CANCELLED, 동일 상태): 검증 면제
+  //        (사용자가 명시적으로 되돌려 수정하는 케이스 허용)
+  if (input.status && input.status !== existing.status) {
+    const isForwardToInProgress =
+      existing.status === MealPlanStatus.CONFIRMED &&
+      input.status === MealPlanStatus.IN_PROGRESS;
+    const isForwardToCompleted =
+      existing.status === MealPlanStatus.IN_PROGRESS &&
+      input.status === MealPlanStatus.COMPLETED;
+
+    if (isForwardToInProgress) {
+      await assertAllEstimatedCountsFilled(prisma, id);
+      await assertGroupSlotQuantitiesValid(prisma, id);
+    } else if (isForwardToCompleted) {
+      await assertAllFinalCountsFilled(prisma, id);
+    }
+    // 그 외 전환은 검증 없이 통과
   }
 
   return prisma.mealPlanGroup.update({
@@ -773,7 +884,6 @@ export async function createMealPlan(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-2-β: companyMealSlotId 단일 입력. 회사 격리 검증.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,
@@ -781,7 +891,7 @@ export async function createMealPlan(
   );
 
   try {
-    return await prisma.mealPlan.create({
+    const created = await prisma.mealPlan.create({
       data: {
         mealPlanGroupId,
         companyMealSlotId,
@@ -791,6 +901,9 @@ export async function createMealPlan(
       },
       include: MEAL_PLAN_INCLUDE,
     });
+    // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+    await promoteDraftToConfirmedIfNeeded(prisma, mealPlanGroupId).catch(() => {});
+    return created;
   } catch (e) {
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -807,9 +920,10 @@ export async function updateMealPlan(
   id: string,
   input: UpdateMealPlanInput,
 ) {
-  await assertMealPlanInCompany(prisma, companyId, id);
+  // ★ Phase 9-C-Fix-R1-6: 반환값 받아서 mealPlanGroupId 활용
+  const plan = await assertMealPlanInCompany(prisma, companyId, id);
 
-  return prisma.mealPlan.update({
+  const updated = await prisma.mealPlan.update({
     where: { id },
     data: {
       mealTemplateId: input.mealTemplateId,
@@ -817,6 +931,9 @@ export async function updateMealPlan(
     },
     include: MEAL_PLAN_INCLUDE,
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+  return updated;
 }
 
 export async function deleteMealPlan(companyId: string, id: string) {
@@ -873,7 +990,8 @@ export async function createMealPlanSlot(
   mealPlanId: string,
   input: CreateMealPlanSlotInput,
 ) {
-  await assertMealPlanInCompany(prisma, companyId, mealPlanId);
+  // ★ Phase 9-C-Fix-R1-6: 반환값 받아서 mealPlanGroupId 활용
+  const plan = await assertMealPlanInCompany(prisma, companyId, mealPlanId);
 
   if (input.productionLineId) {
     const line = await prisma.productionLine.findFirst({
@@ -897,14 +1015,13 @@ export async function createMealPlanSlot(
     if (!sub) throw new Error("SUBSIDIARY_NOT_FOUND");
     if (!recipe) throw new Error("RECIPE_NOT_FOUND");
 
-    // Phase 7-F1: BOM 매칭 검증 + recipeBomId 자동 결정
     const resolvedBomId = await resolveAndAssertBomMatch(
       input.recipeId,
       input.subsidiaryMasterId,
       input.containerSlotIndex,
-    );    
+    );
 
-    return prisma.mealPlanSlot.create({
+    const created = await prisma.mealPlanSlot.create({
       data: {
         mealPlanId,
         kind: "CONTAINER",
@@ -915,10 +1032,13 @@ export async function createMealPlanSlot(
         subsidiaryMasterId: input.subsidiaryMasterId,
         containerSlotIndex: input.containerSlotIndex,
         recipeId: input.recipeId,
-        recipeBomId: resolvedBomId, // Phase 7-F1: 서버가 결정한 값으로 덮어씀
+        recipeBomId: resolvedBomId,
       },
       include: SLOT_INCLUDE,
     });
+    // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+    await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+    return created;
   }
 
   // DIRECT
@@ -926,13 +1046,12 @@ export async function createMealPlanSlot(
     where: {
       id: input.supplierItemId,
       supplier: { companyId, deletedAt: null },
-      // deletedAt 제거 (SupplierItem 모델에 없음)
     },
     select: { id: true },
   });
   if (!supplierItem) throw new Error("SUPPLIER_ITEM_NOT_FOUND");
 
-  return prisma.mealPlanSlot.create({
+  const created = await prisma.mealPlanSlot.create({
     data: {
       mealPlanId,
       kind: "DIRECT",
@@ -944,6 +1063,9 @@ export async function createMealPlanSlot(
     },
     include: SLOT_INCLUDE,
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+  return created;
 }
 
 export async function updateMealPlanSlot(
@@ -965,6 +1087,7 @@ export async function updateMealPlanSlot(
       kind: true,
       subsidiaryMasterId: true,
       containerSlotIndex: true,
+      mealPlan: { select: { mealPlanGroupId: true } }, // ★ R1-6
     },
   });
   if (!existing) throw new Error("NOT_FOUND");
@@ -1048,11 +1171,14 @@ export async function updateMealPlanSlot(
     data.supplierItem = { connect: { id: input.supplierItemId } };
   }
 
-  return prisma.mealPlanSlot.update({
+  const updated = await prisma.mealPlanSlot.update({
     where: { id },
     data,
     include: SLOT_INCLUDE,
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, existing.mealPlan.mealPlanGroupId).catch(() => {});
+  return updated;
 }
 
 export async function deleteMealPlanSlot(companyId: string, id: string) {
@@ -1113,7 +1239,8 @@ export async function bulkCreateContainerSlots(
   mealPlanId: string,
   input: BulkCreateContainerSlotsInput,
 ) {
-  await assertMealPlanInCompany(prisma, companyId, mealPlanId);
+  // ★ Phase 9-C-Fix-R1-6: 반환값 받아서 mealPlanGroupId 활용
+  const plan = await assertMealPlanInCompany(prisma, companyId, mealPlanId);
 
   // 1) 용기 그룹 회사 격리 검증
   const subsidiary = await prisma.subsidiaryMaster.findFirst({
@@ -1224,7 +1351,7 @@ export async function bulkCreateContainerSlots(
   }));
 
   // 5) 트랜잭션 일괄 생성 후 생성된 슬롯들 반환
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await tx.mealPlanSlot.createMany({ data });
     return tx.mealPlanSlot.findMany({
       where: {
@@ -1237,6 +1364,9 @@ export async function bulkCreateContainerSlots(
       orderBy: { sortOrder: "asc" },
     });
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+  return result;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1281,15 +1411,13 @@ export async function upsertMealCount(
 
   await assertLineupBelongsToCompany(prisma, companyId, input.lineupId);
 
-  // Step 3.2b-2-β: companyMealSlotId 단일 입력으로 통일. slotType 제거 완료.
   const companyMealSlotId = await resolveCompanyMealSlotIdFromInput(
     prisma,
     companyId,
     input,
   );
-  // upsert의 where 키는 (mealPlanGroupId, companyMealSlotId, lineupId) 기준
 
-  return prisma.mealCount.upsert({
+  const result = await prisma.mealCount.upsert({
     where: {
       mealPlanGroupId_companyMealSlotId_lineupId: {
         mealPlanGroupId,
@@ -1313,6 +1441,9 @@ export async function upsertMealCount(
       lineup: { select: { id: true, name: true, code: true } },
     },
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, mealPlanGroupId).catch(() => {});
+  return result;
 }
 
 export async function bulkUpsertMealCount(
@@ -1360,7 +1491,7 @@ export async function bulkUpsertMealCount(
     });
   }
 
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     resolved.map((it) =>
       prisma.mealCount.upsert({
         where: {
@@ -1385,6 +1516,9 @@ export async function bulkUpsertMealCount(
       }),
     ),
   );
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, mealPlanGroupId).catch(() => {});
+  return result;
 }
 
 export async function deleteMealCount(companyId: string, id: string) {
@@ -1428,7 +1562,8 @@ export async function createMealPlanAccessory(
   mealPlanId: string,
   input: CreateMealPlanAccessoryInput,
 ) {
-  await assertMealPlanInCompany(prisma, companyId, mealPlanId);
+  // ★ Phase 9-C-Fix-R1-6: 반환값 받아서 mealPlanGroupId 활용
+  const plan = await assertMealPlanInCompany(prisma, companyId, mealPlanId);
 
   const subsidiary = await prisma.subsidiaryMaster.findFirst({
     where: { id: input.subsidiaryMasterId, companyId, deletedAt: null },
@@ -1446,7 +1581,7 @@ export async function createMealPlanAccessory(
   const computedQuantity =
     input.consumptionMode === "FIXED_QUANTITY" ? (input.fixedQuantity ?? 0) : 0;
 
-  return prisma.mealPlanAccessory.create({
+  const created = await prisma.mealPlanAccessory.create({
     data: {
       mealPlanId,
       subsidiaryMasterId: input.subsidiaryMasterId,
@@ -1460,6 +1595,9 @@ export async function createMealPlanAccessory(
       subsidiaryMaster: { select: { id: true, name: true, code: true } },
     },
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+  return created;
 }
 
 export async function updateMealPlanAccessory(
@@ -1476,7 +1614,12 @@ export async function updateMealPlanAccessory(
         mealPlanGroup: { companyId, deletedAt: null },
       },
     },
-    select: { id: true, consumptionMode: true, fixedQuantity: true },
+    select: {
+      id: true,
+      consumptionMode: true,
+      fixedQuantity: true,
+      mealPlan: { select: { mealPlanGroupId: true } }, // ★ R1-6
+    },
   });
   if (!existing) throw new Error("NOT_FOUND");
 
@@ -1509,13 +1652,16 @@ export async function updateMealPlanAccessory(
     data.quantity = finalFixed;
   }
 
-  return prisma.mealPlanAccessory.update({
+  const updated = await prisma.mealPlanAccessory.update({
     where: { id },
     data,
     include: {
       subsidiaryMaster: { select: { id: true, name: true, code: true } },
     },
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, existing.mealPlan.mealPlanGroupId).catch(() => {});
+  return updated;
 }
 
 export async function deleteMealPlanAccessory(companyId: string, id: string) {
@@ -1547,7 +1693,8 @@ export async function applyMealTemplate(
   mealPlanId: string,
   input: ApplyMealTemplateInput,
 ) {
-  await assertMealPlanInCompany(prisma, companyId, mealPlanId);
+  // ★ Phase 9-C-Fix-R1-6: 반환값 받아서 mealPlanGroupId 활용
+  const plan = await assertMealPlanInCompany(prisma, companyId, mealPlanId);
 
   const template = await prisma.mealTemplate.findFirst({
     where: { id: input.mealTemplateId, companyId }, // ← deletedAt 제거
@@ -1572,7 +1719,7 @@ export async function applyMealTemplate(
 
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     if (input.replaceExisting) {
       await tx.mealPlanSlot.updateMany({
         where: { mealPlanId, deletedAt: null },
@@ -1637,4 +1784,7 @@ export async function applyMealTemplate(
       include: MEAL_PLAN_INCLUDE,
     });
   });
+  // ★ Phase 9-C-Fix-R1-6: DRAFT → CONFIRMED 자동 승격
+  await promoteDraftToConfirmedIfNeeded(prisma, plan.mealPlanGroupId).catch(() => {});
+  return result;
 }
