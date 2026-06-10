@@ -225,6 +225,10 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: "bg-red-100 text-red-700",
 };
 
+// R1-5b: 정방향/역방향 판단용 (낮은 인덱스 → 높은 인덱스 = 정방향)
+// CANCELLED는 별도 처리하므로 ORDER에서 제외
+const STATUS_ORDER: string[] = ["DRAFT", "CONFIRMED", "IN_PROGRESS", "COMPLETED"];
+
 const CONSUMPTION_MODE_LABEL: Record<string, string> = {
   PER_MEAL_COUNT: "식수 비례",
   FIXED_QUANTITY: "고정수량",
@@ -1528,19 +1532,50 @@ export default function MealPlansPage() {
               >
                 {STATUS_LABEL[detailGroup.status] ?? detailGroup.status}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStatusChangeTarget({
-                    id: detailGroup.id,
-                    currentStatus: detailGroup.status,
-                  });
-                  setNewStatus("");
-                }}
-              >
-                상태 변경
-              </Button>
+              {/* R1-5 후속: 허용된 다음 상태로 직접 전환하는 버튼 그룹 */}
+              {(ALLOWED_FORWARD_TRANSITIONS[detailGroup.status] ?? []).map(
+                (target) => {
+                  // 정/역방향 구분 (STATUS_ORDER 기준)
+                  const currentIdx = STATUS_ORDER.indexOf(detailGroup.status);
+                  const targetIdx = STATUS_ORDER.indexOf(target);
+                  const isCancel = target === "CANCELLED";
+                  const isRevert =
+                    !isCancel && targetIdx >= 0 && currentIdx >= 0 && targetIdx < currentIdx;
+                  const isRestore =
+                    detailGroup.status === "CANCELLED" && target === "DRAFT";
+
+                  // 버튼 스타일: 정방향=primary, 역방향=outline+회색, 취소=outline+빨강
+                  const cls = isCancel
+                    ? "border-red-200 text-red-600 hover:bg-red-50"
+                    : isRevert || isRestore
+                      ? "border-gray-200 text-gray-600 hover:bg-gray-50"
+                      : "border-blue-300 text-blue-700 hover:bg-blue-50";
+
+                  const prefix = isCancel
+                    ? "→"
+                    : isRevert || isRestore
+                      ? "↶"
+                      : "→";
+
+                  return (
+                    <Button
+                      key={target}
+                      variant="outline"
+                      size="sm"
+                      className={cls}
+                      onClick={() => {
+                        setStatusChangeTarget({
+                          id: detailGroup.id,
+                          currentStatus: detailGroup.status,
+                        });
+                        setNewStatus(target);
+                      }}
+                    >
+                      {prefix} {STATUS_LABEL[target]}
+                    </Button>
+                  );
+                },
+              )}
               {detailGroup.note && (
                 <span className="text-sm text-gray-500">
                   · {detailGroup.note}
@@ -2996,44 +3031,72 @@ export default function MealPlansPage() {
         </Dialog>
 
         {/* 상태 변경 */}
+        {/* R1-5b: 상태 전환 확인 다이얼로그 (newStatus는 헤더 버튼에서 미리 설정됨) */}
         <Dialog
-          open={!!statusChangeTarget}
-          onOpenChange={(open) => !open && setStatusChangeTarget(null)}
+          open={!!statusChangeTarget && !!newStatus}
+          onOpenChange={(open) => {
+            if (!open) {
+              setStatusChangeTarget(null);
+              setNewStatus("");
+            }
+          }}
         >
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>상태 변경</DialogTitle>
+              <DialogTitle>상태 전환 확인</DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-2 pt-2 text-sm">
+                  {statusChangeTarget && newStatus && (
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          STATUS_COLOR[statusChangeTarget.currentStatus] ?? ""
+                        }`}
+                      >
+                        {STATUS_LABEL[statusChangeTarget.currentStatus] ??
+                          statusChangeTarget.currentStatus}
+                      </span>
+                      <span className="text-gray-400">→</span>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          STATUS_COLOR[newStatus] ?? ""
+                        }`}
+                      >
+                        {STATUS_LABEL[newStatus] ?? newStatus}
+                      </span>
+                    </div>
+                  )}
+                  {statusChangeTarget?.currentStatus === "CONFIRMED" &&
+                    newStatus === "IN_PROGRESS" && (
+                      <p className="text-amber-700">
+                        ⚠ 모든 식단의 슬롯 수량과 예상식수가 정합해야 합니다.
+                      </p>
+                    )}
+                  {statusChangeTarget?.currentStatus === "IN_PROGRESS" &&
+                    newStatus === "COMPLETED" && (
+                      <p className="text-amber-700">
+                        ⚠ 모든 식단의 확정식수가 입력되어 있어야 합니다.
+                      </p>
+                    )}
+                  {newStatus === "CANCELLED" && (
+                    <p className="text-red-600">
+                      ⚠ 취소된 식단은 작성중으로 복구할 수 있습니다.
+                    </p>
+                  )}
+                </div>
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-status">새 상태</Label> 
-                <Select value={newStatus} onValueChange={setNewStatus}>
-                  <SelectTrigger id="new-status">
-                    <SelectValue placeholder="상태 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(statusChangeTarget
-                      ? ALLOWED_FORWARD_TRANSITIONS[statusChangeTarget.currentStatus] ?? []
-                      : []
-                    ).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {STATUS_LABEL[k]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setStatusChangeTarget(null)}
-                >
-                  취소
-                </Button>
-                <Button onClick={handleStatusChange} disabled={!newStatus}>
-                  변경
-                </Button>
-              </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStatusChangeTarget(null);
+                  setNewStatus("");
+                }}
+              >
+                취소
+              </Button>
+              <Button onClick={handleStatusChange}>전환</Button>
             </div>
           </DialogContent>
         </Dialog>
