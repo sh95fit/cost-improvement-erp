@@ -185,6 +185,7 @@ export type SlotQuantityValidationInput = {
   quantity: number;
   kind: "CONTAINER" | "DIRECT";
   recipeId: string | null;
+  productionLineId: string | null; // ★ R1-3 추가
 };
 
 /**
@@ -204,6 +205,15 @@ export type RecipeGroupViolation =
       recipeId: string;
       mealCount: number;
       slotsSum: number;
+    }
+  // ★ Phase 9-C-Fix-R1-3
+  | {
+      kind: "MULTI_LINE_REQUIRES_QUANTITY";
+      recipeId: string;
+      // 그룹 내 등장한 productionLine 개수 (전부 quantity=0인 슬롯들 기준)
+      productionLineCount: number;
+      // 검사 대상 슬롯 ID들 (UI에서 강조 표시용)
+      zeroSlotIds: string[];
     };
 
 /**
@@ -259,8 +269,21 @@ export function validateSlotQuantitiesForMealPlan(
     const positive = list.filter((s) => s.quantity > 0);
     const zero = list.filter((s) => s.quantity === 0);
 
-    // (a) 전부 0 → fallback
+    // (a) 전부 0 → fallback 가능 여부 검사
     if (positive.length === 0) {
+      // ★ R1-3: productionLine 다양성 검사
+      const lineIds = new Set(
+        list.map((s) => s.productionLineId).filter((id) => id != null),
+      );
+      if (lineIds.size > 1) {
+        violations.push({
+          kind: "MULTI_LINE_REQUIRES_QUANTITY",
+          recipeId,
+          productionLineCount: lineIds.size,
+          zeroSlotIds: list.map((s) => s.id),
+        });
+        continue;
+      }
       okGroups.push({
         recipeId,
         mode: "FALLBACK",
@@ -458,8 +481,14 @@ async function assertGroupSlotQuantitiesValid(
       lineupId: true,
       slots: {
         where: { deletedAt: null },
-        // ★ Phase 9-C-Fix-R1-2: recipeId 추가 (레시피 그룹 단위 검증 키)
-        select: { id: true, kind: true, quantity: true, recipeId: true },
+        // ★ Phase 9-C-Fix-R1-3: productionLineId 추가
+        select: {
+          id: true,
+          kind: true,
+          quantity: true,
+          recipeId: true,
+          productionLineId: true,
+        },
       },
     },
   });
@@ -501,6 +530,7 @@ async function assertGroupSlotQuantitiesValid(
         quantity: s.quantity ?? 0,
         kind: "CONTAINER" as const,
         recipeId: s.recipeId,
+        productionLineId: s.productionLineId, // ★ R1-3
       })),
     );
     if (!result.ok) {
@@ -516,6 +546,11 @@ async function assertGroupSlotQuantitiesValid(
       if (first.kind === "SUM_MISMATCH") {
         throw new Error(
           `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${first.recipeId}::${first.mealCount}::${first.slotsSum}::${more}`,
+        );
+      }
+      if (first.kind === "MULTI_LINE_REQUIRES_QUANTITY") {
+        throw new Error(
+          `GROUP_SLOT_QTY_MULTI_LINE::${mp.id}::${first.recipeId}::${first.productionLineCount}::${more}`,
         );
       }
     }

@@ -17,7 +17,10 @@ import {
   type ListMaterialRequirementsQuery,
 } from "../schemas/material-requirement.schema";
 
-import { validateSlotQuantitiesForMealPlan } from "@/features/meal-plan/services/meal-plan.service";
+import {
+  validateSlotQuantitiesForMealPlan,
+  type RecipeGroupOk,
+} from "@/features/meal-plan/services/meal-plan.service";
 
 // ============================================================
 // Phase 9-A-2: MaterialRequirement Service
@@ -322,8 +325,13 @@ export async function getMaterialRequirementById(
 // ============================================================
 // 4. calculateRequirementsForGroup (내부 헬퍼)
 // ------------------------------------------------------------
-// 그룹의 CONTAINER 슬롯을 모두 펼쳐 (라인 × 자재) 합산 맵을 만든다.
-// 반제품 1-level 재귀 펼치기 포함.
+// 그룹의 CONTAINER 슬롯을 (MealPlan × recipeId) 그룹 단위로 펼쳐
+// (라인 × 자재) 합산 맵을 만든다. 반제품 1-level 재귀 펼치기 포함.
+//
+// Phase 9-C-Fix-R1-3: 본 산출 루프를 레시피 그룹 단위로 재작성.
+//   - FALLBACK 그룹: BOM × mealCount 1회 전개 (라인 1:1 보장 시)
+//   - DISTRIBUTED 그룹: 슬롯별 quantity로 라인별 BOM 전개
+//   - 같은 recipeId × 다중 슬롯에서의 중복 누적 결함 제거
 // ============================================================
 
 async function calculateRequirementsForGroup(
@@ -352,11 +360,11 @@ async function calculateRequirementsForGroup(
       countSource === MealCountSource.ESTIMATED
         ? mc.estimatedCount
         : mc.finalCount;
-    if (raw == null) continue; // null이면 맵에서 제외 → 후속 슬롯에서 throw
+    if (raw == null) continue; // null이면 맵에서 제외 → 후속 검증 루프에서 throw
     countMap.set(`${mc.companyMealSlotId}::${mc.lineupId}`, raw);
   }
 
-  // ---- (b) MealPlanSlot 조회 (CONTAINER만, 필요한 관계 include) ----
+  // ---- (b) MealPlanSlot 조회 (CONTAINER+DIRECT 전부, 필요한 관계 include) ----
   const slots = await tx.mealPlanSlot.findMany({
     where: {
       deletedAt: null,
@@ -392,14 +400,19 @@ async function calculateRequirementsForGroup(
     },
   });
 
-  // ---- (c) 슬롯 순회 → 합산 맵 ----
+  // ---- (c) 합산/통계 변수 ----
   const required = new Map<string, AggregatedRequirement>();
   let recipeContainerSlots = 0;
   let directSlotsSkipped = 0;
-  let slotQuantityMismatchWarnings = 0;
-  const mismatchDetails: Array<{ mealPlanId: string; mealCount: number; slotsSum: number }> = [];
-  
-  // ★ Phase 9-C-Fix-K1: MealPlan 단위 슬롯 quantity 검증 (산출 차단)
+  // (현재 미사용, R1-5에서 정리 예정 — schema/return 타입과 모양 맞추기 위해 유지)
+  const slotQuantityMismatchWarnings = 0;
+  const mismatchDetails: Array<{
+    mealPlanId: string;
+    mealCount: number;
+    slotsSum: number;
+  }> = [];
+
+  // ---- (d) CONTAINER 슬롯을 MealPlan별로 그룹핑 ----
   const containerSlots = slots.filter((s) => s.kind === SlotKind.CONTAINER);
   const slotsByMealPlan = new Map<string, typeof containerSlots>();
   for (const s of containerSlots) {
@@ -407,13 +420,23 @@ async function calculateRequirementsForGroup(
     arr.push(s);
     slotsByMealPlan.set(s.mealPlanId, arr);
   }
-  for (const [mealPlanId, list] of slotsByMealPlan) {
-    const first = list[0];
-    const countKey = `${first.mealPlan.companyMealSlotId}::${first.mealPlan.lineupId}`;
-    const mc = countMap.get(countKey);
-    if (mc == null) continue; // 본 루프에서 throw MISSING_MEAL_COUNT
 
-    // ★ Phase 9-C-Fix-R1-2: 레시피 그룹 단위 정상 검증
+  // ---- (e) ★ R1-3: 검증 결과(okGroups)를 산출 단계에서 재사용하기 위한 맵 ----
+  const okGroupsByMealPlan = new Map<string, RecipeGroupOk[]>();
+
+  // ---- (f) 검증 루프 (Phase 9-C-Fix-K1 + R1-2 + R1-3) ----
+  //   - 레시피 그룹 단위로 검증, 위반 시 throw
+  //   - 통과 시 okGroups를 (g) 산출 루프에서 재사용
+  for (const [mealPlanId, list] of slotsByMealPlan) {
+    const repSlot = list[0];
+    const countKey = `${repSlot.mealPlan.companyMealSlotId}::${repSlot.mealPlan.lineupId}`;
+    const mc = countMap.get(countKey);
+    if (mc == null) {
+      throw new Error(
+        `${MATERIAL_REQUIREMENT_ERRORS.MISSING_MEAL_COUNT}::${mealPlanId}`,
+      );
+    }
+
     const result = validateSlotQuantitiesForMealPlan(
       mealPlanId,
       mc,
@@ -422,138 +445,136 @@ async function calculateRequirementsForGroup(
         quantity: s.quantity ?? 0,
         kind: "CONTAINER" as const,
         recipeId: s.recipeId,
+        productionLineId: s.productionLineId,
       })),
     );
+
     if (!result.ok) {
-      // 위반이 여러 건이면 첫 건을 throw + 추가 건수 전달
-      // (action 레이어에서 "외 N건" 표기에 활용)
-      const first = result.violations[0];
+      const firstV = result.violations[0];
       const more = result.violations.length - 1;
-      if (first.kind === "PARTIAL_INPUT") {
+      if (firstV.kind === "PARTIAL_INPUT") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${first.recipeId}::${first.zeroSlotIds.length}::${first.totalSlotCount}::${more}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${firstV.recipeId}::${firstV.zeroSlotIds.length}::${firstV.totalSlotCount}::${more}`,
         );
       }
-      if (first.kind === "SUM_MISMATCH") {
+      if (firstV.kind === "SUM_MISMATCH") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${first.recipeId}::${first.mealCount}::${first.slotsSum}::${more}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${firstV.recipeId}::${firstV.mealCount}::${firstV.slotsSum}::${more}`,
+        );
+      }
+      if (firstV.kind === "MULTI_LINE_REQUIRES_QUANTITY") {
+        throw new Error(
+          `${MATERIAL_REQUIREMENT_ERRORS.MULTI_LINE_REQUIRES_QUANTITY}::${mealPlanId}::${firstV.recipeId}::${firstV.productionLineCount}::${more}`,
         );
       }
     }
+
+    okGroupsByMealPlan.set(
+      mealPlanId,
+      result.ok ? result.groups : result.okGroups,
+    );
   }
-  
-  // ★ Phase 9-C-Fix-H (b): 본 루프 — slot.quantity 우선, 0이면 MealCount fallback
-  for (const slot of slots) {
-    if (slot.kind === SlotKind.DIRECT) {
-      directSlotsSkipped++;
-      continue;
+
+  // ---- (g) ★ R1-3 본 산출 루프: (MealPlan × recipeId) 그룹 단위 1회 BOM 전개 ----
+  //
+  //  - FALLBACK 그룹 (전부 quantity=0):
+  //      검증 단계에서 라인 1:1임이 보장 → 그 라인에 BOM × mealCount 1회 전개
+  //  - DISTRIBUTED 그룹 (모두 quantity>0):
+  //      슬롯별 quantity로 라인별 BOM 전개
+  //
+  //  recipeId=null 슬롯은 검증/산출 모두에서 자연 제외됨.
+  for (const [mealPlanId, list] of slotsByMealPlan) {
+    const okGroups = okGroupsByMealPlan.get(mealPlanId);
+    if (!okGroups || okGroups.length === 0) continue; // 방어적
+
+    // recipeId → 그룹 OK 결과
+    const okByRecipe = new Map<string, RecipeGroupOk>();
+    for (const g of okGroups) okByRecipe.set(g.recipeId, g);
+
+    // recipeId → 그룹 내 슬롯들
+    const slotsByRecipe = new Map<string, typeof list>();
+    for (const s of list) {
+      if (s.recipeId == null) continue;
+      const arr = slotsByRecipe.get(s.recipeId) ?? [];
+      arr.push(s);
+      slotsByRecipe.set(s.recipeId, arr);
     }
-    if (!slot.productionLineId || !slot.productionLine) {
-      throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_PRODUCTION_LINE);
-    }
-    if (!slot.recipeBomId || !slot.recipeBom) {
-      throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
-    }
-    if (slot.recipeBom.status !== BOMStatus.ACTIVE) {
-      throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
-    }
-  
-    const productionLineId = slot.productionLineId;
-    const locationId = slot.productionLine.locationId;
-    if (!locationId) {
-      throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_LOCATION);
-    }
-  
-    const countKey = `${slot.mealPlan.companyMealSlotId}::${slot.mealPlan.lineupId}`;
-    const mealCount = countMap.get(countKey);
-    if (mealCount == null) {
-      throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_MEAL_COUNT);
-    }
-  
-    // ★ 핵심 변경: slot.quantity > 0 이면 우선 사용
-    const effectiveCount =
-      slot.quantity != null && slot.quantity > 0 ? slot.quantity : mealCount;
-  
-    recipeContainerSlots++;
-  
-    for (const bomSlot of slot.recipeBom.slots) {
-      for (const item of bomSlot.items) {
-        const slotWeightG = await convertToG(
-          item.weightG,
-          item.unit,
-          item.materialMasterId ?? null,
+
+    for (const [recipeId, ok] of okByRecipe) {
+      const groupSlots = slotsByRecipe.get(recipeId) ?? [];
+      if (groupSlots.length === 0) continue;
+
+      // BOM 검증: 같은 recipeId 그룹은 같은 recipeBom을 가진다고 전제
+      const repSlot = groupSlots[0];
+      if (!repSlot.recipeBomId || !repSlot.recipeBom) {
+        throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
+      }
+      if (repSlot.recipeBom.status !== BOMStatus.ACTIVE) {
+        throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
+      }
+
+      if (ok.mode === "FALLBACK") {
+        // 검증상 라인 1:1 보장 → 첫 슬롯의 라인에 1회 전개
+        const repLineSlot = groupSlots.find(
+          (s) => s.productionLineId != null && s.productionLine != null,
+        );
+        if (
+          !repLineSlot ||
+          !repLineSlot.productionLineId ||
+          !repLineSlot.productionLine
+        ) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_PRODUCTION_LINE);
+        }
+        const locationId = repLineSlot.productionLine.locationId;
+        if (!locationId) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_LOCATION);
+        }
+
+        await expandBomAndAccumulate({
+          required,
+          recipeBom: repSlot.recipeBom,
+          effectiveCount: ok.effectiveCount,
+          productionLineId: repLineSlot.productionLineId,
+          locationId,
           companyId,
           tx,
-        );
-  
-        if (item.ingredientType === IngredientType.MATERIAL) {
-          if (!item.materialMasterId) {
-            throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
+        });
+        // BOM은 1회 전개됐지만 슬롯 개수는 그대로 카운트
+        recipeContainerSlots += groupSlots.length;
+      } else {
+        // DISTRIBUTED: 슬롯별 quantity로 라인별 전개
+        for (const slot of groupSlots) {
+          if (!slot.productionLineId || !slot.productionLine) {
+            throw new Error(
+              MATERIAL_REQUIREMENT_ERRORS.MISSING_PRODUCTION_LINE,
+            );
           }
-          const addQty = slotWeightG * effectiveCount; // ★ effectiveCount 사용
-          accumulate(required, {
-            productionLineId,
+          const locationId = slot.productionLine.locationId;
+          if (!locationId) {
+            throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_LOCATION);
+          }
+          const qty = slot.quantity ?? 0;
+          if (qty <= 0) continue; // 방어적 (DISTRIBUTED는 검증상 모두 양수)
+
+          await expandBomAndAccumulate({
+            required,
+            recipeBom: repSlot.recipeBom,
+            effectiveCount: qty,
+            productionLineId: slot.productionLineId,
             locationId,
-            materialMasterId: item.materialMasterId,
-            requiredQty: addQty,
-          });
-        } else if (item.ingredientType === IngredientType.SEMI_PRODUCT) {
-          if (!item.semiProductId) {
-            throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
-          }
-          const spBom = await tx.bOM.findFirst({
-            where: {
-              semiProductId: item.semiProductId,
-              status: BOMStatus.ACTIVE,
-              deletedAt: null,
-            },
-            select: {
-              baseQuantity: true,
-              baseUnit: true,
-              items: {
-                select: {
-                  materialMasterId: true,
-                  quantity: true,
-                  unit: true,
-                },
-              },
-            },
-          });
-          if (!spBom) {
-            throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
-          }
-          const baseQtyG = await convertToG(
-            spBom.baseQuantity,
-            spBom.baseUnit,
-            null,
             companyId,
             tx,
-          );
-          if (baseQtyG <= 0) {
-            throw new Error(MATERIAL_REQUIREMENT_ERRORS.INVALID_UNIT);
-          }
-          const ratio = slotWeightG / baseQtyG;
-          for (const bomItem of spBom.items) {
-            const itemQtyG = await convertToG(
-              bomItem.quantity,
-              bomItem.unit,
-              bomItem.materialMasterId,
-              companyId,
-              tx,
-            );
-            const addQty = itemQtyG * ratio * effectiveCount; // ★ effectiveCount 사용
-            accumulate(required, {
-              productionLineId,
-              locationId,
-              materialMasterId: bomItem.materialMasterId,
-              requiredQty: addQty,
-            });
-          }
+          });
+          recipeContainerSlots++;
         }
       }
     }
   }
-  
+
+  // ---- (h) DIRECT 슬롯 통계 (검증·산출 모두 제외, 카운트만) ----
+  directSlotsSkipped = slots.filter((s) => s.kind === SlotKind.DIRECT).length;
+
+  // ---- (i) return ----
   return {
     required,
     stats: {
@@ -563,7 +584,7 @@ async function calculateRequirementsForGroup(
       mismatchDetails,
     },
   };
-} 
+}
   
 // ============================================================
 // 헬퍼: 단위 환산 (→ "g")
@@ -636,4 +657,107 @@ function accumulate(
 
 function makeKey(productionLineId: string, materialMasterId: string): string {
   return `${productionLineId}::${materialMasterId}`;
+}
+
+// ============================================================
+// 헬퍼: BOM 전개 + 누적 (Phase 9-C-Fix-R1-3에서 분리)
+// ------------------------------------------------------------
+// 같은 recipeId 그룹에 대해 1회 호출되며, effectiveCount만큼 곱해 누적.
+// ============================================================
+
+// expandBomAndAccumulate가 필요로 하는 recipeBom의 최소 형태.
+// 호출부의 select와 정확히 일치해야 함 (calculateRequirementsForGroup의 (b) include 참조).
+type BomForExpand = {
+  slots: Array<{
+    items: Array<{
+      ingredientType: IngredientType;
+      materialMasterId: string | null;
+      semiProductId: string | null;
+      weightG: number;
+      unit: string;
+    }>;
+  }>;
+};
+
+async function expandBomAndAccumulate(args: {
+  required: Map<string, AggregatedRequirement>;
+  recipeBom: BomForExpand;
+  effectiveCount: number;
+  productionLineId: string;
+  locationId: string;
+  companyId: string;
+  tx: Prisma.TransactionClient;
+}): Promise<void> {
+  const { required, recipeBom, effectiveCount, productionLineId, locationId, companyId, tx } = args;
+
+  for (const bomSlot of recipeBom.slots) {
+    for (const item of bomSlot.items) {
+      const slotWeightG = await convertToG(
+        item.weightG,
+        item.unit,
+        item.materialMasterId ?? null,
+        companyId,
+        tx,
+      );
+
+      if (item.ingredientType === IngredientType.MATERIAL) {
+        if (!item.materialMasterId) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
+        }
+        accumulate(required, {
+          productionLineId,
+          locationId,
+          materialMasterId: item.materialMasterId,
+          requiredQty: slotWeightG * effectiveCount,
+        });
+      } else if (item.ingredientType === IngredientType.SEMI_PRODUCT) {
+        if (!item.semiProductId) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
+        }
+        const spBom = await tx.bOM.findFirst({
+          where: {
+            semiProductId: item.semiProductId,
+            status: BOMStatus.ACTIVE,
+            deletedAt: null,
+          },
+          select: {
+            baseQuantity: true,
+            baseUnit: true,
+            items: {
+              select: { materialMasterId: true, quantity: true, unit: true },
+            },
+          },
+        });
+        if (!spBom) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_SEMI_PRODUCT_BOM);
+        }
+        const baseQtyG = await convertToG(
+          spBom.baseQuantity,
+          spBom.baseUnit,
+          null,
+          companyId,
+          tx,
+        );
+        if (baseQtyG <= 0) {
+          throw new Error(MATERIAL_REQUIREMENT_ERRORS.INVALID_UNIT);
+        }
+        const ratio = slotWeightG / baseQtyG;
+        for (const bomItem of spBom.items) {
+          const itemQtyG = await convertToG(
+            bomItem.quantity,
+            bomItem.unit,
+            bomItem.materialMasterId,
+            companyId,
+            tx,
+          );
+          accumulate(required, {
+            productionLineId,
+            locationId,
+            materialMasterId: bomItem.materialMasterId,
+            requiredQty: itemQtyG * ratio * effectiveCount,
+          });
+        }
+      }
+    }
+  }
 }

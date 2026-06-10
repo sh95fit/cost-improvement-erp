@@ -118,6 +118,8 @@ export const MATERIAL_REQUIREMENT_ERRORS = {
   // ★ Phase 9-C-Fix-K1
   SLOT_QTY_PARTIAL_INPUT: "MR_SLOT_QTY_PARTIAL_INPUT",
   SLOT_QTY_SUM_MISMATCH: "MR_SLOT_QTY_SUM_MISMATCH",
+  // ★ Phase 9-C-Fix-R1-3: 같은 레시피가 여러 라인에 걸쳐 있으면 quantity 명시 필수
+  MULTI_LINE_REQUIRES_QUANTITY: "MR_MULTI_LINE_REQUIRES_QUANTITY",
 } as const;
 
 export type MaterialRequirementErrorCode =
