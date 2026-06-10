@@ -458,7 +458,8 @@ async function assertGroupSlotQuantitiesValid(
       lineupId: true,
       slots: {
         where: { deletedAt: null },
-        select: { id: true, kind: true, quantity: true },
+        // ★ Phase 9-C-Fix-R1-2: recipeId 추가 (레시피 그룹 단위 검증 키)
+        select: { id: true, kind: true, quantity: true, recipeId: true },
       },
     },
   });
@@ -491,8 +492,7 @@ async function assertGroupSlotQuantitiesValid(
       throw new Error(`GROUP_MISSING_MEAL_COUNT::${mp.id}`);
     }
 
-    // ★ R1-1 임시: recipeId는 null로 채워 검증 자체가 비활성됨
-    //   (모든 슬롯이 검증 제외되어 ok=true). R1-2에서 slot 조회에 recipeId 추가.
+    // ★ Phase 9-C-Fix-R1-2: 레시피 그룹 단위 정상 검증
     const result = validateSlotQuantitiesForMealPlan(
       mp.id,
       mc,
@@ -500,19 +500,22 @@ async function assertGroupSlotQuantitiesValid(
         id: s.id,
         quantity: s.quantity ?? 0,
         kind: "CONTAINER" as const,
-        recipeId: null,
+        recipeId: s.recipeId,
       })),
     );
     if (!result.ok) {
+      // 위반이 여러 건이면 첫 건을 throw + 추가 건수 전달
+      // (action 레이어에서 "외 N건" 표기에 활용)
       const first = result.violations[0];
+      const more = result.violations.length - 1;
       if (first.kind === "PARTIAL_INPUT") {
         throw new Error(
-          `GROUP_SLOT_QTY_PARTIAL_INPUT::${mp.id}::${first.recipeId}::${first.zeroSlotIds.length}::${first.totalSlotCount}`,
+          `GROUP_SLOT_QTY_PARTIAL_INPUT::${mp.id}::${first.recipeId}::${first.zeroSlotIds.length}::${first.totalSlotCount}::${more}`,
         );
       }
       if (first.kind === "SUM_MISMATCH") {
         throw new Error(
-          `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${first.recipeId}::${first.mealCount}::${first.slotsSum}`,
+          `GROUP_SLOT_QTY_SUM_MISMATCH::${mp.id}::${first.recipeId}::${first.mealCount}::${first.slotsSum}::${more}`,
         );
       }
     }

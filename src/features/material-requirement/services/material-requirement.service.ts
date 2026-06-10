@@ -413,8 +413,7 @@ async function calculateRequirementsForGroup(
     const mc = countMap.get(countKey);
     if (mc == null) continue; // 본 루프에서 throw MISSING_MEAL_COUNT
 
-    // ★ R1-1 임시: recipeId는 null로 채워 검증이 비활성됨.
-    //   R1-2에서 slot 조회에 recipeId 추가 → 정상 동작 복귀.
+    // ★ Phase 9-C-Fix-R1-2: 레시피 그룹 단위 정상 검증
     const result = validateSlotQuantitiesForMealPlan(
       mealPlanId,
       mc,
@@ -422,19 +421,22 @@ async function calculateRequirementsForGroup(
         id: s.id,
         quantity: s.quantity ?? 0,
         kind: "CONTAINER" as const,
-        recipeId: null,
+        recipeId: s.recipeId,
       })),
     );
     if (!result.ok) {
+      // 위반이 여러 건이면 첫 건을 throw + 추가 건수 전달
+      // (action 레이어에서 "외 N건" 표기에 활용)
       const first = result.violations[0];
+      const more = result.violations.length - 1;
       if (first.kind === "PARTIAL_INPUT") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${first.recipeId}::${first.zeroSlotIds.length}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT}::${mealPlanId}::${first.recipeId}::${first.zeroSlotIds.length}::${first.totalSlotCount}::${more}`,
         );
       }
       if (first.kind === "SUM_MISMATCH") {
         throw new Error(
-          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${first.recipeId}::${first.mealCount}::${first.slotsSum}`,
+          `${MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH}::${mealPlanId}::${first.recipeId}::${first.mealCount}::${first.slotsSum}::${more}`,
         );
       }
     }
