@@ -16,6 +16,8 @@ import {
 } from "../schemas/material-requirement.schema";
 import * as materialRequirementService from "../services/material-requirement.service";
 
+import { formatSlotQuantityError } from "@/features/meal-plan/utils/slot-quantity-error-formatter";
+
 // UI에서 사용할 List 응답 타입 re-export
 export type { MaterialRequirementListItem } from "../services/material-requirement.service";
 
@@ -96,29 +98,35 @@ export async function generateMaterialRequirementsAction(
     return actionOk(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "";
-    
-    // Phase 9-C-Fix-K1: 슬롯 수량 검증 실패
-    if (msg.startsWith("MR_SLOT_QTY_PARTIAL_INPUT::")) {
-      const [, mealPlanId, zeroCount] = msg.split("::");
+
+    // ★ Phase 9-C-Fix-R1-4: 슬롯 수량 검증 실패 (K1 + R1-3 통합)
+    const formatted = await formatSlotQuantityError(
+      msg,
+      {
+        partial: MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_PARTIAL_INPUT,
+        sumMismatch: MATERIAL_REQUIREMENT_ERRORS.SLOT_QTY_SUM_MISMATCH,
+        multiLine: MATERIAL_REQUIREMENT_ERRORS.MULTI_LINE_REQUIRES_QUANTITY,
+      },
+      "소요량 산출에 실패했습니다. ",
+    );
+    if (formatted) {
+      return handleActionError(error, formatted);
+    }
+
+    // ★ R1-4: MISSING_MEAL_COUNT도 mealPlanId 포함된 새 포맷 처리
+    if (msg.startsWith(`${MATERIAL_REQUIREMENT_ERRORS.MISSING_MEAL_COUNT}::`)) {
       return handleActionError(
         error,
-        `슬롯 수량을 일부만 입력한 식단이 있습니다 (${zeroCount}개 슬롯 미입력). 모두 입력하거나 모두 비워주세요.`,
+        "예상식수가 입력되지 않은 식단이 있습니다. 모든 식단에 예상식수를 입력 후 다시 산출하세요.",
       );
     }
-    if (msg.startsWith("MR_SLOT_QTY_SUM_MISMATCH::")) {
-      const [, mealPlanId, mc, sum] = msg.split("::");
-      return handleActionError(
-        error,
-        `슬롯 수량 합계(${Number(sum).toLocaleString()})가 예상식수(${Number(mc).toLocaleString()})와 일치하지 않습니다. 식단을 수정한 뒤 다시 산출하세요.`,
-      );
-    }
-    
+
     return handleActionError(
       error,
       "소요량 산출에 실패했습니다",
       MR_DOMAIN_ERRORS,
     );
-  }  
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
