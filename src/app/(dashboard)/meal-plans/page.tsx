@@ -349,7 +349,11 @@ export default function MealPlansPage() {
     kind: "CONTAINER" | "DIRECT";
     recipeId: string; // CONTAINER 전용 ("" = 미배정)
     productionLineId: string; // "" = 미지정
-    quantity: string;
+    // ★ Phase 9-D-Sym: 슬롯 수량 대칭 편집
+    //   - estimatedQuantity: 작성중→준비중→진행중 단계 입력
+    //   - finalQuantity:     진행중→완료 단계 입력 (빈 문자열 = null)
+    estimatedQuantity: string;
+    finalQuantity: string;
     note: string;
   } | null>(null);
   const [slotUpdating, setSlotUpdating] = useState(false);
@@ -1285,9 +1289,9 @@ export default function MealPlansPage() {
       kind: slot.kind,
       recipeId: slot.recipe?.id ?? "",
       productionLineId: slot.productionLine?.id ?? "",
-      // ★ Phase 9-D-Sym: 편집 화면은 estimatedQuantity 기준 (식단 작성 흐름)
-      //   finalQuantity는 추후 진행중→완료 전환 화면에서 별도 편집 (9-D-Sym-UI 후속)
-      quantity: String(slot.estimatedQuantity ?? 0),
+      // ★ Phase 9-D-Sym
+      estimatedQuantity: String(slot.estimatedQuantity ?? 0),
+      finalQuantity: slot.finalQuantity != null ? String(slot.finalQuantity) : "",
       note: slot.note ?? "",
     });
     // Phase 7-F2: CONTAINER 슬롯이면 (subsidiary, slotIndex) 적격 레시피 사전 로드
@@ -1310,19 +1314,31 @@ export default function MealPlansPage() {
 
   const handleSaveSlot = async () => {
     if (!editingSlotId || !editSlotForm) return;
-
-    // 수량 검증
-    const qty = Number(editSlotForm.quantity);
+  
+    // ★ Phase 9-D-Sym: estimatedQuantity 검증 (필수, 정수, 0 이상)
+    const est = Number(editSlotForm.estimatedQuantity);
     if (
-      editSlotForm.quantity === "" ||
-      Number.isNaN(qty) ||
-      qty < 0 ||
-      !Number.isInteger(qty)
+      editSlotForm.estimatedQuantity === "" ||
+      Number.isNaN(est) ||
+      est < 0 ||
+      !Number.isInteger(est)
     ) {
-      toast.error("수량은 0 이상의 정수여야 합니다");
+      toast.error("예상수량은 0 이상의 정수여야 합니다");
       return;
     }
-
+  
+    // ★ Phase 9-D-Sym: finalQuantity 검증 (선택, 빈 문자열이면 null로 전달)
+    const finalRaw = editSlotForm.finalQuantity.trim();
+    let finalQty: number | null = null;
+    if (finalRaw !== "") {
+      const f = Number(finalRaw);
+      if (Number.isNaN(f) || f < 0 || !Number.isInteger(f)) {
+        toast.error("확정수량은 0 이상의 정수여야 합니다");
+        return;
+      }
+      finalQty = f;
+    }
+  
     // kind 별 payload 구성 (Zod discriminatedUnion 충족)
     const payload =
       editSlotForm.kind === "CONTAINER"
@@ -1330,15 +1346,17 @@ export default function MealPlansPage() {
             kind: "CONTAINER" as const,
             recipeId: editSlotForm.recipeId || null,
             productionLineId: editSlotForm.productionLineId || null,
-            quantity: qty,
+            estimatedQuantity: est,
+            finalQuantity: finalQty,
             note: editSlotForm.note.trim() || null,
           }
         : {
             kind: "DIRECT" as const,
             productionLineId: editSlotForm.productionLineId || null,
-            quantity: qty,
+            estimatedQuantity: est,
+            finalQuantity: finalQty,
             note: editSlotForm.note.trim() || null,
-          };
+          };  
 
     setSlotUpdating(true);
     try {
@@ -1906,8 +1924,8 @@ export default function MealPlansPage() {
                           <TableHead className="w-[100px]">종류</TableHead>
                           <TableHead>내용</TableHead>
                           <TableHead className="w-[120px]">생산라인</TableHead>
-                          <TableHead className="w-[80px] text-right">
-                            수량
+                          <TableHead className="w-[90px] text-right">
+                            예상/확정
                           </TableHead>
                           <TableHead className="w-[60px]" />
                         </TableRow>
@@ -2198,30 +2216,48 @@ export default function MealPlansPage() {
                                         size="sm"
                                       />
                                     </TableCell>
+                                    {/* ★ Phase 9-D-Sym: 예상/확정 수량 인라인 편집 (위/아래 2칸) */}
                                     <TableCell className="text-right">
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        value={editSlotForm.quantity}
-                                        onChange={(e) =>
-                                          setEditSlotForm({
-                                            ...editSlotForm,
-                                            quantity: e.target.value,
-                                          })
-                                        }
-                                        placeholder={
-                                          _mealCountForMp != null
-                                            ? String(_mealCountForMp)
-                                            : "0"
-                                        }
-                                        title={
-                                          _mealCountForMp != null
-                                            ? `비워두거나 0 입력 시 예상식수 ${_mealCountForMp.toLocaleString()}식이 전량 적용됩니다`
-                                            : undefined
-                                        }
-                                        className="h-7 w-20 text-right text-xs"
-                                      />
+                                      <div className="flex flex-col items-end gap-1">
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          value={editSlotForm.estimatedQuantity}
+                                          onChange={(e) =>
+                                            setEditSlotForm({
+                                              ...editSlotForm,
+                                              estimatedQuantity: e.target.value,
+                                            })
+                                          }
+                                          placeholder={
+                                            _mealCountForMp != null
+                                              ? String(_mealCountForMp)
+                                              : "0"
+                                          }
+                                          title={
+                                            _mealCountForMp != null
+                                              ? `비워두거나 0 입력 시 예상식수 ${_mealCountForMp.toLocaleString()}식이 전량 적용됩니다 (예상수량)`
+                                              : "예상수량"
+                                          }
+                                          className="h-7 w-20 text-right text-xs"
+                                        />
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          value={editSlotForm.finalQuantity}
+                                          onChange={(e) =>
+                                            setEditSlotForm({
+                                              ...editSlotForm,
+                                              finalQuantity: e.target.value,
+                                            })
+                                          }
+                                          placeholder="확정 —"
+                                          title="확정수량 (진행중→완료 단계 입력. 비우면 미입력 상태로 저장)"
+                                          className="h-7 w-20 text-right text-xs border-emerald-200 text-emerald-700 placeholder:text-emerald-300"
+                                        />
+                                      </div>
                                     </TableCell>
+
                                     <TableCell className="text-right">
                                       <div className="flex items-center justify-end gap-0.5">
                                         <Button
