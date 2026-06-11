@@ -79,7 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
-
+- 2026-06-11: **Sprint 2 종결.** Phase 9-A/B/C-Fix-R1/D-Sym 완료. MaterialRequirement 모델 신설, MealPlanSlot.quantity → estimatedQuantity + finalQuantity 분리, MealCountSource enum 신설. 누적 신규/확장 모델 12개 안정화. 상세 이력은 `SPRINT2.md` 참조.
 - 2026-06-10: MealPlanSlot(#32) Phase 9-D-Sym 컬럼 분리 — `quantity` → `estimated_quantity` 개명 + `final_quantity Int?` 추가. MaterialRequirement(#38) Phase 9-A~9-C 완료 상태 반영.
 - 2026-06-05: Location(#2), ProductionLine(#3) ✅ 갱신 (Phase 8.5-A/B/C 반영)
 - 2026-06-04 이전: 원본 PROGRESS.md의 모델 표 그대로
