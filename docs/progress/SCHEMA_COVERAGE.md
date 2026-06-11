@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-06-05
+> 마지막 갱신: 2026-06-10
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -39,13 +39,13 @@
 | 29 | MealTemplateAccessory | S2 | P1-2 | ✅ |
 | 30 | MealPlanGroup | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 날짜 그룹 단순화) |
 | 31 | MealPlan | S2 | P3-4 / 5-R | ✅ (Phase 5-R 완료: 식사타입 × lineup, companyMealSlotId 단일 키) |
-| 32 | MealPlanSlot | S2 | P3-4 / 5-R / 7-A~F | ✅ schema·service·action·UI 완료 (Phase 7-F까지: 슬롯 에디터 + BOM 적격 가드 + 적격 레시피 필터 + 서비스 테스트 Step 8-A) |
+| 32 | MealPlanSlot | S2 | P3-4 / 5-R / 7-A~F / 9-D-Sym | ✅ schema·service·action·UI 완료 (Phase 7-F까지: 슬롯 에디터 + BOM 적격 가드 + 적격 레시피 필터 + 서비스 테스트 Step 8-A) + Phase 9-D-Sym 컬럼 분리 (estimated_quantity / final_quantity) |
 | 33 | MealCount | S2 | P8 / 5-R | ✅ schema·service·action·UI 완료 (Step 6-3c-A2, MealPlan 1:1) |
 | 34 | MealPlanAccessory | S2 | P7-B2 / P8 | ✅ schema·service·action·UI 완료 (Phase 7-B2) + 테스트 (Step 8-A) |
 | 35 | Lineup | S6 | P5 | ⬜ |
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
 | 37 | AutoGenLog | S8 | P7 | ⬜ |
-| 38 | MaterialRequirement | S2 | P9 | ⬜ (Phase 9 다음 착수) |
+| 38 | MaterialRequirement | S2 | P9 | ✅ schema·service·action·UI 완료 (Phase 9-A~9-C-Fix-R1 / 9-D-Sym에서 countSource 입력값 대칭화) |
 | 39 | PurchaseOrder | S3 | P1-4 | ⬜ |
 | 40 | PurchaseOrderItem | S3 | P1-4 | ⬜ |
 | 41 | ReceivingNote | S3 | P5-8 | ⬜ |
@@ -80,5 +80,6 @@
 
 ## 변경 이력
 
+- 2026-06-10: MealPlanSlot(#32) Phase 9-D-Sym 컬럼 분리 — `quantity` → `estimated_quantity` 개명 + `final_quantity Int?` 추가. MaterialRequirement(#38) Phase 9-A~9-C 완료 상태 반영.
 - 2026-06-05: Location(#2), ProductionLine(#3) ✅ 갱신 (Phase 8.5-A/B/C 반영)
 - 2026-06-04 이전: 원본 PROGRESS.md의 모델 표 그대로

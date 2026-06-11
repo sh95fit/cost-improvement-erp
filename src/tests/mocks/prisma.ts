@@ -59,7 +59,7 @@ export const mockPrisma = {
   materialRequirement: createModelMock(),
   shippingOrder: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
-  $queryRaw: vi.fn(),
+  $queryRaw: vi.fn().mockResolvedValue([]),
 };
 
 export const prismaMock = mockPrisma;

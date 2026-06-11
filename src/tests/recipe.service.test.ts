@@ -93,7 +93,9 @@ describe("recipe.service", () => {
   // ── createRecipe ──
   describe("createRecipe", () => {
     it("코드를 자동 생성하여 레시피를 만든다", async () => {
-      mockPrisma.recipe.findFirst.mockResolvedValue({ code: "RCP-005" });
+      // ★ Phase 9-C-Fix-B2: generateRecipeCode는 $queryRaw로 RCP-숫자 패턴을 직접 조회한다.
+      //    soft-deleted 포함 max → +1 → RCP-006
+      mockPrisma.$queryRaw.mockResolvedValueOnce([{ code: "RCP-005" }]);
       mockPrisma.recipe.create.mockResolvedValue({
         id: "r1",
         name: "된장찌개",

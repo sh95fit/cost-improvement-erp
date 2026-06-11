@@ -3,32 +3,35 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockPrisma } from "./mocks/prisma";
 
 // ──────────────────────────────────────────────────────────────
-// 외부 의존 모듈 mock (mockPrisma는 setup에서 이미 vi.mock 처리됨)
+// 외부 의존 모듈 mock
 // ──────────────────────────────────────────────────────────────
-// findMatchingActiveBom은 외부 import → 별도 vi.mock 필요 (Phase 7-F1 가드용)
+// ★ Phase 9-C-Fix-A 이후: meal-plan.service는 두 함수를 모두 import한다.
+//    - diagnoseBomMatch: createMealPlanSlot / updateMealPlanSlot /
+//                        bulkCreateContainerSlots의 실제 BOM 매칭 가드 경로
+//    - findMatchingActiveBom: legacy (실 호출 경로에서는 미사용이지만
+//                              import는 살아있으므로 mock에도 함께 노출)
 vi.mock("@/features/recipe/services/recipe-bom.service", () => ({
+  diagnoseBomMatch: vi.fn(),
   findMatchingActiveBom: vi.fn(),
 }));
 
 import {
   // MealPlanAccessory
-  getMealPlanAccessories,
   createMealPlanAccessory,
   updateMealPlanAccessory,
   deleteMealPlanAccessory,
-  // MealPlanSlot (Phase 7-F1)
+  // MealPlanSlot (Phase 7-F1 / 9-C-Fix-A)
   createMealPlanSlot,
   updateMealPlanSlot,
   bulkCreateContainerSlots,
   // MealPlanGroup / MealPlan
   createMealPlanGroup,
-  createMealPlan,
   // MealCount
   upsertMealCount,
   // applyMealTemplate
   applyMealTemplate,
 } from "@/features/meal-plan/services/meal-plan.service";
-import { findMatchingActiveBom } from "@/features/recipe/services/recipe-bom.service";
+import { diagnoseBomMatch } from "@/features/recipe/services/recipe-bom.service";
 
 const COMPANY_ID = "company-1";
 const MEAL_PLAN_ID = "mp-1";
@@ -42,10 +45,27 @@ const MEAL_PLAN_RECORD = {
   companyMealSlotId: "cms-1",
 };
 
+// ★ updateMealPlanSlot이 select하는 모양에 맞춘 시드
+//    (mealPlan.mealPlanGroupId가 promote 헬퍼에 사용됨)
+const SLOT_RECORD_FOR_UPDATE = {
+  id: "slot-1",
+  kind: "CONTAINER" as const,
+  subsidiaryMasterId: "sub-1",
+  containerSlotIndex: 0,
+  mealPlan: { mealPlanGroupId: MEAL_PLAN_GROUP_ID },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
-  // findMatchingActiveBom mock 기본값: 매칭 실패
-  vi.mocked(findMatchingActiveBom).mockResolvedValue(null);
+  // 기본값: BOM 매칭 실패 (NO_ACTIVE_BOM)
+  vi.mocked(diagnoseBomMatch).mockResolvedValue({
+    ok: false,
+    reason: "NO_ACTIVE_BOM",
+  });
+  // promote 헬퍼가 호출되어도 no-op으로 끝나도록 기본값 세팅
+  // (실제 service는 swallow하지만, mock 미설정 시 undefined를 반환해
+  //  g.status 접근에서 에러는 안 나지만 안전망 차원에서 명시)
+  mockPrisma.mealPlanGroup.findFirst.mockResolvedValue(null);
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -185,17 +205,18 @@ describe("MealPlanAccessory", () => {
 });
 
 // ════════════════════════════════════════════════════════════════
-// 2. Phase 7-F1: CONTAINER 슬롯 BOM 매칭 가드
+// 2. Phase 7-F1 / 9-C-Fix-A: CONTAINER 슬롯 BOM 매칭 가드
 // ════════════════════════════════════════════════════════════════
-describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
+describe("MealPlanSlot — BOM 매칭 가드 (diagnoseBomMatch)", () => {
   describe("createMealPlanSlot (CONTAINER)", () => {
-    it("ACTIVE BOM 매칭 실패 시 BOM_NOT_MATCHED throw", async () => {
+    it("ACTIVE BOM 없음 → BOM_NOT_MATCHED_NO_ACTIVE_BOM throw", async () => {
       mockPrisma.mealPlan.findFirst.mockResolvedValueOnce(MEAL_PLAN_RECORD);
+      // ★ subsidiary와 recipe는 Promise.all로 병렬 조회되므로 둘 다 셋업
       mockPrisma.subsidiaryMaster.findFirst.mockResolvedValueOnce({
         id: "sub-1",
       });
       mockPrisma.recipe.findFirst.mockResolvedValueOnce({ id: "recipe-1" });
-      // findMatchingActiveBom 기본값 null → BOM 없음
+      // diagnoseBomMatch는 beforeEach에서 NO_ACTIVE_BOM 기본값으로 설정됨
 
       await expect(
         createMealPlanSlot(COMPANY_ID, MEAL_PLAN_ID, {
@@ -206,7 +227,7 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
           estimatedQuantity: 100,
           sortOrder: 0,
         }),
-      ).rejects.toThrow("BOM_NOT_MATCHED");
+      ).rejects.toThrow("BOM_NOT_MATCHED_NO_ACTIVE_BOM");
     });
 
     it("BOM 매칭 성공 시 recipeBomId가 서버에서 자동으로 채워진다", async () => {
@@ -215,7 +236,8 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         id: "sub-1",
       });
       mockPrisma.recipe.findFirst.mockResolvedValueOnce({ id: "recipe-1" });
-      vi.mocked(findMatchingActiveBom).mockResolvedValueOnce({
+      vi.mocked(diagnoseBomMatch).mockResolvedValueOnce({
+        ok: true,
         bomId: "bom-1",
         slotId: "bomslot-1",
         totalWeightG: 250,
@@ -242,7 +264,7 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
   });
 
   describe("bulkCreateContainerSlots", () => {
-    it("행 중 하나라도 BOM 매칭 실패 시 전체 abort (BOM_NOT_MATCHED)", async () => {
+    it("행 중 하나라도 BOM 매칭 실패 시 전체 abort", async () => {
       mockPrisma.mealPlan.findFirst.mockResolvedValueOnce(MEAL_PLAN_RECORD);
       mockPrisma.subsidiaryMaster.findFirst.mockResolvedValueOnce({
         id: "sub-1",
@@ -251,20 +273,34 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         { id: "recipe-1" },
         { id: "recipe-2" },
       ]);
-      // 첫 행 OK, 둘째 행 실패
-      vi.mocked(findMatchingActiveBom)
-        .mockResolvedValueOnce({ bomId: "bom-1", slotId: "s", totalWeightG: 100 })
-        .mockResolvedValueOnce(null);
+      // 첫 행 OK, 둘째 행 NO_ACTIVE_BOM 실패
+      vi.mocked(diagnoseBomMatch)
+        .mockResolvedValueOnce({
+          ok: true,
+          bomId: "bom-1",
+          slotId: "s",
+          totalWeightG: 100,
+        })
+        .mockResolvedValueOnce({ ok: false, reason: "NO_ACTIVE_BOM" });
 
       await expect(
         bulkCreateContainerSlots(COMPANY_ID, MEAL_PLAN_ID, {
           subsidiaryMasterId: "sub-1",
           items: [
-            { containerSlotIndex: 0, recipeId: "recipe-1", estimatedQuantity: 100 },
-            { containerSlotIndex: 1, recipeId: "recipe-2", estimatedQuantity: 100 },
+            {
+              containerSlotIndex: 0,
+              recipeId: "recipe-1",
+              estimatedQuantity: 100,
+            },
+            {
+              containerSlotIndex: 1,
+              recipeId: "recipe-2",
+              estimatedQuantity: 100,
+            },
           ],
         }),
-      ).rejects.toThrow("BOM_NOT_MATCHED");
+        // 두 번째 행에서 BOM_NOT_MATCHED_NO_ACTIVE_BOM 형태로 throw
+      ).rejects.toThrow(/BOM_NOT_MATCHED_NO_ACTIVE_BOM/);
 
       // createMany는 호출되지 않아야 함 (전체 abort)
       expect(mockPrisma.mealPlanSlot.createMany).not.toHaveBeenCalled();
@@ -288,20 +324,17 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         ],
       });
 
-      // findMatchingActiveBom은 호출되지 않아야 함
-      expect(findMatchingActiveBom).not.toHaveBeenCalled();
+      // diagnoseBomMatch는 호출되지 않아야 함
+      expect(diagnoseBomMatch).not.toHaveBeenCalled();
       expect(mockPrisma.mealPlanSlot.createMany).toHaveBeenCalled();
     });
   });
 
   describe("updateMealPlanSlot (CONTAINER)", () => {
     it("recipeId=null로 설정 시 recipe와 recipeBom이 disconnect된다", async () => {
-      mockPrisma.mealPlanSlot.findFirst.mockResolvedValueOnce({
-        id: "slot-1",
-        kind: "CONTAINER",
-        subsidiaryMasterId: "sub-1",
-        containerSlotIndex: 0,
-      });
+      mockPrisma.mealPlanSlot.findFirst.mockResolvedValueOnce(
+        SLOT_RECORD_FOR_UPDATE,
+      );
       mockPrisma.mealPlanSlot.update.mockResolvedValueOnce({ id: "slot-1" });
 
       await updateMealPlanSlot(COMPANY_ID, "slot-1", {
@@ -317,18 +350,16 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
           }),
         }),
       );
-      expect(findMatchingActiveBom).not.toHaveBeenCalled();
+      expect(diagnoseBomMatch).not.toHaveBeenCalled();
     });
 
     it("recipeId 변경 시 최종 (subsidiary, slotIndex)로 BOM 재검증", async () => {
-      mockPrisma.mealPlanSlot.findFirst.mockResolvedValueOnce({
-        id: "slot-1",
-        kind: "CONTAINER",
-        subsidiaryMasterId: "sub-1",
-        containerSlotIndex: 0,
-      });
+      mockPrisma.mealPlanSlot.findFirst.mockResolvedValueOnce(
+        SLOT_RECORD_FOR_UPDATE,
+      );
       mockPrisma.recipe.findFirst.mockResolvedValueOnce({ id: "recipe-2" });
-      vi.mocked(findMatchingActiveBom).mockResolvedValueOnce({
+      vi.mocked(diagnoseBomMatch).mockResolvedValueOnce({
+        ok: true,
         bomId: "bom-2",
         slotId: "s",
         totalWeightG: 300,
@@ -340,7 +371,7 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         recipeId: "recipe-2",
       });
 
-      expect(findMatchingActiveBom).toHaveBeenCalledWith("recipe-2", "sub-1", 0);
+      expect(diagnoseBomMatch).toHaveBeenCalledWith("recipe-2", "sub-1", 0);
       expect(mockPrisma.mealPlanSlot.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -369,13 +400,10 @@ describe("MealPlanGroup / MealPlan", () => {
       createMealPlanGroup(COMPANY_ID, { planDate: "2026-06-10" }),
     ).rejects.toThrow("DUPLICATE_PLAN_DATE");
   });
-
-  // createMealPlan DUPLICATE_MEAL_PLAN, LINEUP_NOT_FOUND 등 추가 케이스는
-  // 위 패턴을 그대로 따라 확장하시면 됩니다.
 });
 
 // ════════════════════════════════════════════════════════════════
-// 4. MealCount upsert (간단 케이스 1개만 — 확장 자율)
+// 4. MealCount upsert
 // ════════════════════════════════════════════════════════════════
 describe("MealCount", () => {
   it("upsertMealCount는 (group, slot, lineup) 키로 upsert한다", async () => {
@@ -412,7 +440,7 @@ describe("MealCount", () => {
 });
 
 // ════════════════════════════════════════════════════════════════
-// 5. applyMealTemplate (간단 케이스 1개 — 이름 매핑 검증)
+// 5. applyMealTemplate
 // ════════════════════════════════════════════════════════════════
 describe("applyMealTemplate", () => {
   it("MealTemplateAccessory의 consumptionType/isRequired를 MealPlanAccessory의 consumptionMode/required로 매핑", async () => {

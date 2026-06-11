@@ -22,7 +22,20 @@ const RECIPE_BOM_ID = "rb-1";
 const SLOT_ID = "cms-1";
 const LINEUP_ID = "lineup-1";
 
-const GROUP_RECORD = { id: GROUP_ID, companyId: COMPANY_ID };
+// ★ Phase 9-C-Fix-R1-6: generateMaterialRequirements는 group.status 가드를 가진다.
+//    - ESTIMATED: IN_PROGRESS / COMPLETED 만 허용
+//    - FINAL:     COMPLETED 만 허용
+const GROUP_RECORD = {
+  id: GROUP_ID,
+  companyId: COMPANY_ID,
+  status: "IN_PROGRESS",
+};
+
+const GROUP_RECORD_COMPLETED = {
+  id: GROUP_ID,
+  companyId: COMPANY_ID,
+  status: "COMPLETED",
+};
 
 /** 기본 MealCount: estimated=100, final=95 */
 const MEAL_COUNT_BASIC = {
@@ -36,7 +49,15 @@ const MEAL_COUNT_BASIC = {
 function makeContainerSlot(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "slot-1",
+    // ★ Phase 9-C-Fix-R1-3 이후: 서비스가 slotsByMealPlan / okGroupsByMealPlan으로
+    //    그룹핑하므로 mealPlanId와 recipeId가 반드시 필요하다.
+    mealPlanId: "mp-1",
+    recipeId: "recipe-1",
     kind: "CONTAINER",
+    // ★ Phase 9-D-Sym: estimatedQuantity / finalQuantity 분리.
+    //    값이 전부 0이면 FALLBACK 모드로 산출 (effectiveCount = mealCount).
+    estimatedQuantity: 0,
+    finalQuantity: 0,
     productionLineId: LINE_ID,
     recipeBomId: RECIPE_BOM_ID,
     mealPlan: { companyMealSlotId: SLOT_ID, lineupId: LINEUP_ID },
@@ -128,14 +149,16 @@ describe("generateMaterialRequirements — 정상 산출", () => {
     expect(mockPrisma.materialRequirement.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          requiredQty: 2000, // (10g + 10g) × 100인분
+          // ★ Phase 9-C-Fix-R1-3 정책: 같은 recipeId 그룹은 FALLBACK 모드에서 BOM 1회만 전개.
+          //    같은 슬롯 2개여도 mealCount 100 × weightG 10g = 1000g (이전 중복 누적 결함 제거)
+          requiredQty: 1000,
         }),
       }),
     );
   });
 
   it("countSource=FINAL이면 finalCount 사용 (95인분)", async () => {
-    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(GROUP_RECORD);
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(GROUP_RECORD_COMPLETED);
     mockPrisma.mealCount.findMany.mockResolvedValueOnce([MEAL_COUNT_BASIC]);
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([makeContainerSlot()]);
     mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
@@ -199,6 +222,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([
       makeContainerSlot({ productionLineId: null, productionLine: null }),
     ]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
 
     await expect(
       generateMaterialRequirements(COMPANY_ID, {
@@ -214,6 +238,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
     const slot = makeContainerSlot();
     slot.recipeBom = { ...slot.recipeBom, status: "DRAFT" };
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([slot]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]); 
 
     await expect(
       generateMaterialRequirements(COMPANY_ID, {
@@ -221,6 +246,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
         countSource: "ESTIMATED",
       }),
     ).rejects.toThrow(MATERIAL_REQUIREMENT_ERRORS.MISSING_RECIPE_BOM);
+
   });
 
   it("MealCount.estimatedCount가 NULL → MISSING_MEAL_COUNT", async () => {
@@ -247,6 +273,7 @@ describe("generateMaterialRequirements — 에러 분기", () => {
       unit: "ml",
     };
     mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([slot]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]); 
     // 자재별 환산표 없음
     mockPrisma.unitConversion.findFirst.mockResolvedValueOnce(null);
     // 일반 환산표(materialMasterId IS NULL) 도 없음
@@ -351,6 +378,17 @@ describe("generateMaterialRequirements — diff 동작", () => {
       },
     ]);
 
+    // ★ 안전망: 매칭 실패로 INSERT 분기 진입 시에도 mock이 작동하도록.
+    //    정상 매칭 시 호출되지 않으므로 unchanged 검증에 영향 없음.
+    mockPrisma.materialRequirement.create.mockResolvedValue({
+      id: "mr-new",
+      generationVersion: 1,
+    });
+    mockPrisma.materialRequirement.update.mockResolvedValue({
+      id: "mr-1",
+      generationVersion: 3,
+    });
+
     const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
       countSource: "ESTIMATED",
@@ -384,6 +422,11 @@ describe("generateMaterialRequirements — diff 동작", () => {
     mockPrisma.materialRequirement.update.mockResolvedValueOnce({
       id: "mr-1",
       generationVersion: 3,
+    });
+    // ★ 안전망: INSERT 분기 진입 시에도 통과
+    mockPrisma.materialRequirement.create.mockResolvedValue({
+      id: "mr-new",
+      generationVersion: 1,
     });
 
     const result = await generateMaterialRequirements(COMPANY_ID, {
@@ -477,6 +520,15 @@ describe("generateMaterialRequirements — diff 동작", () => {
       id: "mr-2",
       generationVersion: 2,
     });
+    // ★ 안전망
+    mockPrisma.materialRequirement.update.mockResolvedValue({
+      id: "mr-x",
+      generationVersion: 2,
+    });
+    mockPrisma.materialRequirement.create.mockResolvedValue({
+      id: "mr-new",
+      generationVersion: 1,
+    });
 
     const result = await generateMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
@@ -562,10 +614,11 @@ describe("listMaterialRequirements", () => {
         name: "본사창고",
       },
     };
-    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([
-      mockRow,
-    ] as never);
-    mockPrisma.materialRequirement.count.mockResolvedValueOnce(1);
+    // ★ mockResolvedValueOnce 잔여 큐가 비어있는 상태에서도 동작하도록 두 가지 모두 셋업
+    mockPrisma.materialRequirement.findMany.mockReset();
+    mockPrisma.materialRequirement.count.mockReset();
+    mockPrisma.materialRequirement.findMany.mockResolvedValue([mockRow] as never);
+    mockPrisma.materialRequirement.count.mockResolvedValue(1);
 
     const result = await listMaterialRequirements(COMPANY_ID, {
       mealPlanGroupId: GROUP_ID,
