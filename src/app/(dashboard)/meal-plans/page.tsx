@@ -115,7 +115,11 @@ type MealPlanSlotRow = {
   id: string;
   kind: "CONTAINER" | "DIRECT";
   sortOrder: number;
-  quantity: number;
+  // ★ Phase 9-D-Sym: 슬롯 수량 대칭 분리
+  //   - estimatedQuantity: 식단 작성 시 입력 (CONFIRMED→IN_PROGRESS 검증 대상)
+  //   - finalQuantity:     실제 사용 후 입력 (IN_PROGRESS→COMPLETED 검증 대상, nullable)
+  estimatedQuantity: number;
+  finalQuantity: number | null;
   note: string | null;
   containerSlotIndex: number | null;
   recipe: RecipeInfo | null;
@@ -211,7 +215,7 @@ type ProductionLineOption = {
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "작성중",
-  CONFIRMED: "확정",
+  CONFIRMED: "준비중", // ★ Sprint 2 종결 보강: "확정"은 식수 확정 의미와 혼동되어 라벨만 조정 (enum 값은 유지)
   IN_PROGRESS: "진행중",
   COMPLETED: "완료",
   CANCELLED: "취소",
@@ -715,11 +719,24 @@ export default function MealPlansPage() {
     | { kind: "BY_RECIPE"; groups: RecipeGroupCheck[]; hasViolation: boolean };
 
   const checkMealPlanSlotQty = useCallback(
-    (mp: MealPlanRow, mealCount: number | null): MealPlanCheckResult => {
+    (
+      mp: MealPlanRow,
+      mealCount: number | null,
+      // ★ Phase 9-D-Sym: countSource에 따라 검증 대상 컬럼 분리
+      //   - ESTIMATED (기본): 작성중→준비중→진행중 단계에서 estimatedQuantity 검증
+      //   - FINAL:            진행중→완료 단계에서 finalQuantity 검증
+      countSource: "ESTIMATED" | "FINAL" = "ESTIMATED",
+    ): MealPlanCheckResult => {
       const containers = mp.slots.filter((s) => s.kind === "CONTAINER");
       if (containers.length === 0) return { kind: "NO_SLOTS" };
       if (mealCount == null) return { kind: "NO_MEAL_COUNT" };
-
+  
+      // countSource별 슬롯 수량 추출 (finalQuantity가 null이면 0으로 간주)
+      const getQty = (s: MealPlanSlotRow): number =>
+        countSource === "ESTIMATED"
+          ? s.estimatedQuantity
+          : (s.finalQuantity ?? 0);
+  
       // recipeId별 그룹화 (미배정은 null 키)
       const groupMap = new Map<string | null, MealPlanSlotRow[]>();
       for (const s of containers) {
@@ -728,14 +745,14 @@ export default function MealPlansPage() {
         arr.push(s);
         groupMap.set(key, arr);
       }
-
+  
       const groups: RecipeGroupCheck[] = [];
       for (const [recipeId, slots] of groupMap.entries()) {
         const recipeName =
           slots[0].recipe?.name ?? (recipeId === null ? "(미배정)" : "—");
-        const positive = slots.filter((s) => s.quantity > 0);
-        const zero = slots.filter((s) => s.quantity === 0);
-
+        const positive = slots.filter((s) => getQty(s) > 0);
+        const zero = slots.filter((s) => getQty(s) === 0);
+  
         // 동일 레시피가 2개 이상 슬롯에 걸쳐 있고 0이 섞이면 MULTI_LINE
         if (slots.length >= 2 && positive.length > 0 && zero.length > 0) {
           groups.push({
@@ -759,7 +776,7 @@ export default function MealPlansPage() {
           });
           continue;
         }
-        const sum = positive.reduce((a, s) => a + s.quantity, 0);
+        const sum = positive.reduce((a, s) => a + getQty(s), 0);
         if (sum !== mealCount) {
           groups.push({
             kind: "SUM_MISMATCH",
@@ -772,7 +789,7 @@ export default function MealPlansPage() {
           recipeId, recipeName, mealCount, slotsSum: sum, slotCount: slots.length,
         });
       }
-
+  
       const hasViolation = groups.some(
         (g) =>
           g.kind === "PARTIAL_INPUT" ||
@@ -1268,7 +1285,9 @@ export default function MealPlansPage() {
       kind: slot.kind,
       recipeId: slot.recipe?.id ?? "",
       productionLineId: slot.productionLine?.id ?? "",
-      quantity: String(slot.quantity ?? 0),
+      // ★ Phase 9-D-Sym: 편집 화면은 estimatedQuantity 기준 (식단 작성 흐름)
+      //   finalQuantity는 추후 진행중→완료 전환 화면에서 별도 편집 (9-D-Sym-UI 후속)
+      quantity: String(slot.estimatedQuantity ?? 0),
       note: slot.note ?? "",
     });
     // Phase 7-F2: CONTAINER 슬롯이면 (subsidiary, slotIndex) 적격 레시피 사전 로드
@@ -1819,13 +1838,20 @@ export default function MealPlansPage() {
                             {_check.groups.map((g, idx) => {
                               const base =
                                 "inline-flex items-center rounded border px-2 py-0.5 text-xs";
+                              // ★ R1-5b: OK 배지는 "같은 recipeId가 2개 이상 슬롯으로 분리된 경우"에만 표시.
+                              //    단일 슬롯 그룹은 분배 이슈가 없어 시각 노이즈만 됨.
+                              //    위반(PARTIAL_INPUT/SUM_MISMATCH/MULTI_LINE_REQUIRES_QUANTITY)은 항상 표시.
+                              const isOk =
+                                g.kind === "OK_FALLBACK" || g.kind === "OK_DISTRIBUTED";
+                              if (isOk && g.slotCount < 2) return null;
+
                               if (g.kind === "OK_FALLBACK")
                                 return (
                                   <span
                                     key={idx}
                                     className={`${base} border-blue-300 bg-blue-50 text-blue-700`}
                                   >
-                                    [{g.recipeName}] 예상식수 {g.mealCount.toLocaleString()}식 전량 적용
+                                    [{g.recipeName}] 예상식수 {g.mealCount.toLocaleString()}식 전량 적용 ({g.slotCount}슬롯)
                                   </span>
                                 );
                               if (g.kind === "OK_DISTRIBUTED")
@@ -1834,7 +1860,7 @@ export default function MealPlansPage() {
                                     key={idx}
                                     className={`${base} border-emerald-300 bg-emerald-50 text-emerald-700`}
                                   >
-                                    [{g.recipeName}] 슬롯 분배 합계 일치 ({g.slotsSum.toLocaleString()}식)
+                                    [{g.recipeName}] 슬롯 분배 합계 일치 ({g.slotsSum.toLocaleString()}식 · {g.slotCount}슬롯)
                                   </span>
                                 );
                               if (g.kind === "PARTIAL_INPUT")
@@ -2292,21 +2318,35 @@ export default function MealPlansPage() {
                                   <TableCell className="text-xs text-gray-600">
                                     {slot.productionLine?.name ?? "—"}
                                   </TableCell>
+                                  {/* ★ Phase 9-D-Sym: 예상/확정 수량 분리 표시
+                                      - 상단: 예상수량 (estimatedQuantity) — 기존 fallback 표시 로직 유지
+                                      - 하단: 확정수량 (finalQuantity) — null이면 흐릿한 "—" 표시 */}
                                   <TableCell className="text-right">
-                                    {slot.quantity > 0 ? (
-                                      <span className="font-medium">
-                                        {slot.quantity.toLocaleString()}
-                                      </span>
-                                    ) : _mealCountForMp != null ? (
-                                      <span
-                                        className="italic text-gray-400"
-                                        title={`수량 미입력 → 예상식수 ${_mealCountForMp.toLocaleString()}식 전량 적용`}
-                                      >
-                                        {_mealCountForMp.toLocaleString()}
-                                      </span>
-                                    ) : (
-                                      <span className="text-gray-300">—</span>
-                                    )}
+                                    <div className="flex flex-col items-end leading-tight">
+                                      {/* 예상수량 (estimatedQuantity) */}
+                                      {slot.estimatedQuantity > 0 ? (
+                                        <span className="font-medium">
+                                          {slot.estimatedQuantity.toLocaleString()}
+                                        </span>
+                                      ) : _mealCountForMp != null ? (
+                                        <span
+                                          className="italic text-gray-400"
+                                          title={`예상수량 미입력 → 예상식수 ${_mealCountForMp.toLocaleString()}식 전량 적용`}
+                                        >
+                                          {_mealCountForMp.toLocaleString()}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">—</span>
+                                      )}
+                                      {/* 확정수량 (finalQuantity) */}
+                                      {slot.finalQuantity != null ? (
+                                        <span className="text-xs text-emerald-700">
+                                          확정 {slot.finalQuantity.toLocaleString()}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-gray-300">확정 —</span>
+                                      )}
+                                    </div>
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-0.5">
@@ -2663,8 +2703,8 @@ export default function MealPlansPage() {
                           <TableHead className="w-[80px]">슬롯</TableHead>
                           <TableHead>레시피</TableHead>
                           <TableHead className="w-[180px]">생산라인</TableHead>
-                          <TableHead className="w-[80px] text-right">
-                            수량
+                          <TableHead className="w-[90px] text-right">
+                            예상/확정
                           </TableHead>
                           <TableHead className="w-[160px]">비고</TableHead>
                         </TableRow>
