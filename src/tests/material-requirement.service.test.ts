@@ -86,6 +86,18 @@ function makeContainerSlot(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // ★ 핵심: 다른 테스트 파일에서 mockResolvedValue로 설정한 영구 구현을 제거
+  //   (mockResolvedValueOnce 큐만 사용하도록 강제)
+  mockPrisma.materialRequirement.findMany.mockReset();
+  mockPrisma.materialRequirement.create.mockReset();
+  mockPrisma.materialRequirement.update.mockReset();
+  mockPrisma.materialRequirement.count.mockReset();
+  mockPrisma.materialRequirement.findFirst.mockReset();
+  mockPrisma.mealPlanGroup.findFirst.mockReset();
+  mockPrisma.mealCount.findMany.mockReset();
+  mockPrisma.mealPlanSlot.findMany.mockReset();
+  mockPrisma.unitConversion.findFirst.mockReset();
+  mockPrisma.bOM.findFirst.mockReset();
 });
 
 // ════════════════════════════════════════════════════════════════
