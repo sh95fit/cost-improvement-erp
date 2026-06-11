@@ -203,7 +203,7 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
           subsidiaryMasterId: "sub-1",
           containerSlotIndex: 0,
           recipeId: "recipe-1",
-          quantity: 100,
+          estimatedQuantity: 100,
           sortOrder: 0,
         }),
       ).rejects.toThrow("BOM_NOT_MATCHED");
@@ -227,7 +227,7 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         subsidiaryMasterId: "sub-1",
         containerSlotIndex: 0,
         recipeId: "recipe-1",
-        quantity: 100,
+        estimatedQuantity: 100,
         sortOrder: 0,
       });
 
@@ -260,8 +260,8 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
         bulkCreateContainerSlots(COMPANY_ID, MEAL_PLAN_ID, {
           subsidiaryMasterId: "sub-1",
           items: [
-            { containerSlotIndex: 0, recipeId: "recipe-1", quantity: 100 },
-            { containerSlotIndex: 1, recipeId: "recipe-2", quantity: 100 },
+            { containerSlotIndex: 0, recipeId: "recipe-1", estimatedQuantity: 100 },
+            { containerSlotIndex: 1, recipeId: "recipe-2", estimatedQuantity: 100 },
           ],
         }),
       ).rejects.toThrow("BOM_NOT_MATCHED");
@@ -283,8 +283,8 @@ describe("MealPlanSlot — Phase 7-F1 BOM 가드", () => {
       await bulkCreateContainerSlots(COMPANY_ID, MEAL_PLAN_ID, {
         subsidiaryMasterId: "sub-1",
         items: [
-          { containerSlotIndex: 0, recipeId: null, quantity: 0 },
-          { containerSlotIndex: 1, recipeId: null, quantity: 0 },
+          { containerSlotIndex: 0, recipeId: null, estimatedQuantity: 0 },
+          { containerSlotIndex: 1, recipeId: null, estimatedQuantity: 0 },
         ],
       });
 

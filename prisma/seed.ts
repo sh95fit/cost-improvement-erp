@@ -933,7 +933,8 @@ async function main() {
           recipeId: recipeA.id,
           recipeBomId: recipeBomA.id,
           productionLineId: lineA.id,
-          quantity: 2000,
+          // Phase 9-D-Sym: quantity → estimatedQuantity 개명
+          estimatedQuantity: 2000,
           note: "밥 (A라인)",
         },
         {
@@ -945,7 +946,7 @@ async function main() {
           recipeId: recipeA.id,
           recipeBomId: recipeBomA.id,
           productionLineId: lineD.id,
-          quantity: 1000,
+          estimatedQuantity: 1000,
           note: "밥 (D라인 공장 분할)",
         },
         {
@@ -957,7 +958,7 @@ async function main() {
           recipeId: recipeA.id,
           recipeBomId: recipeBomA.id,
           productionLineId: lineA.id,
-          quantity: 3000,
+          estimatedQuantity: 3000,
           note: "메인반찬 (A라인)",
         },
       ],
@@ -979,7 +980,7 @@ async function main() {
         recipeId: recipeA.id,
         recipeBomId: recipeBomA.id,
         productionLineId: lineB.id,
-        quantity: 1000,
+        estimatedQuantity: 1000,
         note: "메인반찬 (B라인)",
       },
     });
@@ -999,7 +1000,7 @@ async function main() {
         containerSlotIndex: 1,
         recipeId: recipeB.id,
         productionLineId: lineB.id,
-        quantity: 2500,
+        estimatedQuantity: 2500,
         note: "만두국 (B라인)",
       },
     });
@@ -1020,7 +1021,7 @@ async function main() {
         recipeId: recipeA.id,
         recipeBomId: recipeBomA.id,
         productionLineId: lineA.id,
-        quantity: 3000,
+        estimatedQuantity: 3000,
         note: "밥",
       },
     });
@@ -1038,7 +1039,7 @@ async function main() {
         sortOrder: 0,
         supplierItemId: supplierItemRecords[5], // 고향냉동만두 (완제품 직판 가정)
         productionLineId: null, // 직매입이므로 제조라인 없음
-        quantity: 200,
+        estimatedQuantity: 200,
         note: "제휴 이벤트 완제품 직접 배정",
       },
     });
