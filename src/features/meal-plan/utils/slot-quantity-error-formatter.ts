@@ -63,10 +63,11 @@ export async function formatSlotQuantityError(
   }
 
   // SUM_MISMATCH: prefix::mealPlanId::recipeId::mealCount::slotsSum::more
+  // Phase 9-D-Sym: leadIn에 "예상" / "확정" 문맥이 이미 포함되므로 본 메시지는 "식수"로 일반화.
   if (msg.startsWith(`${prefixes.sumMismatch}::`)) {
     const [, , recipeId, mc, sum, more] = msg.split("::");
     const name = await lookupRecipeName(recipeId);
-    return `${leadIn}레시피 "${name}"의 슬롯 합계(${Number(sum).toLocaleString()})가 예상식수(${Number(mc).toLocaleString()})와 일치하지 않습니다${moreSuffix(Number(more))}`;
+    return `${leadIn}레시피 "${name}"의 슬롯 합계(${Number(sum).toLocaleString()})가 식수(${Number(mc).toLocaleString()})와 일치하지 않습니다${moreSuffix(Number(more))}`;
   }
 
   // MULTI_LINE: prefix::mealPlanId::recipeId::productionLineCount::more

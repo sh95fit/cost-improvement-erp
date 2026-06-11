@@ -101,7 +101,9 @@ export type UpsertMealCountInput = z.infer<typeof upsertMealCountSchema>;
 
 const slotBaseSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
-  quantity: z.number().int().min(0).default(0),
+  // Phase 9-D-Sym: estimated/final 분리
+  estimatedQuantity: z.number().int().min(0).default(0),
+  finalQuantity: z.number().int().min(0).nullable().optional(),
   productionLineId: z.string().nullable().optional(),
   note: z.string().max(500, "비고는 500자 이내").nullable().optional(),
 });
@@ -140,7 +142,9 @@ const containerSlotUpdateSchema = z.object({
   recipeId: z.string().nullable().optional(),
   recipeBomId: z.string().nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
-  quantity: z.number().int().min(0).optional(),
+  // Phase 9-D-Sym: estimated/final 분리
+  estimatedQuantity: z.number().int().min(0).optional(),
+  finalQuantity: z.number().int().min(0).nullable().optional(),
   productionLineId: z.string().nullable().optional(),
   note: z.string().max(500).nullable().optional(),
 });
@@ -149,7 +153,9 @@ const directSlotUpdateSchema = z.object({
   kind: z.literal("DIRECT"),
   supplierItemId: z.string().optional(),
   sortOrder: z.number().int().min(0).optional(),
-  quantity: z.number().int().min(0).optional(),
+  // Phase 9-D-Sym: estimated/final 분리
+  estimatedQuantity: z.number().int().min(0).optional(),
+  finalQuantity: z.number().int().min(0).nullable().optional(),
   productionLineId: z.string().nullable().optional(),
   note: z.string().max(500).nullable().optional(),
 });
@@ -194,7 +200,9 @@ export const bulkCreateContainerSlotsSchema = z.object({
         containerSlotIndex: z.number().int().min(0),
         recipeId: z.string().nullable().optional(),
         productionLineId: z.string().nullable().optional(),
-        quantity: z.number().int().min(0).default(0),
+        // Phase 9-D-Sym: 신규 슬롯 생성 시점에는 estimatedQuantity만 입력.
+        // finalQuantity는 IN_PROGRESS 단계 진입 시 별도 편집.
+        estimatedQuantity: z.number().int().min(0).default(0),
         note: z.string().max(500).nullable().optional(),
       }),
     )

@@ -179,10 +179,12 @@ async function assertMealPlanInCompany(
  * 슬롯 수량 검증 입력 단위.
  * - kind는 호출부 호환을 위해 유지하되, CONTAINER만 실제 검증 대상.
  * - recipeId는 그룹핑 키. null이면 검증에서 제외.
+ * Phase 9-D-Sym: quantity는 호출부에서 estimated 또는 final 중 어느 값을
+ * 검증할지에 따라 채워 넣는다. (검증 함수는 두 컬럼을 구분하지 않는다.)
  */
 export type SlotQuantityValidationInput = {
   id: string;
-  quantity: number;
+  quantity: number; // estimated 또는 final (호출부 결정)
   kind: "CONTAINER" | "DIRECT";
   recipeId: string | null;
   productionLineId: string | null; // ★ R1-3 추가
@@ -568,10 +570,15 @@ async function promoteDraftToConfirmedIfNeeded(
  * @throws Error("GROUP_SLOT_QTY_PARTIAL_INPUT::<mealPlanId>::<zeroCount>")
  * @throws Error("GROUP_SLOT_QTY_SUM_MISMATCH::<mealPlanId>::<mealCount>::<slotsSum>")
  * @throws Error("GROUP_MISSING_MEAL_COUNT::<mealPlanId>")
+ *
+ * Phase 9-D-Sym: countSource 인자 추가 — 어느 컬럼 쌍(estimated/final)을 검증할지 분기.
+ *   - "ESTIMATED": mc.estimatedCount × slot.estimatedQuantity
+ *   - "FINAL":     mc.finalCount     × slot.finalQuantity (NULL은 PARTIAL_INPUT로 처리)
  */
 async function assertGroupSlotQuantitiesValid(
   tx: DbClient,
   mealPlanGroupId: string,
+  countSource: "ESTIMATED" | "FINAL",
 ): Promise<void> {
   const mealPlans = await tx.mealPlan.findMany({
     where: { mealPlanGroupId, deletedAt: null },
@@ -581,11 +588,12 @@ async function assertGroupSlotQuantitiesValid(
       lineupId: true,
       slots: {
         where: { deletedAt: null },
-        // ★ Phase 9-C-Fix-R1-3: productionLineId 추가
         select: {
           id: true,
           kind: true,
-          quantity: true,
+          // ★ Phase 9-D-Sym: estimated/final 둘 다 select
+          estimatedQuantity: true,
+          finalQuantity: true,
           recipeId: true,
           productionLineId: true,
         },
@@ -593,7 +601,7 @@ async function assertGroupSlotQuantitiesValid(
     },
   });
 
-  // 식수 맵
+  // 식수 맵 — countSource에 따라 다른 컬럼 사용
   const mealCounts = await tx.mealCount.findMany({
     where: { mealPlanGroupId, deletedAt: null },
     select: {
@@ -603,11 +611,11 @@ async function assertGroupSlotQuantitiesValid(
       finalCount: true,
     },
   });
-  // 상태 전환 시점에서는 finalCount 가 아직 비어있을 수 있으므로
-  // estimatedCount 우선, 없으면 finalCount fallback.
   const countMap = new Map<string, number>();
   for (const mc of mealCounts) {
-    const v = mc.estimatedCount ?? mc.finalCount;
+    // ★ Phase 9-D-Sym: countSource 기반 선택. fallback 없음 — 누락은 GROUP_MISSING_MEAL_COUNT로 처리.
+    const v =
+      countSource === "ESTIMATED" ? mc.estimatedCount : mc.finalCount;
     if (v == null) continue;
     countMap.set(`${mc.companyMealSlotId}::${mc.lineupId}`, v);
   }
@@ -621,16 +629,21 @@ async function assertGroupSlotQuantitiesValid(
       throw new Error(`GROUP_MISSING_MEAL_COUNT::${mp.id}`);
     }
 
-    // ★ Phase 9-C-Fix-R1-2: 레시피 그룹 단위 정상 검증
+    // ★ Phase 9-C-Fix-R1-2 + 9-D-Sym: 레시피 그룹 단위 검증
+    // countSource에 따라 estimatedQuantity 또는 finalQuantity 를 입력 값으로 사용.
+    // FINAL인데 슬롯의 finalQuantity가 NULL이면 0으로 처리되어 PARTIAL_INPUT로 검출됨.
     const result = validateSlotQuantitiesForMealPlan(
       mp.id,
       mc,
       containerSlots.map((s) => ({
         id: s.id,
-        quantity: s.quantity ?? 0,
+        quantity:
+          countSource === "ESTIMATED"
+            ? (s.estimatedQuantity ?? 0)
+            : (s.finalQuantity ?? 0),
         kind: "CONTAINER" as const,
         recipeId: s.recipeId,
-        productionLineId: s.productionLineId, // ★ R1-3
+        productionLineId: s.productionLineId,
       })),
     );
     if (!result.ok) {
@@ -685,10 +698,13 @@ export async function updateMealPlanGroup(
       input.status === MealPlanStatus.COMPLETED;
 
     if (isForwardToInProgress) {
+      // CONFIRMED → IN_PROGRESS: 예상식수 + 예상수량 검증
       await assertAllEstimatedCountsFilled(prisma, id);
-      await assertGroupSlotQuantitiesValid(prisma, id);
+      await assertGroupSlotQuantitiesValid(prisma, id, "ESTIMATED");
     } else if (isForwardToCompleted) {
+      // IN_PROGRESS → COMPLETED: 확정식수 + 확정수량 검증 (Phase 9-D-Sym)
       await assertAllFinalCountsFilled(prisma, id);
+      await assertGroupSlotQuantitiesValid(prisma, id, "FINAL");
     }
     // 그 외 전환은 검증 없이 통과
   }
@@ -792,7 +808,10 @@ export async function copyMealPlanGroup(
               mealPlanId: newPlan.id,
               kind: s.kind,
               sortOrder: s.sortOrder,
-              quantity: s.quantity,
+              // ★ Phase 9-D-Sym: estimatedQuantity는 그대로 복사, finalQuantity는 복사하지 않음
+              //   (복사된 식단은 신규 작성 상태이므로 final은 NULL로 초기화)
+              estimatedQuantity: s.estimatedQuantity,
+              finalQuantity: null,
               note: s.note,
               subsidiaryMasterId: s.subsidiaryMasterId,
               containerSlotIndex: s.containerSlotIndex,
@@ -1026,7 +1045,9 @@ export async function createMealPlanSlot(
         mealPlanId,
         kind: "CONTAINER",
         sortOrder: input.sortOrder,
-        quantity: input.quantity,
+        // ★ Phase 9-D-Sym: estimated/final 분리. final은 슬롯 생성 시점엔 NULL.
+        estimatedQuantity: input.estimatedQuantity,
+        finalQuantity: input.finalQuantity ?? null,
         note: input.note,
         productionLineId: input.productionLineId,
         subsidiaryMasterId: input.subsidiaryMasterId,
@@ -1056,7 +1077,9 @@ export async function createMealPlanSlot(
       mealPlanId,
       kind: "DIRECT",
       sortOrder: input.sortOrder,
-      quantity: input.quantity,
+      // ★ Phase 9-D-Sym
+      estimatedQuantity: input.estimatedQuantity,
+      finalQuantity: input.finalQuantity ?? null,
       note: input.note,
       productionLineId: input.productionLineId,
       supplierItemId: input.supplierItemId,
@@ -1104,9 +1127,11 @@ export async function updateMealPlanSlot(
     if (!line) throw new Error("PRODUCTION_LINE_NOT_FOUND");
   }
 
+  // ★ Phase 9-D-Sym: estimatedQuantity / finalQuantity 분리 갱신
   const data: Prisma.MealPlanSlotUpdateInput = {
     sortOrder: input.sortOrder,
-    quantity: input.quantity,
+    estimatedQuantity: input.estimatedQuantity,
+    finalQuantity: input.finalQuantity,
     note: input.note,
     productionLine:
       input.productionLineId === null
@@ -1346,7 +1371,9 @@ export async function bulkCreateContainerSlots(
     recipeBomId: bomMatchMap.get(i) ?? null, // Phase 7-F1
     productionLineId:
       it.productionLineId ?? input.defaultProductionLineId ?? null,
-    quantity: it.quantity ?? 0,
+    // ★ Phase 9-D-Sym: bulk 생성은 신규 식단 작성 단계 → estimated만 입력, final은 NULL.
+    estimatedQuantity: it.estimatedQuantity ?? 0,
+    // finalQuantity는 default NULL (생략)
     note: it.note ?? null,
   }));
 
@@ -1750,7 +1777,9 @@ export async function applyMealTemplate(
           containerSlotIndex: cs.slotIndex,
           recipeId: null,
           recipeBomId: null,
-          quantity: 0,
+          // ★ Phase 9-D-Sym: 템플릿 적용은 신규 작성 → estimated 0, final NULL
+          estimatedQuantity: 0,
+          // finalQuantity는 default NULL
         });
       }
     }

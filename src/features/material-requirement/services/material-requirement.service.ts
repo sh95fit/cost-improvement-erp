@@ -459,12 +459,16 @@ async function calculateRequirementsForGroup(
       );
     }
 
+    // ★ Phase 9-D-Sym: countSource에 따라 estimatedQuantity / finalQuantity 사용
     const result = validateSlotQuantitiesForMealPlan(
       mealPlanId,
       mc,
       list.map((s) => ({
         id: s.id,
-        quantity: s.quantity ?? 0,
+        quantity:
+          countSource === MealCountSource.ESTIMATED
+            ? (s.estimatedQuantity ?? 0)
+            : (s.finalQuantity ?? 0),
         kind: "CONTAINER" as const,
         recipeId: s.recipeId,
         productionLineId: s.productionLineId,
@@ -565,6 +569,7 @@ async function calculateRequirementsForGroup(
         recipeContainerSlots += groupSlots.length;
       } else {
         // DISTRIBUTED: 슬롯별 quantity로 라인별 전개
+        // ★ Phase 9-D-Sym: countSource에 따라 다른 컬럼 사용
         for (const slot of groupSlots) {
           if (!slot.productionLineId || !slot.productionLine) {
             throw new Error(
@@ -575,7 +580,10 @@ async function calculateRequirementsForGroup(
           if (!locationId) {
             throw new Error(MATERIAL_REQUIREMENT_ERRORS.MISSING_LOCATION);
           }
-          const qty = slot.quantity ?? 0;
+          const qty =
+            countSource === MealCountSource.ESTIMATED
+              ? (slot.estimatedQuantity ?? 0)
+              : (slot.finalQuantity ?? 0);
           if (qty <= 0) continue; // 방어적 (DISTRIBUTED는 검증상 모두 양수)
 
           await expandBomAndAccumulate({

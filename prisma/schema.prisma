@@ -1015,7 +1015,13 @@ model MealPlanSlot {
   recipeBomId        String?   @map("recipe_bom_id")
   supplierItemId     String?   @map("supplier_item_id")
   productionLineId   String?   @map("production_line_id")
-  quantity           Int       @default(0)
+  // Phase 9-D-Sym: 예상/확정 슬롯 수량 대칭 분리
+  //   - estimatedQuantity: 식단 작성 시 입력 (구 quantity 컬럼 개명)
+  //     recipeId 그룹 안에서 슬롯이 2개 이상이면 입력 의무 (PARTIAL_INPUT/SUM_MISMATCH로 검증)
+  //   - finalQuantity: 실제 사용 후 IN_PROGRESS→COMPLETED 단계에서 입력
+  //     nullable. estimated와 동일한 검증 정책을 따른다.
+  estimatedQuantity  Int       @default(0) @map("estimated_quantity")
+  finalQuantity      Int?      @map("final_quantity")
   note               String?
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
