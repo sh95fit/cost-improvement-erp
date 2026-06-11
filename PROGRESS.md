@@ -117,7 +117,7 @@ Sprint 2 종결 시점에 미착수 상태로 남은 항목. Sprint 3 진입 시
 - ⬜ Phase 7-G — 단위 환산 가드 (Sprint 3 Phase 1 "자재 단위 v2"에 흡수 검토)
 - ⬜ Phase 9-A-4 — MaterialRequirement 서비스 추가 테스트
 - ⬜ Phase 9-D-Acc — 부자재 사용처(productionLineId) 지정 + 산출 + 독립 발주 트랙
-- ⬜ Phase 9-D-Sym 후속 — `collectGroupSlotQtyIssues` countSource="FINAL" 분기 확장 (확정식수 분배 정책 도입 시점)
+- ⏳ Phase 9-D-Sym 후속 — `collectGroupSlotQtyIssues` countSource 매개변수 시그니처 열림 (기본 ESTIMATED). IN_PROGRESS→COMPLETED 가드에서 FINAL 호출은 확정식수 분배 정책 도입 시점에 활성화.
 - ⬜ Phase 9-E — PO 자동 생성 연결 (Sprint 3 발주 트랙으로 이관)
 - ⬜ Phase 10 — 테스트 보강
 - ⬜ Phase 10-Lint — 별도 정리 스프린트
