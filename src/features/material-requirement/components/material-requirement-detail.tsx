@@ -17,6 +17,11 @@ import { getMealCountsAction } from "@/features/meal-plan/actions/meal-plan.acti
 import { MaterialRequirementResultPanel } from "./material-requirement-result-panel";
 import type { MealPlanGroupRow } from "./material-requirement-group-list";
 
+import {
+  STATUS_LABEL,
+  STATUS_COLOR,
+} from "@/features/meal-plan/constants/status-label";
+
 type CountSource = "ESTIMATED" | "FINAL";
 
 type Props = {
@@ -133,8 +138,8 @@ export function MaterialRequirementDetail({ group, onBack }: Props) {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-semibold tabular-nums">{dateStr}</h2>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
-                {group.status}
+              <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLOR[group.status] ?? "bg-gray-100 text-gray-700"}`}>
+                {STATUS_LABEL[group.status] ?? group.status}
               </span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">

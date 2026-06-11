@@ -94,6 +94,14 @@ import {
   type CompanyMealSlotOption,
 } from "@/features/company-meal-slot/actions/company-meal-slot.action";
 
+import {
+  STATUS_LABEL,
+  STATUS_COLOR,
+  STATUS_ORDER,
+  ALLOWED_FORWARD_TRANSITIONS,
+  CONSUMPTION_MODE_LABEL,
+} from "@/features/meal-plan/constants/status-label";
+
 // ══════════════════════════════════════════════════════════════
 // 타입 (Phase 5-R v2 도메인 — service의 GROUP_DETAIL_INCLUDE 응답에 맞춤)
 // ══════════════════════════════════════════════════════════════
@@ -207,35 +215,6 @@ type ProductionLineOption = {
   name: string;
   locationId: string;
   locationName: string;
-};
-
-// ══════════════════════════════════════════════════════════════
-// 표시 라벨/색상
-// ══════════════════════════════════════════════════════════════
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "작성중",
-  CONFIRMED: "준비중", // ★ Sprint 2 종결 보강: "확정"은 식수 확정 의미와 혼동되어 라벨만 조정 (enum 값은 유지)
-  IN_PROGRESS: "진행중",
-  COMPLETED: "완료",
-  CANCELLED: "취소",
-};
-
-const STATUS_COLOR: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700",
-  CONFIRMED: "bg-blue-100 text-blue-700",
-  IN_PROGRESS: "bg-green-100 text-green-700",
-  COMPLETED: "bg-purple-100 text-purple-700",
-  CANCELLED: "bg-red-100 text-red-700",
-};
-
-// R1-5b: 정방향/역방향 판단용 (낮은 인덱스 → 높은 인덱스 = 정방향)
-// CANCELLED는 별도 처리하므로 ORDER에서 제외
-const STATUS_ORDER: string[] = ["DRAFT", "CONFIRMED", "IN_PROGRESS", "COMPLETED"];
-
-const CONSUMPTION_MODE_LABEL: Record<string, string> = {
-  PER_MEAL_COUNT: "식수 비례",
-  FIXED_QUANTITY: "고정수량",
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -856,15 +835,6 @@ export default function MealPlansPage() {
     },
     [checkMealPlanSlotQty],
   );
-
-  // R1-5: 허용 상태 전환 표 (서버 정책과 1:1 정합)
-  const ALLOWED_FORWARD_TRANSITIONS: Record<string, string[]> = {
-    DRAFT: ["CONFIRMED", "CANCELLED"],
-    CONFIRMED: ["IN_PROGRESS", "DRAFT", "CANCELLED"],
-    IN_PROGRESS: ["COMPLETED", "CONFIRMED", "CANCELLED"],
-    COMPLETED: ["IN_PROGRESS", "CANCELLED"],
-    CANCELLED: ["DRAFT"],
-  };
 
   const handleStatusChange = async () => {
     if (!statusChangeTarget || !newStatus) return;
