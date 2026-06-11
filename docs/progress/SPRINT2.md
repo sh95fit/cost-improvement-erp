@@ -828,15 +828,222 @@ Lineup이 어떤 슬롯에서 사용 가능한지 명시 (예: "한정식 라인
 
 ---
 
-## Sprint 2 잔여 작업 (Phase 9 진입 전 정리)
+---
+
+## Phase 9-A: MaterialRequirement 서비스 생성 (2026-06-06, commit `<HASH-9A>`)
+
+### 목표
+- 식단(MealPlanGroup) 확정 시 라인별·자재별 필요량을 자동 산출하는 `MaterialRequirement` 서비스 신설
+- 2단계 생성 모델 (ESTIMATED / FINAL) 도입 — 발주 준비와 실 사용량 확정을 분리
+- UPSERT + UNDELETE + Soft-delete diff 기반 멱등 생성
+
+### 스키마 (`prisma/schema.prisma`)
+- **추가 enum**: `MealCountSource { ESTIMATED, FINAL }`
+- **추가 모델**: `MaterialRequirement`
+  - 필드: `id, mealPlanGroupId, productionLineId, materialMasterId, countSource, requiredQty (Float), unit, generationVersion (Int), createdAt, updatedAt, deletedAt`
+  - 인덱스: `@@unique([mealPlanGroupId, productionLineId, materialMasterId, countSource])`, `@@index([mealPlanGroupId, countSource])`, `@@index([materialMasterId])`
+- 마이그레이션: `20260606081231_phase9a_material_requirement`
+
+### 서비스 (`src/features/material-requirement/services/material-requirement.service.ts`)
+- **주요 함수 6개**: `generateMaterialRequirements, listMaterialRequirements, getMaterialRequirementById, softDeleteByGroup, restoreByGroup, getGenerationVersion`
+- **계산 흐름**:
+  1. `MealPlanGroup` 상태 검증 (ESTIMATED → CONFIRMED 이상 / FINAL → COMPLETED만 허용)
+  2. `MealCount.{estimatedCount|finalCount}` 조회 — NULL 또는 누락 시 `MR_MISSING_MEAL_COUNT` 에러
+  3. CONTAINER 슬롯만 추출 → `RecipeBOMSlotItem` 전개 (SEMI_PRODUCT는 1단계 재귀)
+  4. `(productionLineId, materialMasterId)` 집계 → `requiredQty = Σ(weightG × mealCount)`
+  5. 기존 활성/소프트삭제 행과 diff → INSERT / UPDATE / UNDELETE / SOFT_DELETE / UNCHANGED 5가지로 분류
+  6. `generationVersion` 증가 (변경이 1건 이상 발생 시)
+- **단위 검증**: `slotItem.unit !== materialMaster.unit` 시 `MR_INVALID_UNIT` 즉시 에러 (Phase 9-A는 strict, 단위 변환은 미래 Phase)
+- **빈 결과 가드**: 산출 0건이면 `MR_EMPTY_GENERATION` 에러로 명시적 실패 처리
+
+### 결정 사항
+- **2단계 분리 이유**: ESTIMATED는 발주용(여유 포함), FINAL은 실 사용량 확정용으로 의미가 달라 별도 행으로 보존
+- **requiredQty 타입**: `Float` 채택 (Decimal 전환은 별도 Phase)
+- **UNDELETE 정책**: 동일 key의 소프트삭제 행이 있을 때 새로 만들지 않고 `deletedAt: null` + 값 갱신 + version 증가
+- **공식**: `requiredQty = slotItem.weightG × mealCount` (라인별 집계, 식단별 집계 아님)
+
+### 테스트 (`src/tests/material-requirement.service.test.ts`)
+- 총 14개 케이스: 정상 흐름 4 (단순/집계/FINAL/DIRECT 거부), 에러 케이스 3 (GROUP_NOT_FOUND, MISSING_PRODUCTION_LINE, MISSING_RECIPE_BOM), diff 동작 4 (idempotent/update/undelete/soft-delete), listMaterialRequirements 3 (activeOnly, relation include, countSource 필터)
+- 누적: 19 파일 / 263 PASS / 2 skip / 0 fail
+- TypeScript errors: 0
+
+---
+
+## Phase 9-B: MaterialRequirement UI (2026-06-07, commit `<HASH-9B>`)
+
+### 목표
+- 산출된 `MaterialRequirement`를 식단 그룹별로 조회·생성·관리하는 페이지 추가
+
+### 페이지 (`src/app/(dashboard)/material-requirements/page.tsx`)
+- 필터: 회사, 식단 그룹, 라인, countSource (ESTIMATED/FINAL 토글), 자재명 검색, 활성여부
+- 컬럼: 식단그룹·날짜, 라인, 자재명, 필요량, 단위, countSource 배지, 생성버전, 생성/수정/삭제일시
+- 액션 버튼:
+  - **생성 (ESTIMATED)** — `MealPlanGroup.status >= CONFIRMED`에서만 활성
+  - **생성 (FINAL)** — `MealPlanGroup.status === COMPLETED`에서만 활성
+  - **소프트삭제 / 복원** — 그룹 단위
+- 결과 토스트: `stats.inserted/updated/undeleted/softDeleted/unchanged` 5필드 모두 노출
+
+### 액션 (`src/features/material-requirement/actions/material-requirement.action.ts`)
+- `generateMaterialRequirementsAction, listMaterialRequirementsAction, getMaterialRequirementByIdAction, softDeleteByGroupAction, restoreByGroupAction`
+- 권한 키 `materialRequirement` 추가 (READ/WRITE/DELETE)
+
+### 사이드바
+- 메뉴 추가: "필요량 산출" (Boxes 아이콘)
+
+### 테스트
+- 액션 레벨 mock 테스트는 보류 (서비스 단에서 충분히 커버) — 추후 Phase 10에서 E2E 보강
+- 누적: 19 파일 / 263 PASS 유지
+
+---
+
+## Phase 9-C: 슬롯 수량 검증 1차 도입 (2026-06-08, commit `<HASH-9C>`)
+
+### 배경
+- 기존에는 `MealPlanSlot.quantity`가 비어 있을 때 항상 `MealCount` 전체를 적용했으나, 동일 레시피가 여러 슬롯에 분산될 경우 자재가 **중복 합산**되는 문제 발견
+
+### 해결 전략 — 레시피 그룹 검증
+- 동일 `MealPlanGroup` 안에서 **`recipeBomId` 기준**으로 슬롯들을 그룹핑 (라인 무시)
+- 그룹의 슬롯 수량 합과 `MealCount.estimatedCount`를 비교하여 4가지 상태 산출
+- 자재 산출 시에도 동일 레시피 그룹은 단일 합산 처리하여 중복 제거
+
+### 검증 상태 4종
+| 상태 | 조건 | 처리 |
+|---|---|---|
+| `OK_FALLBACK` | 그룹 내 모든 슬롯 quantity가 0/null | `MealCount` 전체를 단일 슬롯에 적용 |
+| `OK_DISTRIBUTED` | 슬롯 수량 합 = `MealCount` | 각 슬롯 quantity대로 분배 |
+| `SUM_MISMATCH` | 슬롯 수량 합 ≠ `MealCount` (둘 다 입력됨) | 경고 배지, 산출은 입력값 기준 |
+| `PARTIAL_INPUT` | 일부 슬롯만 quantity 입력 | 경고 배지, 산출은 입력값 기준 |
+
+### 신규 유틸 (`src/features/meal-plan/utils/slot-quantity-validator.ts`)
+- `checkMealPlanSlotQty(slots, mealCount)` → `{ status, message, slotCount, totalQty, mealCountValue }`
+- `collectGroupSlotQtyIssues(group)` → 그룹 전체의 이슈 배열
+
+### 서비스 통합
+- `material-requirement.service.ts` 계산 단계에서 레시피 그룹 단위로 1회만 자재 산출
+- 식단 페이지 슬롯 행에 배지 표시 (`slot-quantity-badge.tsx`)
+
+### 테스트
+- `slot-quantity-validator.test.ts`: 8개 케이스 추가
+- 누적: 20 파일 / 271 PASS / 2 skip / 0 fail
+
+---
+
+## Phase 9-C-Fix-R1: 슬롯 수량 검증 정합성 보정 (2026-06-09, commit `<HASH-9CR1>`)
+
+### 배경
+- Phase 9-C의 1차 구현에서 6가지 결함 발견 → R1-1 ~ R1-6으로 일괄 보정
+
+### 보정 내역
+- **R1-1**: 검증 그룹핑 기준을 `(productionLineId, recipeBomId)`에서 `recipeBomId` 단독으로 수정 (라인 분리 시에도 동일 레시피는 한 그룹)
+- **R1-2**: `OK_FALLBACK` 판정에서 `quantity === 0`과 `quantity === null` 모두 빈 입력으로 간주
+- **R1-3**: `SUM_MISMATCH` 메시지에 실제 차이값(`expected - actual`) 노출
+- **R1-4**: 자재 산출 시 동일 레시피 그룹의 라인별 분배 비율을 슬롯 quantity 합 기준으로 재계산 (중복 합산 완전 제거)
+- **R1-5a**: 식단 페이지 상단 그룹 요약 영역에 "수량 검증 경고 N건" 집계 배지 추가
+- **R1-5b**: 개별 슬롯 행 배지는 그룹 내 슬롯 수가 2 이상일 때만 노출 (단일 슬롯엔 의미 없음)
+- **R1-6**: `MealCount`가 누락된 그룹은 검증 자체를 스킵하고 별도 안내 메시지 표시
+
+### 테스트
+- `slot-quantity-validator.test.ts`에 6개 케이스 추가 (R1-1 ~ R1-6 각 대응)
+- 누적: 20 파일 / 277 PASS / 2 skip / 0 fail
+- TypeScript errors: 0
+
+---
+
+## Phase 9-D-Sym: MealPlanSlot 수량 대칭 분리 (2026-06-10 ~ 2026-06-11, commit `<HASH-9D-SYM>`)
+
+### 배경
+- 기존 `MealPlanSlot.quantity` 단일 컬럼은 ESTIMATED와 FINAL 양쪽 모두를 대표할 수 없음
+- 발주 단계에서 잡은 수량(estimated)과 조리 후 실사용 수량(final)은 의미·시점·검증 기준이 모두 다름
+- `MealCount`는 이미 `estimatedCount` / `finalCount` 두 컬럼을 가지고 있어 슬롯 측도 대칭 구조로 맞춰야 함
+
+### 스키마 변경 (`prisma/schema.prisma`)
+- **`MealPlanSlot.quantity` 제거 → 두 컬럼으로 분리**:
+  - `estimatedQuantity Int @default(0)` — 발주 산정용 (빈 입력은 0)
+  - `finalQuantity Int?` — 실사용 확정용 (빈 입력은 NULL, 0과 구분)
+- 마이그레이션: `20260610091812_phase9d_sym_split_slot_quantity`
+  - `ALTER TABLE meal_plan_slots RENAME COLUMN quantity TO estimated_quantity;`
+  - `ALTER TABLE meal_plan_slots ADD COLUMN final_quantity INTEGER;`
+  - 기존 데이터: `estimated_quantity`는 그대로 보존, `final_quantity`는 NULL로 초기화
+
+### Zod 스키마 (`src/features/meal-plan/schemas/meal-plan.schema.ts`)
+- 신규 슬롯 생성 입력: `estimatedQuantity` (default 0). `finalQuantity`는 생성 시점에 받지 않음
+- 슬롯 수정 입력: 두 컬럼 모두 optional + nullable (final만)
+- 그룹 일괄 입력 스키마: 동일하게 두 컬럼 분리
+
+### 검증 로직 재구성
+- **공통 유틸**: `validateSlotQuantitiesForMealPlan(slots, mealCount, countSource)` 신설
+  - `checkMealPlanSlotQty(slots, mealCount, countSource)` 시그니처 확장
+  - `countSource: "ESTIMATED" | "FINAL"` 분기:
+    - ESTIMATED: 슬롯 `estimatedQuantity` 합 vs `MealCount.estimatedCount`
+    - FINAL: 슬롯 `finalQuantity` 합 vs `MealCount.finalCount` (NULL은 미입력으로 간주)
+  - 4상태 (OK_FALLBACK / OK_DISTRIBUTED / SUM_MISMATCH / PARTIAL_INPUT) 동일 적용
+
+### 상태 전환 가드
+- `CONFIRMED → IN_PROGRESS` 전환 시: ESTIMATED 측 검증 통과 필요
+- `IN_PROGRESS → COMPLETED` 전환 시: FINAL 측 검증 통과 필요
+- 상태 라벨 변경: `CONFIRMED` 표기 → **"준비중"** (enum 값은 유지, 라벨만 변경)
+
+### 자재 산출 서비스 (`material-requirement.service.ts`)
+- `countSource === "ESTIMATED"`: 슬롯의 `estimatedQuantity ?? 0` 사용, 합계 0이면 `MealCount.estimatedCount` fallback
+- `countSource === "FINAL"`: 슬롯의 `finalQuantity ?? null` 사용, 모두 null이면 `MealCount.finalCount` fallback
+- 라인별 분배 비율도 동일하게 두 컬럼을 분기 처리
+
+### UI 변경 (`src/app/(dashboard)/meal-plans/page.tsx`)
+- 슬롯 목록 셀: 한 셀에 2줄로 표시 (`예상: 100 / 확정: 95`, 확정이 null이면 `-`)
+- 슬롯 편집 다이얼로그: 입력란 2개로 분리 (예상 수량 / 확정 수량)
+- `editSlotForm` 상태 / `openSlotEdit` 프리필 / `handleSaveSlot` 전송 — 모두 두 필드 동기화
+- 그룹 상태가 IN_PROGRESS 이상일 때만 "확정 수량" 입력란 활성화
+
+### 결정 사항
+- **빈 입력 처리 비대칭**: `estimatedQuantity`는 0 저장, `finalQuantity`는 NULL 저장 — "측정하지 않음(NULL)"과 "0인분(0)"을 구분
+- **fallback 정책**: 그룹 내 모든 슬롯이 빈 입력일 때만 `MealCount` 전체 적용. 일부만 입력된 PARTIAL_INPUT은 경고 + 입력값 기준 산출
+- **라벨만 변경, enum은 유지**: 코드 호환성 확보 (DB 데이터·기존 권한·테스트 코드 영향 없음)
+
+### 테스트
+- `material-requirement.service.test.ts`:
+  - FINAL countSource + 95인분 케이스 (라인 172, 654)
+  - countSource 필터 케이스 (라인 184, 191, 662)
+- `slot-quantity-validator.test.ts`:
+  - ESTIMATED/FINAL 분기 케이스 각 4종 (OK_FALLBACK / OK_DISTRIBUTED / PARTIAL_INPUT / SUM_MISMATCH)
+- 누적: <PASS-COUNT> PASS / 2 skip / 0 fail
+- TypeScript errors: 0
+
+### 알려진 잔여 이슈 (Phase 9-D-Acc로 이관)
+- `collectGroupSlotQtyIssues`는 현재 `countSource` 인자를 받지 않고 내부에서 항상 ESTIMATED로 호출
+- `CONFIRMED → IN_PROGRESS` 가드에서는 정상 동작하나, `IN_PROGRESS → COMPLETED` 단계에서는 FINAL 검증을 위해 시그니처 확장 필요
+- 후속 Phase 9-D-Acc 또는 Phase 9-E 진입 시 보강
+
+---
+
+## Sprint 2 누적 통계 (Phase 9-D-Sym 시점, 2026-06-11)
+
+| 항목 | 값 |
+|---|---|
+| 진행 기간 | 2026-05-13 ~ 2026-06-11 (30일) |
+| 신규/확장 Phase 수 | Phase 9-A, 9-B, 9-C, 9-C-Fix-R1, 9-D-Sym |
+| 주요 신규 모델 | MaterialRequirement |
+| 주요 스키마 변경 | MealPlanSlot.quantity → estimatedQuantity + finalQuantity 분리 |
+| 신규 enum | MealCountSource (ESTIMATED, FINAL) |
+| 테스트 파일 | <FILE-COUNT> |
+| 테스트 케이스 | <PASS-COUNT> PASS / 2 skip / 0 fail |
+| TypeScript errors | 0 |
+| ESLint warnings | <LINT-COUNT> |
+| any-type usages | 0 |
+
+## Sprint 2 잔여 작업 (Sprint 3 진입 전 정리)
 
 - ⬜ Phase 2-e: material-supplier UX 보강
 - ⬜ Phase 6: 식단 캘린더 뷰
 - ⬜ Phase 7-E: 캘린더 UI 공용 컴포넌트
-- ⬜ Phase 7-G: MealPlan 검증 강화 (Phase 9 선결 항목)
-- ⬜ Phase 9: MaterialRequirement 서비스 (Phase 9-A 스키마 확장 → 9-B 생성 로직 → 9-C 발주 연결)
-- ⬜ Phase 10: 테스트 추가 작성
+- ⬜ Phase 7-G: MealPlan 검증 강화
+- ✅ Phase 9-A: MaterialRequirement 서비스 생성 (완료)
+- ✅ Phase 9-B: MaterialRequirement UI (완료)
+- ✅ Phase 9-C / 9-C-Fix-R1: 슬롯 수량 검증 도입 및 보정 (완료)
+- ✅ Phase 9-D-Sym: 슬롯 수량 대칭 분리 (완료)
+- ⬜ Phase 9-D-Acc: 부재료 수량 처리 + `collectGroupSlotQtyIssues` countSource 확장
+- ⬜ Phase 9-E: 발주(PO) 자동 생성
+- ⬜ Phase 10: 테스트 추가 작성 / Lint 정리
 - ⬜ Phase 11: 페이지 통합 및 Sprint 2 QA
 
-> Phase 9-A 진입 시 별도 가이드 문서 (`docs/guides/phase-9-a-guide.md`)로 작성 예정.
-> 본 문서에는 미래 작업 가이드를 포함하지 않음 — 진행 완료된 내용만 기록.
+> Sprint 2는 Phase 9-D-Sym 완료 시점에 핵심 산출 파이프라인이 동작 가능한 상태로 종결됨.
+> 잔여 ⬜ 항목은 Sprint 3 초입 또는 백로그로 이관 검토.
