@@ -802,6 +802,12 @@ export default function MealPlansPage() {
   const collectGroupSlotQtyIssues = useCallback(
     (
       group: MealPlanGroupRow,
+      // ★ Phase 9-D-Sym 후속: countSource에 따라 검증 컬럼 분기
+      //   - ESTIMATED (기본): estimatedCount + estimatedQuantity 검증
+      //                       (DRAFT→CONFIRMED, CONFIRMED→IN_PROGRESS 가드)
+      //   - FINAL:            finalCount + finalQuantity 검증
+      //                       (IN_PROGRESS→COMPLETED 가드 — 도입 시점에 활성화)
+      countSource: "ESTIMATED" | "FINAL" = "ESTIMATED",
     ): Array<{ mp: MealPlanRow; issue: RecipeGroupCheck | { kind: "NO_MEAL_COUNT" } }> => {
       if (!group.mealPlans) return [];
       const issues: Array<{ mp: MealPlanRow; issue: RecipeGroupCheck | { kind: "NO_MEAL_COUNT" } }> = [];
@@ -811,9 +817,13 @@ export default function MealPlansPage() {
             c.companyMealSlotId === mp.companyMealSlotId &&
             c.lineupId === mp.lineupId,
         );
-        const mealCount = mc?.estimatedCount ?? mc?.finalCount ?? null;
-        const check = checkMealPlanSlotQty(mp, mealCount);
-
+        // countSource에 따라 식수 컬럼 분기
+        const mealCount =
+          countSource === "ESTIMATED"
+            ? (mc?.estimatedCount ?? mc?.finalCount ?? null)
+            : (mc?.finalCount ?? null);
+        const check = checkMealPlanSlotQty(mp, mealCount, countSource);
+  
         if (
           check.kind === "NO_MEAL_COUNT" &&
           mp.slots.some((s) => s.kind === "CONTAINER")
