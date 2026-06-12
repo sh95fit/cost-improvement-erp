@@ -115,7 +115,12 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
           <div><p className="text-gray-500">부자재명</p><p className="font-medium">{subsidiary.name}</p></div>
           <div>
             <p className="text-gray-500">단위</p>
-            <p>{UNIT_CATEGORY_LABELS[subsidiary.unitCategory as UnitCategory] ?? subsidiary.unitCategory} / {subsidiary.unit}</p>
+            <p>
+              <span className="font-medium">{subsidiary.unit}</span>
+              <span className="ml-2 text-xs text-gray-400">
+                ({UNIT_CATEGORY_LABELS[subsidiary.unitCategory as UnitCategory] ?? subsidiary.unitCategory})
+              </span>
+            </p>
           </div>
           <div>
             <p className="text-gray-500">재고 등급</p>
