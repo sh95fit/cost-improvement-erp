@@ -217,6 +217,7 @@ enum UnitCategory {
   VOLUME
   COUNT
   LENGTH
+  PACKAGE
 
   @@map("unit_category")
 }
@@ -631,7 +632,7 @@ model SupplierItem {
   supplierItemCode   String?  @map("supplier_item_code")
   productName        String   @map("product_name")
   spec               String?  @map("spec")
-  supplyUnit         String   @map("supply_unit")
+  supplyUnitId       String   @map("supply_unit_id")
   supplyUnitQty      Float    @map("supply_unit_qty")
   currentPrice       Float    @map("current_price")
   leadTimeDays       Int      @default(1) @map("lead_time_days")
@@ -642,6 +643,7 @@ model SupplierItem {
   supplier             Supplier                   @relation(fields: [supplierId], references: [id])
   materialMaster       MaterialMaster?            @relation(fields: [materialMasterId], references: [id])
   subsidiaryMaster     SubsidiaryMaster?          @relation(fields: [subsidiaryMasterId], references: [id])
+  supplyUnit           UnitMaster                 @relation(fields: [supplyUnitId], references: [id])
   priceHistories       SupplierItemPriceHistory[]
   purchaseOrderItems   PurchaseOrderItem[]
   defaultForMaterial   MaterialMaster?            @relation("DefaultMaterialSupplierItem")
@@ -653,6 +655,7 @@ model SupplierItem {
   @@index([supplierId])
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
+  @@index([supplyUnitId])
   @@map("supplier_items")
 }
 
@@ -889,7 +892,8 @@ model UnitMaster {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  company Company @relation(fields: [companyId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id])
+  supplierItems SupplierItem[]
 
   @@unique([companyId, itemType, code])
   @@index([companyId, itemType, unitCategory])
