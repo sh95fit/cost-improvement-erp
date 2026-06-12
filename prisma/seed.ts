@@ -363,13 +363,25 @@ async function main() {
   console.log("✅ Suppliers: 3개 생성 (MATERIAL 2, SUBSIDIARY 1)");
 
   // ---- 12. SupplierItems ----
+  // 단위 코드 → UnitMaster ID 매핑 (MATERIAL용)
+  const materialUnits = await prisma.unitMaster.findMany({
+    where: { companyId: company.id, itemType: "MATERIAL" },
+    select: { id: true, code: true },
+  });
+  const unitIdByCode = new Map(materialUnits.map((u) => [u.code, u.id]));
+  const resolveUnitId = (code: string): string => {
+    const id = unitIdByCode.get(code);
+    if (!id) throw new Error(`[seed] UnitMaster not found for code="${code}" (MATERIAL)`);
+    return id;
+  };
+
   const supplierItems = [
-    { supplierId: supplierA.id, materialCode: "MAT-001", productName: "국내산 쌀 20kg", spec: "20kg", supplyUnit: "포(20kg)", supplyUnitQty: 20, currentPrice: 52000 },
-    { supplierId: supplierA.id, materialCode: "MAT-002", productName: "냉장 닭가슴살", spec: "1kg", supplyUnit: "kg", supplyUnitQty: 1, currentPrice: 8500 },
-    { supplierId: supplierA.id, materialCode: "MAT-003", productName: "국내산 양파 망", spec: "10kg", supplyUnit: "망(10kg)", supplyUnitQty: 10, currentPrice: 15000 },
-    { supplierId: supplierB.id, materialCode: "MAT-004", productName: "샘표 양조간장", spec: "1.8L", supplyUnit: "병(1.8L)", supplyUnitQty: 1.8, currentPrice: 4500 },
-    { supplierId: supplierB.id, materialCode: "MAT-005", productName: "오뚜기 참기름", spec: "500ml", supplyUnit: "병(500ml)", supplyUnitQty: 0.5, currentPrice: 8000 },
-    { supplierId: supplierB.id, materialCode: "MAT-006", productName: "고향냉동만두", spec: "1kg", supplyUnit: "봉(1kg)", supplyUnitQty: 1, currentPrice: 6500 },
+    { supplierId: supplierA.id, materialCode: "MAT-001", productName: "국내산 쌀 20kg", spec: "20kg",   supplyUnitCode: "포", supplyUnitQty: 20,  currentPrice: 52000 },
+    { supplierId: supplierA.id, materialCode: "MAT-002", productName: "냉장 닭가슴살",   spec: "1kg",    supplyUnitCode: "kg", supplyUnitQty: 1,   currentPrice: 8500  },
+    { supplierId: supplierA.id, materialCode: "MAT-003", productName: "국내산 양파 망",  spec: "10kg",   supplyUnitCode: "망", supplyUnitQty: 10,  currentPrice: 15000 },
+    { supplierId: supplierB.id, materialCode: "MAT-004", productName: "샘표 양조간장",   spec: "1.8L",   supplyUnitCode: "병", supplyUnitQty: 1.8, currentPrice: 4500  },
+    { supplierId: supplierB.id, materialCode: "MAT-005", productName: "오뚜기 참기름",   spec: "500ml",  supplyUnitCode: "병", supplyUnitQty: 0.5, currentPrice: 8000  },
+    { supplierId: supplierB.id, materialCode: "MAT-006", productName: "고향냉동만두",   spec: "1kg",    supplyUnitCode: "봉", supplyUnitQty: 1,   currentPrice: 6500  },
   ];
 
   const supplierItemRecords: string[] = [];
@@ -387,7 +399,7 @@ async function main() {
           materialMasterId: materialRecords[si.materialCode],
           productName: si.productName,
           spec: si.spec,
-          supplyUnit: si.supplyUnit,
+          supplyUnitId: resolveUnitId(si.supplyUnitCode),
           supplyUnitQty: si.supplyUnitQty,
           currentPrice: si.currentPrice,
           leadTimeDays: 2,
@@ -542,41 +554,50 @@ async function main() {
     });
   }
   console.log("✅ BOMItems: 2개");
-
-  // ---- 16. UnitMasters ----
+  
   const unitMasterData = [
-    // 자재용 (MATERIAL)
+    // ─── 자재용 (MATERIAL) ───
+    // WEIGHT (중량)
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "g", name: "g (그램)", sortOrder: 0 },
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "kg", name: "kg (킬로그램)", sortOrder: 1 },
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "mg", name: "mg (밀리그램)", sortOrder: 2 },
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "근", name: "근 (600g)", sortOrder: 3 },
     { itemType: "MATERIAL" as const, unitCategory: "WEIGHT" as const, code: "관", name: "관 (3.75kg)", sortOrder: 4 },
+    // VOLUME (용량)
     { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "ml", name: "ml (밀리리터)", sortOrder: 0 },
     { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "L", name: "L (리터)", sortOrder: 1 },
     { itemType: "MATERIAL" as const, unitCategory: "VOLUME" as const, code: "cc", name: "cc", sortOrder: 2 },
+    // COUNT (수량) - 포장 단위 제외
     { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "개", name: "개", sortOrder: 0 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "봉", name: "봉", sortOrder: 1 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "팩", name: "팩", sortOrder: 2 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "박스", name: "박스", sortOrder: 3 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "캔", name: "캔", sortOrder: 4 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "병", name: "병", sortOrder: 5 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 6 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "판", name: "판", sortOrder: 7 },
-    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "EA", name: "EA", sortOrder: 8 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "판", name: "판", sortOrder: 2 },
+    { itemType: "MATERIAL" as const, unitCategory: "COUNT" as const, code: "EA", name: "EA", sortOrder: 3 },
+    // LENGTH (길이)
     { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "cm", name: "cm (센티미터)", sortOrder: 0 },
     { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "m", name: "m (미터)", sortOrder: 1 },
     { itemType: "MATERIAL" as const, unitCategory: "LENGTH" as const, code: "mm", name: "mm (밀리미터)", sortOrder: 2 },
-    // 부자재용 (SUBSIDIARY)
+    // PACKAGE (포장) - 신규
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "포", name: "포 (包)", sortOrder: 0 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "팩", name: "팩", sortOrder: 1 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "박스", name: "박스", sortOrder: 2 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "캔", name: "캔", sortOrder: 3 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "병", name: "병", sortOrder: 4 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "봉", name: "봉", sortOrder: 5 },
+    { itemType: "MATERIAL" as const, unitCategory: "PACKAGE" as const, code: "망", name: "망", sortOrder: 6 },
+
+    // ─── 부자재용 (SUBSIDIARY) ───
+    // COUNT (수량) - 포장 단위 제외
     { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "개", name: "개", sortOrder: 0 },
     { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "EA", name: "EA", sortOrder: 1 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "세트", name: "세트", sortOrder: 2 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 3 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "박스", name: "박스", sortOrder: 4 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "팩", name: "팩", sortOrder: 5 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "묶음", name: "묶음", sortOrder: 6 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "롤", name: "롤", sortOrder: 7 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "COUNT" as const, code: "장", name: "장", sortOrder: 2 },
+    // LENGTH (길이)
     { itemType: "SUBSIDIARY" as const, unitCategory: "LENGTH" as const, code: "m", name: "m (미터)", sortOrder: 0 },
-    { itemType: "SUBSIDIARY" as const, unitCategory: "LENGTH" as const, code: "cm", name: "cm (센티미터)", sortOrder: 1 },
+    // PACKAGE (포장) - 신규
+    { itemType: "SUBSIDIARY" as const, unitCategory: "PACKAGE" as const, code: "세트", name: "세트", sortOrder: 0 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "PACKAGE" as const, code: "박스", name: "박스", sortOrder: 1 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "PACKAGE" as const, code: "팩", name: "팩", sortOrder: 2 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "PACKAGE" as const, code: "묶음", name: "묶음", sortOrder: 3 },
+    { itemType: "SUBSIDIARY" as const, unitCategory: "PACKAGE" as const, code: "롤", name: "롤", sortOrder: 4 },
   ];
   for (const um of unitMasterData) {
     await prisma.unitMaster.upsert({

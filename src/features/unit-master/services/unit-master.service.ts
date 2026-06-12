@@ -106,12 +106,12 @@ async function checkUnitUsage(
     });
     if (convCount > 0) usages.push(`단위 환산 ${convCount}건에서 사용 중`);
 
-    // SupplierItem.supplyUnit (MATERIAL 타입)
+    // SupplierItem.supplyUnitId (MATERIAL 타입) - UnitMaster.code로 역참조
     const siCount = await prisma.supplierItem.count({
       where: {
         supplier: { companyId },
         itemType: "MATERIAL",
-        supplyUnit: unitCode,
+        supplyUnit: { code: unitCode, itemType: "MATERIAL", companyId },
       },
     });
     if (siCount > 0) usages.push(`공급 품목 ${siCount}건에서 사용 중`);
@@ -139,12 +139,12 @@ async function checkUnitUsage(
     });
     if (convCount > 0) usages.push(`단위 환산 ${convCount}건에서 사용 중`);
 
-    // SupplierItem.supplyUnit (SUBSIDIARY 타입)
+    // SupplierItem.supplyUnitId (SUBSIDIARY 타입) - UnitMaster.code로 역참조
     const siCount = await prisma.supplierItem.count({
       where: {
         supplier: { companyId },
         itemType: "SUBSIDIARY",
-        supplyUnit: unitCode,
+        supplyUnit: { code: unitCode, itemType: "SUBSIDIARY", companyId },
       },
     });
     if (siCount > 0) usages.push(`공급 품목 ${siCount}건에서 사용 중`);

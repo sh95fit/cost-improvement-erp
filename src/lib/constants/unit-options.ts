@@ -17,11 +17,6 @@ export const UNIT_OPTIONS: Record<UnitCategory, UnitOption[]> = {
   ],
   COUNT: [
     { value: "개", label: "개" },
-    { value: "봉", label: "봉" },
-    { value: "팩", label: "팩" },
-    { value: "박스", label: "박스" },
-    { value: "캔", label: "캔" },
-    { value: "병", label: "병" },
     { value: "장", label: "장" },
     { value: "판", label: "판" },
     { value: "EA", label: "EA" },
@@ -31,6 +26,18 @@ export const UNIT_OPTIONS: Record<UnitCategory, UnitOption[]> = {
     { value: "m", label: "m (미터)" },
     { value: "mm", label: "mm (밀리미터)" },
   ],
+  PACKAGE: [
+    { value: "포", label: "포 (包)" },
+    { value: "팩", label: "팩" },
+    { value: "박스", label: "박스" },
+    { value: "캔", label: "캔" },
+    { value: "병", label: "병" },
+    { value: "봉", label: "봉" },
+    { value: "망", label: "망" },
+    { value: "세트", label: "세트" },
+    { value: "묶음", label: "묶음" },
+    { value: "롤", label: "롤" },
+  ],
 };
 
 export const UNIT_CATEGORY_LABELS: Record<UnitCategory, string> = {
@@ -38,6 +45,7 @@ export const UNIT_CATEGORY_LABELS: Record<UnitCategory, string> = {
   VOLUME: "용량",
   COUNT: "수량",
   LENGTH: "길이",
+  PACKAGE: "포장",
 };
 
 export function getAllUnitOptions(): UnitOption[] {

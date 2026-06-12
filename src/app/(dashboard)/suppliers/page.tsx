@@ -14,7 +14,8 @@ type SupplierItemRow = {
   supplierItemCode: string | null;
   productName: string;
   spec: string | null;
-  supplyUnit: string;
+  supplyUnitId: string;
+  supplyUnit: { id: string; code: string; name: string; unitCategory: string };
   supplyUnitQty: number;
   currentPrice: number;
   leadTimeDays: number;

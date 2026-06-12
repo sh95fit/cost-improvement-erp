@@ -26,7 +26,7 @@ import {
 } from "../actions/supplier.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import { getSubsidiariesAction } from "@/features/material/actions/material.action";
-import { getUnitOptionsByItemTypeAction } from "@/features/unit-master/actions/unit-master.action";
+import { getUnitOptionsAction } from "@/features/unit-master/actions/unit-master.action";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -149,7 +149,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
   // 공급 단위 옵션 로드 (UnitMaster)
   useEffect(() => {
     const loadUnitOptions = async () => {
-      const result = await getUnitOptionsByItemTypeAction(itemType as "MATERIAL" | "SUBSIDIARY");
+      const result = await getUnitOptionsAction(itemType);
       if (result.success) {
         setUnitOptions(result.data as UnitOption[]);
       }
