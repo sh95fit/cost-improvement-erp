@@ -37,7 +37,7 @@ type SupplierItemRow = {
   id: string;
   productName: string;
   spec: string | null;
-  supplyUnit: string;
+  supplyUnit: { id: string; code: string; name: string; unitCategory: string };
   supplyUnitQty: number;
   currentPrice: number;
   supplier: { id: string; name: string; code: string };
@@ -363,7 +363,7 @@ export function SubsidiaryDetailDialog({
                     <TableCell>{item.productName}</TableCell>
                     <TableCell>{item.spec ?? "-"}</TableCell>
                     <TableCell>
-                      {item.supplyUnit} ({item.supplyUnitQty})
+                      {item.supplyUnit.name} ({item.supplyUnitQty})
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(item.currentPrice)}

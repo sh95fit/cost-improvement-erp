@@ -30,6 +30,8 @@ import { getUnitOptionsAction } from "@/features/unit-master/actions/unit-master
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { UnitCombobox } from "@/features/unit-master/components/unit-combobox";
+
 type MaterialOption = { id: string; name: string; code: string };
 type SubsidiaryOption = { id: string; name: string; code: string };
 type UnitOption = { id: string; code: string; name: string; unitCategory: string };
@@ -341,28 +343,15 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="supplyUnitId">공급 단위 *</Label>
-                <Select
+                <UnitCombobox
                   value={supplyUnitId}
-                  onValueChange={setSupplyUnitId}
-                >
-                  <SelectTrigger id="supplyUnitId">
-                    <SelectValue placeholder="단위 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {UNIT_CATEGORY_ORDER.filter((cat) => groupedUnits[cat]?.length).map((cat) => (
-                      <SelectGroup key={cat}>
-                        <SelectLabel>{UNIT_CATEGORY_LABELS[cat]}</SelectLabel>
-                        {groupedUnits[cat].map((o) => (
-                          <SelectItem key={o.id} value={o.id}>
-                            {o.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(v) => setSupplyUnitId(v)}
+                  itemType={itemType as "MATERIAL" | "SUBSIDIARY"}
+                  valueMode="id"
+                  placeholder="공급 단위 선택"
+                />
                 <p className="text-xs text-gray-500">
-                  단위 관리에 등록된 단위만 선택 가능
+                  단위 관리에 등록된 단위를 검색하여 선택하세요
                 </p>
               </div>
               <div className="space-y-2">
