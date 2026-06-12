@@ -144,7 +144,7 @@ export function SearchableSelect({
       <PopoverContent
         className={cn(
           // 트리거 너비에 자동 맞춤 (radix 변수 활용)
-          "w-[var(--radix-popover-trigger-width)] p-0",
+          "w-(--radix-popover-trigger-width) p-0",
           contentClassName,
         )}
         align="start"
