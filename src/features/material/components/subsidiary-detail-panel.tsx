@@ -121,7 +121,7 @@ export function SubsidiaryDetailDialog({ subsidiary, open, onOpenChange, onUpdat
                 ({UNIT_CATEGORY_LABELS[subsidiary.unitCategory as UnitCategory] ?? subsidiary.unitCategory})
               </span>
             </p>
-          </div>
+          </div>    
           <div>
             <p className="text-gray-500">재고 등급</p>
             <p><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${subsidiary.stockGrade === "A" ? "bg-red-50 text-red-700" : subsidiary.stockGrade === "B" ? "bg-yellow-50 text-yellow-700" : "bg-green-50 text-green-700"}`}>{GRADE_LABELS[subsidiary.stockGrade] ?? subsidiary.stockGrade}</span></p>

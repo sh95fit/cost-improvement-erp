@@ -123,12 +123,12 @@ export function MaterialDetailDialog({ material, open, onOpenChange, onUpdated }
           <div><p className="text-gray-500">유형</p><p>{MATERIAL_TYPE_LABELS[material.materialType] ?? material.materialType}</p></div>
           <div>
             <p className="text-gray-500">단위</p>
-              <p>
-                <span className="font-medium">{material.unit}</span>
-                <span className="ml-2 text-xs text-gray-400">
-                  ({UNIT_CATEGORY_LABELS[material.unitCategory as UnitCategory] ?? material.unitCategory})
-                </span>
-              </p>
+            <p>
+              <span className="font-medium">{material.unit}</span>
+              <span className="ml-2 text-xs text-gray-400">
+                ({UNIT_CATEGORY_LABELS[material.unitCategory as UnitCategory] ?? material.unitCategory})
+              </span>
+            </p>
           </div>
           <div>
             <p className="text-gray-500">재고 등급</p>
