@@ -50,7 +50,7 @@ type SupplierItemRow = {
   supplierItemCode: string | null;
   productName: string;
   spec: string | null;
-  supplyUnit: string;
+  supplyUnit: { id: string; code: string; name: string; unitCategory: string };
   supplyUnitQty: number;
   currentPrice: number;
   leadTimeDays: number;
@@ -223,7 +223,7 @@ export function SupplierItemList({
                     <TableCell className="text-gray-500">
                       {item.spec ?? "-"}
                     </TableCell>
-                    <TableCell>{item.supplyUnit}</TableCell>
+                    <TableCell>{item.supplyUnit.name}</TableCell>
                     <TableCell className="text-right">
                       {item.supplyUnitQty}
                     </TableCell>

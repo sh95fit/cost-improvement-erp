@@ -48,10 +48,9 @@ export const createSupplierItemSchema = z.object({
     .min(1, "제품명은 필수입니다")
     .max(100, "제품명은 100자 이내여야 합니다"),
   spec: z.string().max(50, "규격은 50자 이내여야 합니다").optional(),
-  supplyUnit: z
+  supplyUnitId: z
     .string()
-    .min(1, "공급 단위는 필수입니다")
-    .max(30, "공급 단위는 30자 이내여야 합니다"),
+    .min(1, "공급 단위를 선택해주세요"),
   supplyUnitQty: z
     .number()
     .positive("공급 단위 수량은 0보다 커야 합니다"),
@@ -76,7 +75,7 @@ export const createSupplierItemSchema = z.object({
 export const updateSupplierItemSchema = z.object({
   productName: z.string().min(1).max(100).optional(),
   spec: z.string().max(50).optional(),
-  supplyUnit: z.string().min(1).max(30).optional(),
+  supplyUnitId: z.string().min(1).optional(),
   supplyUnitQty: z.number().positive().optional(),
   currentPrice: z.number().min(0).optional(),
   leadTimeDays: z.number().int().min(0).optional(),

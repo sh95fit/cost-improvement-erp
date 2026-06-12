@@ -12,6 +12,7 @@ export async function getSupplierItems(supplierId: string) {
     include: {
       materialMaster: { select: { id: true, name: true, code: true, unit: true } },
       subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
+      supplyUnit: { select: { id: true, code: true, name: true, unitCategory: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -24,6 +25,7 @@ export async function getSupplierItemById(id: string) {
     include: {
       materialMaster: { select: { id: true, name: true, code: true, unit: true } },
       subsidiaryMaster: { select: { id: true, name: true, code: true, unit: true } },
+      supplyUnit: { select: { id: true, code: true, name: true, unitCategory: true } },
     },
   });
 }
@@ -61,7 +63,7 @@ export async function createSupplierItem(
         subsidiaryMasterId: input.subsidiaryMasterId ?? null,
         productName: input.productName,
         spec: input.spec ?? null,
-        supplyUnit: input.supplyUnit,
+        supplyUnitId: input.supplyUnitId,        // ← 변경
         supplyUnitQty: input.supplyUnitQty,
         currentPrice: input.currentPrice,
         leadTimeDays: input.leadTimeDays ?? 0,
@@ -143,6 +145,7 @@ export async function getSupplierItemsByMaterialId(materialMasterId: string) {
     },
     include: {
       supplier: { select: { id: true, name: true, code: true } },
+      supplyUnit: { select: { id: true, code: true, name: true, unitCategory: true } },
     },
     orderBy: { currentPrice: "asc" },
   });
@@ -158,9 +161,9 @@ export async function getSupplierItemsBySubsidiaryId(subsidiaryMasterId: string)
     },
     include: {
       supplier: { select: { id: true, name: true, code: true } },
+      supplyUnit: { select: { id: true, code: true, name: true, unitCategory: true } },
     },
     orderBy: { currentPrice: "asc" },
   });
 }
-
 

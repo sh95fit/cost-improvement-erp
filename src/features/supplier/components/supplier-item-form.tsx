@@ -14,7 +14,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -24,18 +26,21 @@ import {
 } from "../actions/supplier.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
 import { getSubsidiariesAction } from "@/features/material/actions/material.action";
+import { getUnitOptionsByItemTypeAction } from "@/features/unit-master/actions/unit-master.action";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type MaterialOption = { id: string; name: string; code: string };
 type SubsidiaryOption = { id: string; name: string; code: string };
+type UnitOption = { id: string; code: string; name: string; unitCategory: string };
 
 type SupplierItemData = {
   id: string;
   itemType: string;
   productName: string;
   spec: string | null;
-  supplyUnit: string;
+  supplyUnitId: string;
+  supplyUnit?: { id: string; code: string; name: string; unitCategory: string } | null;
   supplyUnitQty: number;
   currentPrice: number;
   leadTimeDays: number;
@@ -54,6 +59,16 @@ const SUPPLIER_TYPE_LABELS: Record<string, string> = {
   SUBSIDIARY: "부자재",
 };
 
+const UNIT_CATEGORY_LABELS: Record<string, string> = {
+  WEIGHT: "무게",
+  VOLUME: "부피",
+  COUNT: "수량",
+  LENGTH: "길이",
+  PACKAGE: "포장",
+};
+
+const UNIT_CATEGORY_ORDER = ["WEIGHT", "VOLUME", "COUNT", "LENGTH", "PACKAGE"];
+
 type Props = {
   supplierId: string;
   supplierType: string;
@@ -65,7 +80,6 @@ type Props = {
 export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSaved }: Props) {
   const isEdit = !!item;
 
-  // supplierType에 따라 itemType 자동 결정 (수정 시 기존 값 유지)
   const itemType = item?.itemType ?? (supplierType === "SUBSIDIARY" ? "SUBSIDIARY" : "MATERIAL");
 
   const [materialMasterId, setMaterialMasterId] = useState(
@@ -76,7 +90,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
   );
   const [productName, setProductName] = useState(item?.productName ?? "");
   const [spec, setSpec] = useState(item?.spec ?? "");
-  const [supplyUnit, setSupplyUnit] = useState(item?.supplyUnit ?? "");
+  const [supplyUnitId, setSupplyUnitId] = useState(item?.supplyUnitId ?? "");
   const [supplyUnitQty, setSupplyUnitQty] = useState(
     item?.supplyUnitQty != null ? String(item.supplyUnitQty) : ""
   );
@@ -89,6 +103,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
 
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
   const [subsidiaries, setSubsidiaries] = useState<SubsidiaryOption[]>([]);
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,6 +146,17 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
     loadOptions();
   }, [itemType]);
 
+  // 공급 단위 옵션 로드 (UnitMaster)
+  useEffect(() => {
+    const loadUnitOptions = async () => {
+      const result = await getUnitOptionsByItemTypeAction(itemType as "MATERIAL" | "SUBSIDIARY");
+      if (result.success) {
+        setUnitOptions(result.data as UnitOption[]);
+      }
+    };
+    loadUnitOptions();
+  }, [itemType]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -141,7 +167,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
         const input = {
           productName,
           spec: spec || undefined,
-          supplyUnit,
+          supplyUnitId,
           supplyUnitQty: Number(supplyUnitQty),
           currentPrice: Number(currentPrice),
           leadTimeDays: Number(leadTimeDays),
@@ -163,7 +189,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
             itemType === "SUBSIDIARY" ? subsidiaryMasterId : undefined,
           productName,
           spec: spec || undefined,
-          supplyUnit,
+          supplyUnitId,
           supplyUnitQty: Number(supplyUnitQty),
           currentPrice: Number(currentPrice),
           leadTimeDays: Number(leadTimeDays),
@@ -184,6 +210,13 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
       setLoading(false);
     }
   };
+
+  // 카테고리별 그룹핑 (UX 도움용, 제약 아님)
+  const groupedUnits = UNIT_CATEGORY_ORDER.reduce<Record<string, UnitOption[]>>((acc, cat) => {
+    const opts = unitOptions.filter((u) => u.unitCategory === cat);
+    if (opts.length > 0) acc[cat] = opts;
+    return acc;
+  }, {});
 
   return (
     <Card>
@@ -296,7 +329,7 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
                   maxLength={50}
                 />
                 <p className="text-xs text-gray-500">
-                  중량, 용량, 포장 단위 등 규격 정보
+                  중량, 용량, 포장 단위 등 규격 정보 (자유 텍스트)
                 </p>
               </div>
             </div>
@@ -307,14 +340,30 @@ export function SupplierItemForm({ supplierId, supplierType, item, onBack, onSav
             <h3 className="text-sm font-semibold text-gray-700">공급 조건</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
-                <Label htmlFor="supplyUnit">공급 단위 *</Label>
-                <Input
-                  id="supplyUnit"
-                  placeholder="예: 포, 병, 박스"
-                  value={supplyUnit}
-                  onChange={(e) => setSupplyUnit(e.target.value)}
-                  required
-                />
+                <Label htmlFor="supplyUnitId">공급 단위 *</Label>
+                <Select
+                  value={supplyUnitId}
+                  onValueChange={setSupplyUnitId}
+                >
+                  <SelectTrigger id="supplyUnitId">
+                    <SelectValue placeholder="단위 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNIT_CATEGORY_ORDER.filter((cat) => groupedUnits[cat]?.length).map((cat) => (
+                      <SelectGroup key={cat}>
+                        <SelectLabel>{UNIT_CATEGORY_LABELS[cat]}</SelectLabel>
+                        {groupedUnits[cat].map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  단위 관리에 등록된 단위만 선택 가능
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="supplyUnitQty">단위 수량 *</Label>
