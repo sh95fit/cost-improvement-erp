@@ -234,6 +234,17 @@ export function UnitConversionForm({
             />
           </div>
           <div className="space-y-2">
+            <Label>변환 후 단위 *</Label>
+            <UnitCombobox
+              value={toUnit}
+              onChange={(v) => setToUnit(v)}
+              itemType={subsidiaryMode ? "SUBSIDIARY" : "MATERIAL"}
+              valueMode="code"
+              placeholder="변환 후 단위 선택"
+              excludeValue={fromUnit}
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="factor">환산 계수 *</Label>
             <Input
               id="factor"
@@ -247,6 +258,11 @@ export function UnitConversionForm({
             />
           </div>
         </div>
+        {fromUnit && toUnit && (
+          <p className="text-xs text-gray-500">
+            단위 분류: <span className="font-medium">{UNIT_CATEGORY_LABELS[unitCategory as keyof typeof UNIT_CATEGORY_LABELS] ?? unitCategory}</span> (자동 도출)
+          </p>
+        )}
       </div>
 
       {/* 미리보기 */}

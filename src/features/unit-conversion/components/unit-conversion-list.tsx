@@ -44,6 +44,7 @@ import {
   Package,
 } from "lucide-react";
 import { toast } from "sonner";
+import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
 
 type MaterialInfo = { id: string; name: string; code: string; unit: string };
 
@@ -66,13 +67,6 @@ type Props = {
   onEdit: (item: UnitConversionRow) => void;
   compact?: boolean;
   defaultScope?: "all" | "global" | "material" | "subsidiary";
-};
-
-const UNIT_CATEGORY_LABELS: Record<string, string> = {
-  WEIGHT: "중량",
-  VOLUME: "용량",
-  COUNT: "수량",
-  LENGTH: "길이",
 };
 
 export function UnitConversionList({
@@ -279,7 +273,7 @@ export function UnitConversionList({
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                      {UNIT_CATEGORY_LABELS[item.unitCategory] ?? item.unitCategory}
+                      {UNIT_CATEGORY_LABELS[item.unitCategory as keyof typeof UNIT_CATEGORY_LABELS] ?? item.unitCategory}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
