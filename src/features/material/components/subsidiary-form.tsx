@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,13 +11,9 @@ import {
   createSubsidiaryAction,
   updateSubsidiaryAction,
 } from "../actions/material.action";
-import { getUnitOptionsAction } from "@/features/unit-master/actions/unit-master.action";
+import { UnitCombobox } from "@/features/unit-master/components/unit-combobox";
 import { Save, Loader2 } from "lucide-react";
-import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
-import type { UnitCategory } from "@prisma/client";
 import { toast } from "sonner";
-
-type UnitOption = { id: string; code: string; name: string; unitCategory: string };
 
 const SUBSIDIARY_TYPE_LABELS: Record<string, string> = {
   CONTAINER: "용기",
@@ -44,47 +40,22 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
 
   const [name, setName] = useState(item?.name ?? "");
   const [subsidiaryType, setSubsidiaryType] = useState<string>(item?.subsidiaryType ?? "CONSUMABLE");
-  const [unitCategory, setUnitCategory] = useState<string>(item?.unitCategory ?? "COUNT");
   const [unit, setUnit] = useState(item?.unit ?? "");
+  const [unitCategory, setUnitCategory] = useState<string>(item?.unitCategory ?? "COUNT");
   const [stockGrade, setStockGrade] = useState(item?.stockGrade ?? "C");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // DB 기반 단위 옵션
-  const [allUnitOptions, setAllUnitOptions] = useState<UnitOption[]>([]);
-  const [unitOptionsLoading, setUnitOptionsLoading] = useState(true);
-
-  useEffect(() => {
-    const loadUnits = async () => {
-      setUnitOptionsLoading(true);
-      try {
-        const result = await getUnitOptionsAction("SUBSIDIARY");
-        if (result.success) {
-          setAllUnitOptions(result.data as UnitOption[]);
-        }
-      } finally {
-        setUnitOptionsLoading(false);
-      }
-    };
-    loadUnits();
-  }, []);
-
-  // 카테고리 변경 시 단위 자동 선택
-  useEffect(() => {
-    const filtered = allUnitOptions.filter((o) => o.unitCategory === unitCategory);
-    const exists = filtered.some((o) => o.code === unit);
-    if (!exists && filtered.length > 0) {
-      setUnit(filtered[0].code);
-    }
-  }, [unitCategory, allUnitOptions]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const currentUnitOptions = allUnitOptions.filter((o) => o.unitCategory === unitCategory);
-  const availableCategories = [...new Set(allUnitOptions.map((o) => o.unitCategory))];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!unit) {
+      setError("단위를 선택해주세요");
+      setLoading(false);
+      return;
+    }
 
     const input: Record<string, unknown> = {
       name,
@@ -150,32 +121,6 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
         </div>
 
         <div className="space-y-2">
-          <Label>단위 분류 *</Label>
-          <Select value={unitCategory} onValueChange={setUnitCategory} disabled={unitOptionsLoading}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {availableCategories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {UNIT_CATEGORY_LABELS[cat as UnitCategory] ?? cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>단위 *</Label>
-          <Select value={unit} onValueChange={setUnit} disabled={unitOptionsLoading}>
-            <SelectTrigger><SelectValue placeholder="단위 선택" /></SelectTrigger>
-            <SelectContent>
-              {currentUnitOptions.map((opt) => (
-                <SelectItem key={opt.code} value={opt.code}>{opt.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
           <Label>재고 등급</Label>
           <Select value={stockGrade} onValueChange={setStockGrade}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -186,11 +131,28 @@ export function SubsidiaryForm({ item, onSaved, onCancel }: Props) {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="space-y-2 sm:col-span-2">
+          <Label>단위 *</Label>
+          <UnitCombobox
+            value={unit}
+            onChange={(v, u) => {
+              setUnit(v);
+              if (u) setUnitCategory(u.unitCategory);
+            }}
+            itemType="SUBSIDIARY"
+            valueMode="code"
+            placeholder="단위 선택 (검색: 개, EA, 박스 등)"
+          />
+          <p className="text-xs text-gray-500">
+            단위 관리에서 등록된 단위만 선택 가능합니다. 분류는 자동 도출됩니다.
+          </p>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>취소</Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading || !unit}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           {isEdit ? "수정" : "등록"}
         </Button>

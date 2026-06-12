@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,13 +11,9 @@ import {
   createMaterialAction,
   updateMaterialAction,
 } from "../actions/material.action";
-import { getUnitOptionsAction } from "@/features/unit-master/actions/unit-master.action";
+import { UnitCombobox } from "@/features/unit-master/components/unit-combobox";
 import { Save, Loader2 } from "lucide-react";
-import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
-import type { UnitCategory } from "@prisma/client";
 import { toast } from "sonner";
-
-type UnitOption = { id: string; code: string; name: string; unitCategory: string };
 
 type Props = {
   material?: {
@@ -41,8 +37,8 @@ export function MaterialForm({ material, onSaved, onCancel }: Props) {
 
   const [name, setName] = useState(material?.name ?? "");
   const [materialType, setMaterialType] = useState<string>(material?.materialType ?? "RAW");
-  const [unitCategory, setUnitCategory] = useState<string>(material?.unitCategory ?? "WEIGHT");
   const [unit, setUnit] = useState(material?.unit ?? "");
+  const [unitCategory, setUnitCategory] = useState<string>(material?.unitCategory ?? "WEIGHT");
   const [stockGrade, setStockGrade] = useState<string>(material?.stockGrade ?? "C");
   const [shelfLifeDays, setShelfLifeDays] = useState(material?.shelfLifeDays != null ? String(material.shelfLifeDays) : "");
   const [minStock, setMinStock] = useState(material?.minStock != null ? String(material.minStock) : "");
@@ -50,43 +46,16 @@ export function MaterialForm({ material, onSaved, onCancel }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // DB 기반 단위 옵션
-  const [allUnitOptions, setAllUnitOptions] = useState<UnitOption[]>([]);
-  const [unitOptionsLoading, setUnitOptionsLoading] = useState(true);
-
-  useEffect(() => {
-    const loadUnits = async () => {
-      setUnitOptionsLoading(true);
-      try {
-        const result = await getUnitOptionsAction("MATERIAL");
-        if (result.success) {
-          setAllUnitOptions(result.data as UnitOption[]);
-        }
-      } finally {
-        setUnitOptionsLoading(false);
-      }
-    };
-    loadUnits();
-  }, []);
-
-  // 카테고리 변경 시 단위 자동 선택
-  useEffect(() => {
-    const filtered = allUnitOptions.filter((o) => o.unitCategory === unitCategory);
-    const exists = filtered.some((o) => o.code === unit);
-    if (!exists && filtered.length > 0) {
-      setUnit(filtered[0].code);
-    }
-  }, [unitCategory, allUnitOptions]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const currentUnitOptions = allUnitOptions.filter((o) => o.unitCategory === unitCategory);
-
-  // 사용 가능한 카테고리 목록 (DB에 단위가 있는 카테고리만)
-  const availableCategories = [...new Set(allUnitOptions.map((o) => o.unitCategory))];
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!unit) {
+      setError("단위를 선택해주세요");
+      setLoading(false);
+      return;
+    }
 
     if (minStock && maxStock && Number(minStock) > Number(maxStock)) {
       setError("최소 재고량이 최대 재고량보다 클 수 없습니다");
@@ -158,34 +127,24 @@ export function MaterialForm({ material, onSaved, onCancel }: Props) {
         </div>
       </div>
 
-      {/* 단위 / 분류 */}
+      {/* 단위 */}
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700">단위 / 분류</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>단위 분류 *</Label>
-            <Select value={unitCategory} onValueChange={setUnitCategory} disabled={unitOptionsLoading}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {availableCategories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {UNIT_CATEGORY_LABELS[cat as UnitCategory] ?? cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>단위 *</Label>
-            <Select value={unit} onValueChange={setUnit} disabled={unitOptionsLoading}>
-              <SelectTrigger><SelectValue placeholder="단위 선택" /></SelectTrigger>
-              <SelectContent>
-                {currentUnitOptions.map((opt) => (
-                  <SelectItem key={opt.code} value={opt.code}>{opt.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <h3 className="text-sm font-semibold text-gray-700">단위</h3>
+        <div className="space-y-2">
+          <Label>단위 *</Label>
+          <UnitCombobox
+            value={unit}
+            onChange={(v, u) => {
+              setUnit(v);
+              if (u) setUnitCategory(u.unitCategory);
+            }}
+            itemType="MATERIAL"
+            valueMode="code"
+            placeholder="단위 선택 (검색: kg, 봉, 포 등)"
+          />
+          <p className="text-xs text-gray-500">
+            단위 관리에서 등록된 단위만 선택 가능합니다. 분류는 자동 도출됩니다.
+          </p>
         </div>
       </div>
 
@@ -222,7 +181,7 @@ export function MaterialForm({ material, onSaved, onCancel }: Props) {
       {/* 버튼 */}
       <div className="flex justify-end gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>취소</Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading || !unit}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           {isEdit ? "수정" : "등록"}
         </Button>
