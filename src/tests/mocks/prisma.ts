@@ -58,6 +58,12 @@ export const mockPrisma = {
   // ★ Phase 9-A: 소요량 산출 대상
   materialRequirement: createModelMock(),
   shippingOrder: createModelMock(),
+  // ★ Sprint 3 Phase 2: 발주
+  purchaseOrder: createModelMock(),
+  purchaseOrderItem: createModelMock(),
+  // ★ Sprint 3 Phase 3-4: 입고
+  receivingNote: createModelMock(),
+  receivingNoteItem: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn().mockResolvedValue([]),
 };

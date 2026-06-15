@@ -1,295 +1,371 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockDeep, mockReset, type DeepMockProxy } from 'vitest-mock-extended'
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mockPrisma } from "./mocks/prisma";
 
-// 다른 service 테스트 컨벤션과 동일하게 모킹
-vi.mock('@/lib/prisma', () => {
-  const { mockDeep } = require('vitest-mock-extended')
-  return { prisma: mockDeep<PrismaClient>() }
-})
-
-import { prisma } from '@/lib/prisma'
 import {
-  generatePurchaseOrderNumber,
   getPurchaseOrders,
   getPurchaseOrderById,
   createPurchaseOrder,
   updatePurchaseOrder,
   transitionPurchaseOrderStatus,
   deletePurchaseOrder,
-} from '@/features/purchase-order/services/purchase-order.service'
+} from "@/features/purchase-order/services/purchase-order.service";
 
-const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>
+describe("purchase-order.service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-// $transaction이 콜백을 받으면 tx 인자로 prismaMock 자체를 넘김
-beforeEach(() => {
-  mockReset(prismaMock)
-  prismaMock.$transaction.mockImplementation(async (arg: any) => {
-    if (typeof arg === 'function') return arg(prismaMock)
-    return Promise.all(arg)
-  })
-})
+  // ── getPurchaseOrders ──
+  describe("getPurchaseOrders", () => {
+    it("should apply companyId, status, supplierId filters", async () => {
+      mockPrisma.purchaseOrder.findMany.mockResolvedValue([]);
+      mockPrisma.purchaseOrder.count.mockResolvedValue(0);
 
-describe('generatePurchaseOrderNumber', () => {
-  it('동일 날짜 발주가 없으면 001을 반환', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    const no = await generatePurchaseOrderNumber('c1', new Date('2026-06-15'))
-    expect(no).toBe('PO-20260615-001')
-  })
+      await getPurchaseOrders("c1", {
+        page: 2,
+        limit: 20,
+        status: "DRAFT" as never,
+        supplierId: "s1",
+        sortBy: "orderDate",
+        sortOrder: "desc",
+      } as never);
 
-  it('마지막 번호 005가 있으면 006을 반환', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({
-      orderNumber: 'PO-20260615-005',
-    } as any)
-    const no = await generatePurchaseOrderNumber('c1', new Date('2026-06-15'))
-    expect(no).toBe('PO-20260615-006')
-  })
+      const args = mockPrisma.purchaseOrder.findMany.mock.calls[0][0];
+      expect(args.where.companyId).toBe("c1");
+      expect(args.where.status).toBe("DRAFT");
+      expect(args.where.supplierId).toBe("s1");
+      expect(args.skip).toBe(20);
+      expect(args.take).toBe(20);
+      expect(args.orderBy).toEqual({ orderDate: "desc" });
+    });
 
-  it('회사ID + prefix로 조회 조건이 구성됨', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    await generatePurchaseOrderNumber('c1', new Date('2026-06-15'))
-    expect(prismaMock.purchaseOrder.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { companyId: 'c1', orderNumber: { startsWith: 'PO-20260615-' } },
-        orderBy: { orderNumber: 'desc' },
-      }),
-    )
-  })
-})
+    it("should apply search filter as OR (orderNumber/note)", async () => {
+      mockPrisma.purchaseOrder.findMany.mockResolvedValue([]);
+      mockPrisma.purchaseOrder.count.mockResolvedValue(0);
 
-describe('getPurchaseOrders', () => {
-  it('페이지네이션 + 필터 + 정렬 조건이 정확히 전달됨', async () => {
-    prismaMock.purchaseOrder.findMany.mockResolvedValueOnce([] as any)
-    prismaMock.purchaseOrder.count.mockResolvedValueOnce(0)
+      await getPurchaseOrders("c1", {
+        page: 1,
+        limit: 10,
+        search: "PO-2026",
+        sortBy: "orderDate",
+        sortOrder: "desc",
+      } as never);
 
-    await getPurchaseOrders('c1', {
-      page: 2,
-      limit: 20,
-      status: 'DRAFT',
-      supplierId: 's1',
-      sortBy: 'orderDate',
-      sortOrder: 'desc',
-    } as any)
+      const args = mockPrisma.purchaseOrder.findMany.mock.calls[0][0];
+      expect(args.where.OR).toEqual([
+        { orderNumber: { contains: "PO-2026", mode: "insensitive" } },
+        { note: { contains: "PO-2026", mode: "insensitive" } },
+      ]);
+    });
 
-    expect(prismaMock.purchaseOrder.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          companyId: 'c1',
-          status: 'DRAFT',
-          supplierId: 's1',
-        }),
-        skip: 20,
-        take: 20,
-        orderBy: { orderDate: 'desc' },
-      }),
-    )
-  })
+    it("should calculate totalPages correctly", async () => {
+      mockPrisma.purchaseOrder.findMany.mockResolvedValue([]);
+      mockPrisma.purchaseOrder.count.mockResolvedValue(45);
 
-  it('search가 orderNumber/note에 OR로 적용됨', async () => {
-    prismaMock.purchaseOrder.findMany.mockResolvedValueOnce([] as any)
-    prismaMock.purchaseOrder.count.mockResolvedValueOnce(0)
+      const result = await getPurchaseOrders("c1", {
+        page: 1,
+        limit: 20,
+        sortBy: "orderDate",
+        sortOrder: "desc",
+      } as never);
 
-    await getPurchaseOrders('c1', {
-      page: 1,
-      limit: 10,
-      search: 'PO-2026',
-      sortBy: 'orderDate',
-      sortOrder: 'desc',
-    } as any)
+      expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 45,
+        totalPages: 3,
+      });
+    });
+  });
 
-    const call = prismaMock.purchaseOrder.findMany.mock.calls[0][0] as any
-    expect(call.where.OR).toEqual([
-      { orderNumber: { contains: 'PO-2026', mode: 'insensitive' } },
-      { note: { contains: 'PO-2026', mode: 'insensitive' } },
-    ])
-  })
+  // ── getPurchaseOrderById ──
+  describe("getPurchaseOrderById", () => {
+    it("should query with id + companyId", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      await getPurchaseOrderById("c1", "po1");
+      const args = mockPrisma.purchaseOrder.findFirst.mock.calls[0][0];
+      expect(args.where).toEqual({ id: "po1", companyId: "c1" });
+    });
+  });
 
-  it('totalPages = ceil(total/limit)', async () => {
-    prismaMock.purchaseOrder.findMany.mockResolvedValueOnce([] as any)
-    prismaMock.purchaseOrder.count.mockResolvedValueOnce(45)
-    const r = await getPurchaseOrders('c1', {
-      page: 1, limit: 20, sortBy: 'orderDate', sortOrder: 'desc',
-    } as any)
-    expect(r.totalPages).toBe(3)
-  })
-})
+  // ── createPurchaseOrder ──
+  describe("createPurchaseOrder", () => {
+    it("should auto-generate PO-YYYYMMDD-001 when first of the day", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      mockPrisma.purchaseOrder.create.mockResolvedValue({ id: "po1" });
 
-describe('getPurchaseOrderById', () => {
-  it('id + companyId 조건으로 조회', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    await getPurchaseOrderById('po1', 'c1')
-    expect(prismaMock.purchaseOrder.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'po1', companyId: 'c1' } }),
-    )
-  })
-})
+      await createPurchaseOrder("c1", {
+        supplierId: "s1",
+        orderDate: new Date("2026-06-15T00:00:00"),
+        isManual: true,
+        items: [
+          {
+            supplierItemId: "si1",
+            itemType: "MATERIAL",
+            materialMasterId: "m1",
+            quantity: 10,
+            unitPrice: 100,
+          },
+        ],
+      } as never);
 
-describe('createPurchaseOrder', () => {
-  it('totalAmount 및 각 item totalPrice 자동 계산', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    prismaMock.purchaseOrder.create.mockResolvedValueOnce({ id: 'po1' } as any)
+      const data = mockPrisma.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.orderNumber).toBe("PO-20260615-001");
+      expect(data.status).toBe("DRAFT");
+    });
 
-    await createPurchaseOrder({
-      companyId: 'c1',
-      supplierId: 's1',
-      orderDate: new Date('2026-06-15'),
-      isManual: true,
-      items: [
-        { supplierItemId: 'si1', itemType: 'MATERIAL', materialMasterId: 'm1', quantity: 10, unitPrice: 100 },
-        { supplierItemId: 'si2', itemType: 'MATERIAL', materialMasterId: 'm2', quantity: 5, unitPrice: 200 },
-      ],
-    } as any)
+    it("should increment sequence from last PO of the day (005 → 006)", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        orderNumber: "PO-20260615-005",
+      });
+      mockPrisma.purchaseOrder.create.mockResolvedValue({ id: "po1" });
 
-    const call = prismaMock.purchaseOrder.create.mock.calls[0][0] as any
-    expect(call.data.totalAmount).toBe(2000) // 1000 + 1000
-    expect(call.data.orderNumber).toBe('PO-20260615-001')
-    expect(call.data.items.create[0].totalPrice).toBe(1000)
-    expect(call.data.items.create[1].totalPrice).toBe(1000)
-  })
+      await createPurchaseOrder("c1", {
+        supplierId: "s1",
+        orderDate: new Date("2026-06-15T00:00:00"),
+        isManual: true,
+        items: [
+          {
+            supplierItemId: "si1",
+            itemType: "MATERIAL",
+            materialMasterId: "m1",
+            quantity: 1,
+            unitPrice: 1,
+          },
+        ],
+      } as never);
 
-  it('status는 DRAFT로 시작', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    prismaMock.purchaseOrder.create.mockResolvedValueOnce({ id: 'po1' } as any)
-    await createPurchaseOrder({
-      companyId: 'c1', supplierId: 's1', orderDate: new Date('2026-06-15'),
-      isManual: true,
-      items: [{ supplierItemId: 'si1', itemType: 'MATERIAL', materialMasterId: 'm1', quantity: 1, unitPrice: 1 }],
-    } as any)
-    const call = prismaMock.purchaseOrder.create.mock.calls[0][0] as any
-    expect(call.data.status).toBe('DRAFT')
-  })
-})
+      const data = mockPrisma.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.orderNumber).toBe("PO-20260615-006");
+    });
 
-describe('updatePurchaseOrder', () => {
-  it('RECEIVED 상태는 수정 거부', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'RECEIVED' } as any)
-    await expect(
-      updatePurchaseOrder('po1', 'c1', { note: 'edit' } as any),
-    ).rejects.toThrow(/수정할 수 없습니다/)
-  })
+    it("should auto-calculate totalAmount and per-item totalPrice", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      mockPrisma.purchaseOrder.create.mockResolvedValue({ id: "po1" });
 
-  it('CANCELLED 상태는 수정 거부', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'CANCELLED' } as any)
-    await expect(
-      updatePurchaseOrder('po1', 'c1', { note: 'edit' } as any),
-    ).rejects.toThrow()
-  })
+      await createPurchaseOrder("c1", {
+        supplierId: "s1",
+        orderDate: new Date("2026-06-15T00:00:00"),
+        isManual: true,
+        items: [
+          {
+            supplierItemId: "si1",
+            itemType: "MATERIAL",
+            materialMasterId: "m1",
+            quantity: 10,
+            unitPrice: 100,
+          },
+          {
+            supplierItemId: "si2",
+            itemType: "MATERIAL",
+            materialMasterId: "m2",
+            quantity: 5,
+            unitPrice: 200,
+          },
+        ],
+      } as never);
 
-  it('items 제공 시 기존 items 삭제 후 재생성, totalAmount 재계산', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'DRAFT' } as any)
-    prismaMock.purchaseOrderItem.deleteMany.mockResolvedValueOnce({ count: 2 } as any)
-    prismaMock.purchaseOrder.update.mockResolvedValueOnce({ id: 'po1' } as any)
+      const data = mockPrisma.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.totalAmount).toBe(2000); // 1000 + 1000
+      expect(data.items.create[0].totalPrice).toBe(1000);
+      expect(data.items.create[1].totalPrice).toBe(1000);
+    });
+  });
 
-    await updatePurchaseOrder('po1', 'c1', {
-      items: [
-        { supplierItemId: 'si1', itemType: 'MATERIAL', materialMasterId: 'm1', quantity: 3, unitPrice: 500 },
-      ],
-    } as any)
+  // ── updatePurchaseOrder ──
+  describe("updatePurchaseOrder", () => {
+    it("should throw PO_LOCKED for RECEIVED status", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "RECEIVED",
+      });
+      await expect(
+        updatePurchaseOrder("c1", "po1", { note: "edit" } as never),
+      ).rejects.toThrow("PO_LOCKED");
+    });
 
-    expect(prismaMock.purchaseOrderItem.deleteMany).toHaveBeenCalledWith({
-      where: { purchaseOrderId: 'po1' },
-    })
-    const updateCall = prismaMock.purchaseOrder.update.mock.calls[0][0] as any
-    expect(updateCall.data.totalAmount).toBe(1500)
-  })
+    it("should throw PO_LOCKED for CANCELLED status", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "CANCELLED",
+      });
+      await expect(
+        updatePurchaseOrder("c1", "po1", { note: "edit" } as never),
+      ).rejects.toThrow("PO_LOCKED");
+    });
 
-  it('PO 없으면 NOT_FOUND', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    await expect(
-      updatePurchaseOrder('po1', 'c1', { note: 'x' } as any),
-    ).rejects.toThrow(/찾을 수 없습니다/)
-  })
-})
+    it("should throw NOT_FOUND when PO does not exist", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      await expect(
+        updatePurchaseOrder("c1", "po1", { note: "x" } as never),
+      ).rejects.toThrow("NOT_FOUND");
+    });
 
-describe('transitionPurchaseOrderStatus', () => {
-  it('DRAFT → SUBMITTED 시 submittedAt 기록', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'DRAFT' } as any)
-    prismaMock.purchaseOrder.update.mockResolvedValueOnce({ id: 'po1' } as any)
+    it("should delete existing items and recalc totalAmount when items provided", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      mockPrisma.purchaseOrderItem.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
 
-    await transitionPurchaseOrderStatus('po1', 'c1', { toStatus: 'SUBMITTED' } as any)
-    const call = prismaMock.purchaseOrder.update.mock.calls[0][0] as any
-    expect(call.data.status).toBe('SUBMITTED')
-    expect(call.data.submittedAt).toBeInstanceOf(Date)
-  })
+      await updatePurchaseOrder("c1", "po1", {
+        items: [
+          {
+            supplierItemId: "si1",
+            itemType: "MATERIAL",
+            materialMasterId: "m1",
+            quantity: 3,
+            unitPrice: 500,
+          },
+        ],
+      } as never);
 
-  it('SUBMITTED → APPROVED 시 approvedAt + approvedByUser 연결', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'SUBMITTED' } as any)
-    prismaMock.purchaseOrder.update.mockResolvedValueOnce({ id: 'po1' } as any)
+      expect(mockPrisma.purchaseOrderItem.deleteMany).toHaveBeenCalledWith({
+        where: { purchaseOrderId: "po1" },
+      });
+      const updateData = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(updateData.totalAmount).toBe(1500);
+    });
+  });
 
-    await transitionPurchaseOrderStatus('po1', 'c1', {
-      toStatus: 'APPROVED', actorUserId: 'u1',
-    } as any)
-    const call = prismaMock.purchaseOrder.update.mock.calls[0][0] as any
-    expect(call.data.approvedAt).toBeInstanceOf(Date)
-    expect(call.data.approvedByUser).toEqual({ connect: { id: 'u1' } })
-  })
+  // ── transitionPurchaseOrderStatus ──
+  describe("transitionPurchaseOrderStatus", () => {
+    it("DRAFT → SUBMITTED records submittedAt", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
 
-  it('SUBMITTED → DRAFT 회수 시 submittedAt 초기화', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'SUBMITTED' } as any)
-    prismaMock.purchaseOrder.update.mockResolvedValueOnce({ id: 'po1' } as any)
-    await transitionPurchaseOrderStatus('po1', 'c1', { toStatus: 'DRAFT' } as any)
-    const call = prismaMock.purchaseOrder.update.mock.calls[0][0] as any
-    expect(call.data.submittedAt).toBeNull()
-  })
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "SUBMITTED",
+      } as never);
 
-  it('* → CANCELLED 시 cancelledAt + reason + 유저 기록', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'APPROVED' } as any)
-    prismaMock.purchaseOrder.update.mockResolvedValueOnce({ id: 'po1' } as any)
+      const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(data.status).toBe("SUBMITTED");
+      expect(data.submittedAt).toBeInstanceOf(Date);
+    });
 
-    await transitionPurchaseOrderStatus('po1', 'c1', {
-      toStatus: 'CANCELLED', cancelReason: '공급업체 결품', actorUserId: 'u9',
-    } as any)
-    const call = prismaMock.purchaseOrder.update.mock.calls[0][0] as any
-    expect(call.data.cancelledAt).toBeInstanceOf(Date)
-    expect(call.data.cancelReason).toBe('공급업체 결품')
-    expect(call.data.cancelledByUser).toEqual({ connect: { id: 'u9' } })
-  })
+    it("SUBMITTED → APPROVED records approvedAt and approvedByUser", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "SUBMITTED",
+      });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
 
-  it('RECEIVED 상태에서 어떤 전이도 거부', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'RECEIVED' } as any)
-    await expect(
-      transitionPurchaseOrderStatus('po1', 'c1', { toStatus: 'CANCELLED', cancelReason: 'x' } as any),
-    ).rejects.toThrow(/허용되지 않습니다/)
-  })
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "APPROVED",
+        actorUserId: "u1",
+      } as never);
 
-  it('DRAFT → APPROVED 는 거부 (SUBMITTED 거치지 않음)', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'DRAFT' } as any)
-    await expect(
-      transitionPurchaseOrderStatus('po1', 'c1', { toStatus: 'APPROVED' } as any),
-    ).rejects.toThrow()
-  })
+      const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(data.approvedAt).toBeInstanceOf(Date);
+      expect(data.approvedByUser).toEqual({ connect: { id: "u1" } });
+    });
 
-  it('PO 없으면 NOT_FOUND', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    await expect(
-      transitionPurchaseOrderStatus('po1', 'c1', { toStatus: 'SUBMITTED' } as any),
-    ).rejects.toThrow(/찾을 수 없습니다/)
-  })
-})
+    it("SUBMITTED → DRAFT (recall) clears submittedAt", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "SUBMITTED",
+      });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
 
-describe('deletePurchaseOrder', () => {
-  it('DRAFT 외 상태는 삭제 거부', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'SUBMITTED' } as any)
-    await expect(deletePurchaseOrder('po1', 'c1')).rejects.toThrow(/DRAFT/)
-  })
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "DRAFT",
+      } as never);
 
-  it('DRAFT 상태는 items 삭제 후 PO 삭제', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce({ id: 'po1', status: 'DRAFT' } as any)
-    prismaMock.purchaseOrderItem.deleteMany.mockResolvedValueOnce({ count: 3 } as any)
-    prismaMock.purchaseOrder.delete.mockResolvedValueOnce({ id: 'po1' } as any)
+      const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(data.submittedAt).toBeNull();
+    });
 
-    await deletePurchaseOrder('po1', 'c1')
+    it("* → CANCELLED records cancelledAt, reason, and user", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "APPROVED",
+      });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
 
-    expect(prismaMock.purchaseOrderItem.deleteMany).toHaveBeenCalledWith({
-      where: { purchaseOrderId: 'po1' },
-    })
-    expect(prismaMock.purchaseOrder.delete).toHaveBeenCalledWith({
-      where: { id: 'po1' },
-    })
-  })
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "CANCELLED",
+        cancelReason: "공급업체 결품",
+        actorUserId: "u9",
+      } as never);
 
-  it('PO 없으면 NOT_FOUND', async () => {
-    prismaMock.purchaseOrder.findFirst.mockResolvedValueOnce(null)
-    await expect(deletePurchaseOrder('po1', 'c1')).rejects.toThrow(/찾을 수 없습니다/)
-  })
-})
+      const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(data.cancelledAt).toBeInstanceOf(Date);
+      expect(data.cancelReason).toBe("공급업체 결품");
+      expect(data.cancelledByUser).toEqual({ connect: { id: "u9" } });
+    });
+
+    it("should reject DRAFT → APPROVED (must go through SUBMITTED)", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      await expect(
+        transitionPurchaseOrderStatus("c1", "po1", {
+          toStatus: "APPROVED",
+        } as never),
+      ).rejects.toThrow("INVALID_TRANSITION");
+    });
+
+    it("should reject any transition from RECEIVED (locked)", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "RECEIVED",
+      });
+      await expect(
+        transitionPurchaseOrderStatus("c1", "po1", {
+          toStatus: "CANCELLED",
+          cancelReason: "x",
+        } as never),
+      ).rejects.toThrow("INVALID_TRANSITION");
+    });
+
+    it("should throw NOT_FOUND when PO does not exist", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      await expect(
+        transitionPurchaseOrderStatus("c1", "po1", {
+          toStatus: "SUBMITTED",
+        } as never),
+      ).rejects.toThrow("NOT_FOUND");
+    });
+  });
+
+  // ── deletePurchaseOrder ──
+  describe("deletePurchaseOrder", () => {
+    it("should reject deletion for non-DRAFT statuses", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "SUBMITTED",
+      });
+      await expect(deletePurchaseOrder("c1", "po1")).rejects.toThrow(
+        "PO_NOT_DRAFT",
+      );
+    });
+
+    it("should delete items and PO when status is DRAFT", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      mockPrisma.purchaseOrderItem.deleteMany.mockResolvedValue({ count: 3 });
+      mockPrisma.purchaseOrder.delete.mockResolvedValue({ id: "po1" });
+
+      await deletePurchaseOrder("c1", "po1");
+
+      expect(mockPrisma.purchaseOrderItem.deleteMany).toHaveBeenCalledWith({
+        where: { purchaseOrderId: "po1" },
+      });
+      expect(mockPrisma.purchaseOrder.delete).toHaveBeenCalledWith({
+        where: { id: "po1" },
+      });
+    });
+
+    it("should throw NOT_FOUND when PO does not exist", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
+      await expect(deletePurchaseOrder("c1", "po1")).rejects.toThrow("NOT_FOUND");
+    });
+  });
+});

@@ -1,6 +1,5 @@
-import { Prisma, POStatus } from '@prisma/client'
-import { TRPCError } from '@trpc/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import {
   canTransitionPOStatus,
   isPurchaseOrderLocked,
@@ -8,53 +7,49 @@ import {
   type UpdatePurchaseOrderInput,
   type TransitionPOStatusInput,
   type PurchaseOrderListQuery,
-} from '../schemas/purchase-order.schema'
+} from "../schemas/purchase-order.schema";
 
-// ============================================================
-// 발주번호 생성: PO-YYYYMMDD-XXX (회사별 일자별 시퀀스)
-// ============================================================
-export async function generatePurchaseOrderNumber(
+// ── 발주번호 자동 생성: PO-YYYYMMDD-XXX (회사+일자 시퀀스) ──
+async function generatePurchaseOrderNumber(
   companyId: string,
   orderDate: Date,
   tx: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<string> {
-  const yyyy = orderDate.getFullYear()
-  const mm = String(orderDate.getMonth() + 1).padStart(2, '0')
-  const dd = String(orderDate.getDate()).padStart(2, '0')
-  const datePart = `${yyyy}${mm}${dd}`
-  const prefix = `PO-${datePart}-`
+  const yyyy = orderDate.getFullYear();
+  const mm = String(orderDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(orderDate.getDate()).padStart(2, "0");
+  const prefix = `PO-${yyyy}${mm}${dd}-`;
 
   const last = await tx.purchaseOrder.findFirst({
     where: { companyId, orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: 'desc' },
+    orderBy: { orderNumber: "desc" },
     select: { orderNumber: true },
-  })
+  });
 
-  let nextSeq = 1
+  let nextSeq = 1;
   if (last) {
-    const seq = parseInt(last.orderNumber.slice(prefix.length), 10)
-    if (!Number.isNaN(seq)) nextSeq = seq + 1
+    const seq = parseInt(last.orderNumber.slice(prefix.length), 10);
+    if (!Number.isNaN(seq)) nextSeq = seq + 1;
   }
-  return `${prefix}${String(nextSeq).padStart(3, '0')}`
+  return `${prefix}${String(nextSeq).padStart(3, "0")}`;
 }
 
-// ============================================================
-// 목록 조회
-// ============================================================
+// ── 발주 목록 조회 (페이지네이션 + 필터 + 정렬) ──
 export async function getPurchaseOrders(
   companyId: string,
   query: PurchaseOrderListQuery,
 ) {
-  const { page, limit, search, status, supplierId, dateFrom, dateTo, sortBy, sortOrder } = query
+  const { page, limit, search, status, supplierId, dateFrom, dateTo, sortBy, sortOrder } = query;
+  const skip = (page - 1) * limit;
 
-  const where: Prisma.PurchaseOrderWhereInput = {
+  const where = {
     companyId,
     ...(status && { status }),
     ...(supplierId && { supplierId }),
     ...(search && {
       OR: [
-        { orderNumber: { contains: search, mode: 'insensitive' } },
-        { note: { contains: search, mode: 'insensitive' } },
+        { orderNumber: { contains: search, mode: "insensitive" as const } },
+        { note: { contains: search, mode: "insensitive" as const } },
       ],
     }),
     ...((dateFrom || dateTo) && {
@@ -63,36 +58,36 @@ export async function getPurchaseOrders(
         ...(dateTo && { lte: dateTo }),
       },
     }),
-  }
+  };
 
   const [items, total] = await Promise.all([
     prisma.purchaseOrder.findMany({
       where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { [sortBy]: sortOrder },
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         createdByUser: { select: { id: true, name: true } },
         _count: { select: { items: true } },
       },
+      orderBy: { [sortBy]: sortOrder },
+      skip,
+      take: limit,
     }),
     prisma.purchaseOrder.count({ where }),
-  ])
+  ]);
 
   return {
     items,
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-  }
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
-// ============================================================
-// 단건 조회 (모든 관계 포함)
-// ============================================================
-export async function getPurchaseOrderById(id: string, companyId: string) {
+// ── 발주 단건 조회 (모든 관계 포함) ──
+export async function getPurchaseOrderById(companyId: string, id: string) {
   return prisma.purchaseOrder.findFirst({
     where: { id, companyId },
     include: {
@@ -117,31 +112,32 @@ export async function getPurchaseOrderById(id: string, companyId: string) {
         },
       },
     },
-  })
+  });
 }
 
-// ============================================================
-// 생성
-// ============================================================
-export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
+// ── 발주 생성 ──
+export async function createPurchaseOrder(
+  companyId: string,
+  input: CreatePurchaseOrderInput,
+) {
   return prisma.$transaction(async (tx) => {
     const orderNumber = await generatePurchaseOrderNumber(
-      input.companyId,
+      companyId,
       input.orderDate,
       tx,
-    )
+    );
 
     const totalAmount = input.items.reduce(
       (sum, it) => sum + it.quantity * it.unitPrice,
       0,
-    )
+    );
 
     return tx.purchaseOrder.create({
       data: {
-        companyId: input.companyId,
+        companyId,
         supplierId: input.supplierId,
         orderNumber,
-        status: 'DRAFT',
+        status: "DRAFT",
         orderDate: input.orderDate,
         deliveryDate: input.deliveryDate,
         note: input.note,
@@ -167,42 +163,33 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput) {
         },
       },
       include: { items: true },
-    })
-  })
+    });
+  });
 }
 
-// ============================================================
-// 수정 (DRAFT/SUBMITTED/APPROVED만 허용)
-// items 제공 시 전체 교체 (간결성 우선)
-// ============================================================
+// ── 발주 수정 (DRAFT/SUBMITTED/APPROVED 허용, items 제공 시 전체 교체) ──
 export async function updatePurchaseOrder(
-  id: string,
   companyId: string,
+  id: string,
   input: UpdatePurchaseOrderInput,
 ) {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
       where: { id, companyId },
       select: { id: true, status: true },
-    })
-    if (!existing) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: '발주서를 찾을 수 없습니다' })
-    }
+    });
+    if (!existing) throw new Error("NOT_FOUND");
     if (isPurchaseOrderLocked(existing.status)) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: `${existing.status} 상태의 발주서는 수정할 수 없습니다`,
-      })
+      throw new Error("PO_LOCKED");
     }
 
-    let totalAmount: number | undefined
+    let totalAmount: number | undefined;
     if (input.items) {
       totalAmount = input.items.reduce(
         (sum, it) => sum + it.quantity * it.unitPrice,
         0,
-      )
-      // 전체 교체 전략: 기존 items 삭제 후 재생성
-      await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } })
+      );
+      await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
     }
 
     return tx.purchaseOrder.update({
@@ -233,52 +220,43 @@ export async function updatePurchaseOrder(
         }),
       },
       include: { items: true },
-    })
-  })
+    });
+  });
 }
 
-// ============================================================
-// 상태 전이
-// ============================================================
+// ── 발주 상태 전이 ──
 export async function transitionPurchaseOrderStatus(
-  id: string,
   companyId: string,
+  id: string,
   input: TransitionPOStatusInput,
 ) {
   return prisma.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({
       where: { id, companyId },
       select: { id: true, status: true },
-    })
-    if (!po) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: '발주서를 찾을 수 없습니다' })
-    }
+    });
+    if (!po) throw new Error("NOT_FOUND");
     if (!canTransitionPOStatus(po.status, input.toStatus)) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: `${po.status} → ${input.toStatus} 전이는 허용되지 않습니다`,
-      })
+      throw new Error("INVALID_TRANSITION");
     }
 
-    const data: Prisma.PurchaseOrderUpdateInput = { status: input.toStatus }
-    const now = new Date()
+    const data: Prisma.PurchaseOrderUpdateInput = { status: input.toStatus };
+    const now = new Date();
 
-    // 전이별 timestamp/필드 기록
-    if (po.status === 'DRAFT' && input.toStatus === 'SUBMITTED') {
-      data.submittedAt = now
-    } else if (po.status === 'SUBMITTED' && input.toStatus === 'DRAFT') {
-      // 회수: submittedAt 초기화
-      data.submittedAt = null
-    } else if (po.status === 'SUBMITTED' && input.toStatus === 'APPROVED') {
-      data.approvedAt = now
+    if (po.status === "DRAFT" && input.toStatus === "SUBMITTED") {
+      data.submittedAt = now;
+    } else if (po.status === "SUBMITTED" && input.toStatus === "DRAFT") {
+      data.submittedAt = null;
+    } else if (po.status === "SUBMITTED" && input.toStatus === "APPROVED") {
+      data.approvedAt = now;
       if (input.actorUserId) {
-        data.approvedByUser = { connect: { id: input.actorUserId } }
+        data.approvedByUser = { connect: { id: input.actorUserId } };
       }
-    } else if (input.toStatus === 'CANCELLED') {
-      data.cancelledAt = now
-      data.cancelReason = input.cancelReason
+    } else if (input.toStatus === "CANCELLED") {
+      data.cancelledAt = now;
+      data.cancelReason = input.cancelReason;
       if (input.actorUserId) {
-        data.cancelledByUser = { connect: { id: input.actorUserId } }
+        data.cancelledByUser = { connect: { id: input.actorUserId } };
       }
     }
     // APPROVED → RECEIVED 는 ReceivingNote 생성 시 별도 호출 (Phase 3)
@@ -287,31 +265,21 @@ export async function transitionPurchaseOrderStatus(
       where: { id },
       data,
       include: { items: true },
-    })
-  })
+    });
+  });
 }
 
-// ============================================================
-// 삭제 (DRAFT만 허용)
-// ============================================================
-export async function deletePurchaseOrder(id: string, companyId: string) {
+// ── 발주 삭제 (DRAFT만 허용) ──
+export async function deletePurchaseOrder(companyId: string, id: string) {
   return prisma.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({
       where: { id, companyId },
       select: { id: true, status: true },
-    })
-    if (!po) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: '발주서를 찾을 수 없습니다' })
-    }
-    if (po.status !== 'DRAFT') {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message:
-          'DRAFT 상태의 발주서만 삭제할 수 있습니다. 그 외 상태는 CANCELLED 전이를 사용하세요',
-      })
-    }
+    });
+    if (!po) throw new Error("NOT_FOUND");
+    if (po.status !== "DRAFT") throw new Error("PO_NOT_DRAFT");
 
-    await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } })
-    return tx.purchaseOrder.delete({ where: { id } })
-  })
+    await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
+    return tx.purchaseOrder.delete({ where: { id } });
+  });
 }
