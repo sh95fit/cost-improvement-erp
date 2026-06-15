@@ -90,12 +90,19 @@ describe("purchase-order.service", () => {
 
   // ── createPurchaseOrder ──
   describe("createPurchaseOrder", () => {
+    // ★ Phase 1.5: assertLocationAndLine 헬퍼가 호출하는 mock 응답 기본값 설정
+    beforeEach(() => {
+      mockPrisma.location.findFirst.mockResolvedValue({ id: "loc_1" });
+      mockPrisma.productionLine.findFirst.mockResolvedValue(null);
+    });
+
     it("should auto-generate PO-YYYYMMDD-001 when first of the day", async () => {
       mockPrisma.purchaseOrder.findFirst.mockResolvedValue(null);
       mockPrisma.purchaseOrder.create.mockResolvedValue({ id: "po1" });
 
       await createPurchaseOrder("c1", {
         supplierId: "s1",
+        locationId: "loc_1",                 
         orderDate: new Date("2026-06-15T00:00:00"),
         isManual: true,
         items: [
@@ -170,6 +177,78 @@ describe("purchase-order.service", () => {
       expect(data.items.create[0].totalPrice).toBe(1000);
       expect(data.items.create[1].totalPrice).toBe(1000);
     });
+
+    it("should throw LOCATION_NOT_FOUND when location does not exist", async () => {
+      mockPrisma.location.findFirst.mockResolvedValue(null);
+  
+      await expect(
+        createPurchaseOrder("c1", {
+          supplierId: "s1",
+          locationId: "missing",
+          orderDate: new Date("2026-06-15T00:00:00"),
+          isManual: true,
+          items: [
+            {
+              supplierItemId: "si1",
+              itemType: "MATERIAL",
+              materialMasterId: "m1",
+              quantity: 1,
+              unitPrice: 1,
+            },
+          ],
+        } as never),
+      ).rejects.toThrow("LOCATION_NOT_FOUND");
+    });
+  
+    it("should throw PRODUCTION_LINE_NOT_FOUND when line does not exist", async () => {
+      mockPrisma.location.findFirst.mockResolvedValue({ id: "loc_1" });
+      mockPrisma.productionLine.findFirst.mockResolvedValue(null);
+  
+      await expect(
+        createPurchaseOrder("c1", {
+          supplierId: "s1",
+          locationId: "loc_1",
+          productionLineId: "missing",
+          orderDate: new Date("2026-06-15T00:00:00"),
+          isManual: true,
+          items: [
+            {
+              supplierItemId: "si1",
+              itemType: "MATERIAL",
+              materialMasterId: "m1",
+              quantity: 1,
+              unitPrice: 1,
+            },
+          ],
+        } as never),
+      ).rejects.toThrow("PRODUCTION_LINE_NOT_FOUND");
+    });
+  
+    it("should throw LINE_LOCATION_MISMATCH when line belongs to different location", async () => {
+      mockPrisma.location.findFirst.mockResolvedValue({ id: "loc_1" });
+      mockPrisma.productionLine.findFirst.mockResolvedValue({
+        locationId: "loc_OTHER",
+      });
+  
+      await expect(
+        createPurchaseOrder("c1", {
+          supplierId: "s1",
+          locationId: "loc_1",
+          productionLineId: "pl_X",
+          orderDate: new Date("2026-06-15T00:00:00"),
+          isManual: true,
+          items: [
+            {
+              supplierItemId: "si1",
+              itemType: "MATERIAL",
+              materialMasterId: "m1",
+              quantity: 1,
+              unitPrice: 1,
+            },
+          ],
+        } as never),
+      ).rejects.toThrow("LINE_LOCATION_MISMATCH");
+    });  
   });
 
   // ── updatePurchaseOrder ──

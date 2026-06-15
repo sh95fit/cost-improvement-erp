@@ -77,6 +77,7 @@ describe('createPurchaseOrderSchema', () => {
   const baseInput = {
     companyId: 'c_1',
     supplierId: 'sup_1',
+    locationId: 'loc_1',                  // ★ Phase 1.5: locationId 필수
     orderDate: '2026-06-15',
     items: [
       {
@@ -109,6 +110,22 @@ describe('createPurchaseOrderSchema', () => {
     if (result.success) {
       expect(result.data.orderDate).toBeInstanceOf(Date)
     }
+  })
+
+  it('locationId 누락 → FAIL', () => {
+    const { locationId: _locationId, ...input } = baseInput
+    void _locationId
+    expect(createPurchaseOrderSchema.safeParse(input).success).toBe(false)
+  })
+
+  it('locationId 빈 문자열 → FAIL', () => {
+    const input = { ...baseInput, locationId: '' }
+    expect(createPurchaseOrderSchema.safeParse(input).success).toBe(false)
+  })
+
+  it('productionLineId 선택 입력 → PASS', () => {
+    const input = { ...baseInput, productionLineId: 'pl_1' }
+    expect(createPurchaseOrderSchema.safeParse(input).success).toBe(true)
   })
 })
 
