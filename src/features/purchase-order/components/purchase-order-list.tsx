@@ -184,7 +184,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
               <TableHead className="w-[100px] text-center">상태</TableHead>
               <TableHead>공급업체</TableHead>
               <TableHead className="w-[110px]">발주일</TableHead>
-              <TableHead className="w-[110px]">인도일</TableHead>
+              <TableHead className="w-[110px]">입고예정일</TableHead>
               <TableHead className="w-[80px] text-center">품목수</TableHead>
               <TableHead className="text-right">합계</TableHead>
               <TableHead className="w-[100px]">작성자</TableHead>
