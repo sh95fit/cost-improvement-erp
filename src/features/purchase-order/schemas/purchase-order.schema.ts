@@ -91,6 +91,8 @@ export const purchaseOrderItemInputSchema = z
 export const createPurchaseOrderSchema = z.object({
   companyId: z.string().min(1),
   supplierId: z.string().min(1, '공급업체를 선택하세요'),
+  locationId: z.string().min(1, '공장/창고를 선택하세요'),              // ★ 추가
+  productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
   orderDate: z.coerce.date(),
   deliveryDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
@@ -110,6 +112,8 @@ export const createPurchaseOrderSchema = z.object({
 // (스키마 레벨에서는 모든 필드를 optional로 두고, 서비스에서 status별 가드 적용)
 export const updatePurchaseOrderSchema = z.object({
   supplierId: z.string().min(1).optional(),
+  locationId: z.string().min(1).optional(),                             // ★ 추가
+  productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
   orderDate: z.coerce.date().optional(),
   deliveryDate: z.coerce.date().nullable().optional(),
   note: z.string().max(1000).nullable().optional(),

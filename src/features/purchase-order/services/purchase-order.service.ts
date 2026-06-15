@@ -9,6 +9,36 @@ import {
   type PurchaseOrderListQuery,
 } from "../schemas/purchase-order.schema";
 
+// ── 도메인 에러 키 ──
+export const PO_LOCATION_ERRORS = {
+  LOCATION_NOT_FOUND: "LOCATION_NOT_FOUND",
+  PRODUCTION_LINE_NOT_FOUND: "PRODUCTION_LINE_NOT_FOUND",
+  LINE_LOCATION_MISMATCH: "LINE_LOCATION_MISMATCH",
+} as const;
+
+// ── 라인/공장 정합성 검증 헬퍼 ──
+async function assertLocationAndLine(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  locationId: string,
+  productionLineId: string | null | undefined,
+) {
+  const location = await tx.location.findFirst({
+    where: { id: locationId, companyId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!location) throw new Error("LOCATION_NOT_FOUND");
+
+  if (productionLineId) {
+    const line = await tx.productionLine.findFirst({
+      where: { id: productionLineId, companyId, deletedAt: null },
+      select: { locationId: true },
+    });
+    if (!line) throw new Error("PRODUCTION_LINE_NOT_FOUND");
+    if (line.locationId !== locationId) throw new Error("LINE_LOCATION_MISMATCH");
+  }
+}
+
 // ── 발주번호 자동 생성: PO-YYYYMMDD-XXX (회사+일자 시퀀스) ──
 async function generatePurchaseOrderNumber(
   companyId: string,
@@ -66,6 +96,8 @@ export async function getPurchaseOrders(
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         createdByUser: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true, code: true } },                    // ★ 추가
+        productionLine: { select: { id: true, name: true, code: true } },              // ★ 추가
         _count: { select: { items: true } },
       },
       orderBy: { [sortBy]: sortOrder },
@@ -96,6 +128,8 @@ export async function getPurchaseOrderById(companyId: string, id: string) {
       approvedByUser: { select: { id: true, name: true } },
       cancelledByUser: { select: { id: true, name: true } },
       mealPlanGroup: { select: { id: true, planDate: true } },
+      location: { select: { id: true, name: true, code: true, type: true } },        // ★ 추가
+      productionLine: { select: { id: true, name: true, code: true } },              // ★ 추가
       items: {
         include: {
           supplierItem: { include: { supplyUnit: true } },
@@ -121,6 +155,9 @@ export async function createPurchaseOrder(
   input: CreatePurchaseOrderInput,
 ) {
   return prisma.$transaction(async (tx) => {
+    // ★ Phase 1.5: location/productionLine 정합성 검증
+    await assertLocationAndLine(tx, companyId, input.locationId, input.productionLineId);
+
     const orderNumber = await generatePurchaseOrderNumber(
       companyId,
       input.orderDate,
@@ -136,6 +173,8 @@ export async function createPurchaseOrder(
       data: {
         companyId,
         supplierId: input.supplierId,
+        locationId: input.locationId,                              // ★ 추가
+        productionLineId: input.productionLineId ?? null,          // ★ 추가
         orderNumber,
         status: "DRAFT",
         orderDate: input.orderDate,
@@ -176,11 +215,22 @@ export async function updatePurchaseOrder(
   return prisma.$transaction(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
       where: { id, companyId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, locationId: true },        // ★ locationId 함께 가져옴
     });
     if (!existing) throw new Error("NOT_FOUND");
     if (isPurchaseOrderLocked(existing.status)) {
       throw new Error("PO_LOCKED");
+    }
+
+    // ★ Phase 1.5: location/productionLine 변경 시 정합성 검증
+    if (input.locationId || input.productionLineId !== undefined) {
+      const effectiveLocationId = input.locationId ?? existing.locationId;
+      await assertLocationAndLine(
+        tx,
+        companyId,
+        effectiveLocationId,
+        input.productionLineId,
+      );
     }
 
     let totalAmount: number | undefined;
@@ -196,6 +246,8 @@ export async function updatePurchaseOrder(
       where: { id },
       data: {
         ...(input.supplierId && { supplierId: input.supplierId }),
+        ...(input.locationId && { locationId: input.locationId }),                       // ★ 추가
+        ...(input.productionLineId !== undefined && { productionLineId: input.productionLineId }),  // ★ 추가
         ...(input.orderDate && { orderDate: input.orderDate }),
         ...(input.deliveryDate !== undefined && { deliveryDate: input.deliveryDate }),
         ...(input.note !== undefined && { note: input.note }),

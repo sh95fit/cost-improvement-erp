@@ -410,6 +410,7 @@ model Location {
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
   shippingOrders        ShippingOrder[]
   materialRequirements  MaterialRequirement[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -438,6 +439,7 @@ model ProductionLine {
   cookingPlans         CookingPlan[]
   mealPlanSlots        MealPlanSlot[]
   materialRequirements MaterialRequirement[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1290,6 +1292,9 @@ model PurchaseOrder {
   cancelledAt       DateTime? @map("cancelled_at")
   cancelledByUserId String?   @map("cancelled_by_user_id")
   cancelReason      String?   @map("cancel_reason")
+  // ★ Sprint 3 Phase 1.5 — Roll-up 위치 (P3+P5)
+  locationId        String    @map("location_id")
+  productionLineId  String?   @map("production_line_id")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -1301,11 +1306,15 @@ model PurchaseOrder {
   cancelledByUser User?               @relation("PurchaseOrderCancelledBy", fields: [cancelledByUserId], references: [id])
   items           PurchaseOrderItem[]
   receivingNotes  ReceivingNote[]
+  location        Location            @relation(fields: [locationId], references: [id])
+  productionLine  ProductionLine?     @relation(fields: [productionLineId], references: [id])
 
   @@index([companyId])
   @@index([supplierId])
   @@index([orderDate])
   @@index([status])
+  @@index([locationId])
+  @@index([productionLineId])
   @@map("purchase_orders")
 }
 

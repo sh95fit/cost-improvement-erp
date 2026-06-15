@@ -86,7 +86,11 @@ export async function createPurchaseOrderAction(
 
     return actionOk(po);
   } catch (error) {
-    return handleActionError(error, "발주서 생성에 실패했습니다");
+    return handleActionError(error, "발주 생성에 실패했습니다", {
+      LOCATION_NOT_FOUND: "지정한 공장/창고를 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "지정한 생산 라인을 찾을 수 없습니다",
+      LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
+    });
   }
 }
 
