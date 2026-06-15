@@ -16,7 +16,25 @@ import {
 } from "../schemas/supplier.schema";
 import * as supplierService from "../services/supplier.service";
 import * as supplierItemService from "../services/supplier-item.service";
-import type { Supplier, SupplierItem } from "@prisma/client";
+import type { Prisma, Supplier, SupplierItem } from "@prisma/client";
+
+// ── SupplierItem (include 형태) 공용 타입 ─────────────────────────────
+// service layer가 항상 materialMaster / subsidiaryMaster / supplyUnit 을
+// include 해서 반환하므로, 액션 시그니처도 동일한 확장 타입을 노출한다.
+export type SupplierItemWithRelations = Prisma.SupplierItemGetPayload<{
+  include: {
+    materialMaster: { select: { id: true; name: true; code: true; unit: true } };
+    subsidiaryMaster: { select: { id: true; name: true; code: true; unit: true } };
+    supplyUnit: { select: { id: true; code: true; name: true; unitCategory: true } };
+  };
+}>;
+
+export type SupplierItemWithSupplier = Prisma.SupplierItemGetPayload<{
+  include: {
+    supplier: { select: { id: true; name: true; code: true } };
+    supplyUnit: { select: { id: true; code: true; name: true; unitCategory: true } };
+  };
+}>;
 
 // ════════════════════════════════════════
 // Supplier Actions
@@ -127,7 +145,7 @@ export async function deleteSupplierAction(
 
 export async function getSupplierItemsAction(
   supplierId: string
-): Promise<ActionResult<SupplierItem[]>> {
+): Promise<ActionResult<SupplierItemWithRelations[]>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "READ");
@@ -235,7 +253,7 @@ export async function getPriceHistoryAction(
 
 export async function getSupplierItemsByMaterialAction(
   materialMasterId: string
-): Promise<ActionResult<unknown>> {
+): Promise<ActionResult<SupplierItemWithSupplier[]>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "READ");
@@ -248,7 +266,7 @@ export async function getSupplierItemsByMaterialAction(
 
 export async function getSupplierItemsBySubsidiaryAction(
   subsidiaryMasterId: string
-): Promise<ActionResult<unknown>> {
+): Promise<ActionResult<SupplierItemWithSupplier[]>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "supplier", "READ");
