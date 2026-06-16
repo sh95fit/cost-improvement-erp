@@ -79,6 +79,13 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-06-16 **Sprint 3 Phase 4-B' 진행 중** (백엔드 4 단계 완료, 343 PASS / 0 fail)
+- Phase 1.5: PurchaseOrder.locationId NOT NULL, productionLineId nullable 추가 (마이그레이션 `20260615114719_sprint3_phase1_5_po_location_rollup`). 커밋 `58da2a1e`, `f1db9d25`.
+- Phase 4-B'-1: 단위 환산 라이브러리 `calculateOrderQuantity` (16 tests). 커밋 `b6ec1240`.
+- Phase 4-B'-2: MR→PO 변환 헬퍼 `buildPOItemsFromMR` + `InventoryAdapter` placeholder (9 tests). 커밋 `af333130`.
+- Phase 4-B'-3: 배치 PO 생성 서비스 `createPurchaseOrdersBatch` (17 tests). 커밋 `ff6b5071`.
+- Phase 4-B'-4: DRAFT→SUBMITTED 시 `SupplierItemPriceHistory` 적층 (8 tests + 3 integ). 커밋 `5232ec46`.
+- PurchaseOrder / PurchaseOrderItem 행 상태: ⬜ → 🔄 (Sprint 3 Phase 1.5 + 4-B' 진행 중)
 - 2026-06-15 Sprint 3 Phase 0-A/B: Phase 4-B (공급사 선두 폼) 폐기, 시그니처 정리.
   PurchaseOrder 확장 예정 (Phase 1.5): `locationId` NOT NULL, `productionLineId` NULL 허용.
   마이그레이션 전략은 dev DB PurchaseOrder 행 수 점검 후 확정 (Phase 0-C).
