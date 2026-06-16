@@ -191,3 +191,15 @@ export function isPurchaseOrderLocked(status: POStatus): boolean {
 export function getNextAllowedStatuses(from: POStatus): POStatus[] {
   return PO_STATUS_TRANSITIONS[from]
 }
+
+// ============================================================
+// ★ Phase 4-B'-5a: 위저드 입력 스키마
+// ============================================================
+
+// 위저드 Step 2 데이터 로드 입력
+export const loadPOWizardDataSchema = z.object({
+  mealPlanGroupId: z.string().min(1, '식단 그룹을 선택하세요'),
+  countSource: z.enum(['ESTIMATED', 'FINAL']).default('ESTIMATED'),
+})
+
+export type LoadPOWizardDataInput = z.infer<typeof loadPOWizardDataSchema>
