@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-06-11 (Sprint 2 종결)
+> 마지막 갱신: 2026-06-16 (Sprint 3 Phase 4-B' 백엔드 진행 중)
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -46,8 +46,8 @@
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
 | 37 | AutoGenLog | S8 | P7 | ⬜ |
 | 38 | MaterialRequirement | S2 | P9 | ✅ schema·service·action·UI 완료 (Phase 9-A~9-C-Fix-R1 / 9-D-Sym에서 countSource 입력값 대칭화) |
-| 39 | PurchaseOrder | S3 | P1-4 | ⬜ |
-| 40 | PurchaseOrderItem | S3 | P1-4 | ⬜ |
+| 39 | PurchaseOrder | S3 | P1-4 / P1.5 / P4-B' | 🔄 (Phase 1.5 에서 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 + 위저드 액션 완료) |
+| 40 | PurchaseOrderItem | S3 | P1-4 / P4-B' | 🔄 (Phase 4-B' 배치 생성 서비스 + PriceHistory 적층 정책 적용) |
 | 41 | ReceivingNote | S3 | P5-8 | ⬜ |
 | 42 | ReceivingNoteItem | S3 | P5-8 | ⬜ |
 | 43 | InventoryLot | S4 | P1-2 | ⬜ |
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-06-16 Phase 4-B'-5a: 위저드 server actions 3종 추가 (`getMealPlanGroupsForOrderAction`, `loadPOWizardDataAction`, `createPurchaseOrdersBatchAction`) + `loadPOWizardDataSchema`. 커밋 `cff165e4`. 모두 thin wrapper, 테스트 미추가.
 - 2026-06-16 **Sprint 3 Phase 4-B' 진행 중** (백엔드 4 단계 완료, 343 PASS / 0 fail)
 - Phase 1.5: PurchaseOrder.locationId NOT NULL, productionLineId nullable 추가 (마이그레이션 `20260615114719_sprint3_phase1_5_po_location_rollup`). 커밋 `58da2a1e`, `f1db9d25`.
 - Phase 4-B'-1: 단위 환산 라이브러리 `calculateOrderQuantity` (16 tests). 커밋 `b6ec1240`.
