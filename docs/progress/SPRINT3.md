@@ -1,3 +1,6 @@
+> ⚠️ **STALE — Sprint 3 진행 중**. 본 파일은 Phase 4-B'-4 까지만 반영되어 있다.
+> Sprint 3 진행 중 SSOT 는 `PROGRESS.md` 이다. Sprint 3 종결 시 PROGRESS.md 의 Sprint 3 섹션이 본 파일로 일괄 이관되며, 그 시점까지 본 파일은 갱신하지 않는다.
+
 # Sprint 3: 발주·입고 (6/15 ~ 진행 중)
 
 > 본 문서는 Sprint 3 전체 Phase 상세 이력 아카이브이다.
