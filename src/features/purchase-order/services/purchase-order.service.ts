@@ -9,6 +9,8 @@ import {
   type PurchaseOrderListQuery,
 } from "../schemas/purchase-order.schema";
 
+import { stackPriceHistoryForPO } from "../lib/stack-price-history";
+
 // ── 도메인 에러 키 ──
 export const PO_LOCATION_ERRORS = {
   LOCATION_NOT_FOUND: "LOCATION_NOT_FOUND",
@@ -297,8 +299,11 @@ export async function transitionPurchaseOrderStatus(
 
     if (po.status === "DRAFT" && input.toStatus === "SUBMITTED") {
       data.submittedAt = now;
+      // ★ Phase 4-B'-4: PriceHistory 적층 + currentPrice 갱신
+      await stackPriceHistoryForPO(tx, id, now);
     } else if (po.status === "SUBMITTED" && input.toStatus === "DRAFT") {
       data.submittedAt = null;
+      // ★ 되돌리기 시 PriceHistory는 그대로 유지 (정책)
     } else if (po.status === "SUBMITTED" && input.toStatus === "APPROVED") {
       data.approvedAt = now;
       if (input.actorUserId) {

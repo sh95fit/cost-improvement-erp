@@ -310,6 +310,15 @@ describe("purchase-order.service", () => {
 
   // ── transitionPurchaseOrderStatus ──
   describe("transitionPurchaseOrderStatus", () => {
+    // ★ Phase 4-B'-4: DRAFT→SUBMITTED 전이 시 stackPriceHistoryForPO가 호출됨
+    //    기본값으로 빈 결과 응답을 보장 (개별 테스트에서 override)
+    beforeEach(() => {
+      mockPrisma.purchaseOrderItem.findMany.mockResolvedValue([]);
+      mockPrisma.supplierItem.findMany.mockResolvedValue([]);
+      mockPrisma.supplierItem.update.mockResolvedValue({});
+      mockPrisma.supplierItemPriceHistory.create.mockResolvedValue({});
+    });
+
     it("DRAFT → SUBMITTED records submittedAt", async () => {
       mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
         id: "po1",
@@ -324,6 +333,58 @@ describe("purchase-order.service", () => {
       const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
       expect(data.status).toBe("SUBMITTED");
       expect(data.submittedAt).toBeInstanceOf(Date);
+    });
+
+    // ★ Phase 4-B'-4: 단가 변경된 경우 PriceHistory 적층 + currentPrice 갱신
+    it("DRAFT → SUBMITTED stacks PriceHistory when prices changed", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      mockPrisma.purchaseOrderItem.findMany.mockResolvedValue([
+        { supplierItemId: "si_1", unitPrice: 55000 },
+      ]);
+      mockPrisma.supplierItem.findMany.mockResolvedValue([
+        { id: "si_1", currentPrice: 50000 },
+      ]);
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
+
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "SUBMITTED",
+      } as never);
+
+      expect(mockPrisma.supplierItemPriceHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          supplierItemId: "si_1",
+          price: 55000,
+        }),
+      });
+      expect(mockPrisma.supplierItem.update).toHaveBeenCalledWith({
+        where: { id: "si_1" },
+        data: { currentPrice: 55000 },
+      });
+    });
+
+    // ★ Phase 4-B'-4: 단가 동일하면 적층 없음
+    it("DRAFT → SUBMITTED does not stack PriceHistory when prices unchanged", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "DRAFT",
+      });
+      mockPrisma.purchaseOrderItem.findMany.mockResolvedValue([
+        { supplierItemId: "si_1", unitPrice: 50000 },
+      ]);
+      mockPrisma.supplierItem.findMany.mockResolvedValue([
+        { id: "si_1", currentPrice: 50000 },
+      ]);
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
+
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "SUBMITTED",
+      } as never);
+
+      expect(mockPrisma.supplierItemPriceHistory.create).not.toHaveBeenCalled();
+      expect(mockPrisma.supplierItem.update).not.toHaveBeenCalled();
     });
 
     it("SUBMITTED → APPROVED records approvedAt and approvedByUser", async () => {
@@ -356,6 +417,22 @@ describe("purchase-order.service", () => {
 
       const data = mockPrisma.purchaseOrder.update.mock.calls[0][0].data;
       expect(data.submittedAt).toBeNull();
+    });
+
+    // ★ Phase 4-B'-4: 되돌리기 시 PriceHistory 적층 안 함 (정책)
+    it("SUBMITTED → DRAFT (recall) does not stack PriceHistory", async () => {
+      mockPrisma.purchaseOrder.findFirst.mockResolvedValue({
+        id: "po1",
+        status: "SUBMITTED",
+      });
+      mockPrisma.purchaseOrder.update.mockResolvedValue({ id: "po1" });
+
+      await transitionPurchaseOrderStatus("c1", "po1", {
+        toStatus: "DRAFT",
+      } as never);
+
+      expect(mockPrisma.supplierItemPriceHistory.create).not.toHaveBeenCalled();
+      expect(mockPrisma.supplierItem.update).not.toHaveBeenCalled();
     });
 
     it("* → CANCELLED records cancelledAt, reason, and user", async () => {
