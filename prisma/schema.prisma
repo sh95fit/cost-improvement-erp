@@ -582,6 +582,10 @@ model MaterialMaster {
   recipeBomSlotItems     RecipeBOMSlotItem[]
 
   @@unique([companyId, code])
+  // ★ M-Fix (D14): (companyId, name) WHERE deleted_at IS NULL —
+  //   partial unique index. Prisma @@unique는 partial 조건을 표현 못해
+  //   마이그레이션 SQL에 직접 정의.
+  //   docs/progress/PROGRESS.md D14 결정 참조.
   @@index([companyId])
   @@map("material_masters")
 }
@@ -622,6 +626,7 @@ model SubsidiaryMaster {
   consumptionItems        ConsumptionItem[]
 
   @@unique([companyId, code])
+  // ★ M-Fix (D14): (companyId, name) WHERE deleted_at IS NULL — partial unique index.
   @@index([companyId])
   @@index([companyId, subsidiaryType])
   @@map("subsidiary_masters")

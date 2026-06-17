@@ -70,7 +70,9 @@ export async function createMaterialAction(
     });
     return actionOk(material);
   } catch (error) {
-    return handleActionError(error, "자재 생성에 실패했습니다");
+    return handleActionError(error, "자재 생성에 실패했습니다", {
+      DUPLICATE_MATERIAL_NAME: "이미 동일한 이름의 자재가 존재합니다",
+    });
   }
 }
 
@@ -96,7 +98,9 @@ export async function updateMaterialAction(
     });
     return actionOk(material);
   } catch (error) {
-    return handleActionError(error, "자재 수정에 실패했습니다");
+    return handleActionError(error, "자재 수정에 실패했습니다", {
+      DUPLICATE_MATERIAL_NAME: "이미 동일한 이름의 자재가 존재합니다",
+    });
   }
 }
 

@@ -5,6 +5,32 @@ import type {
   MaterialListQuery,
 } from "../schemas/material.schema";
 
+// ── 도메인 에러 키 ──
+export const MATERIAL_ERRORS = {
+  DUPLICATE_MATERIAL_NAME: "DUPLICATE_MATERIAL_NAME",
+  NOT_FOUND: "NOT_FOUND",
+} as const;
+
+// ── 자재명 중복 검사 (살아있는 행만) ──
+async function assertMaterialNameAvailable(
+  companyId: string,
+  name: string,
+  excludeId?: string
+): Promise<void> {
+  const existing = await prisma.materialMaster.findFirst({
+    where: {
+      companyId,
+      name,
+      deletedAt: null,
+      ...(excludeId && { NOT: { id: excludeId } }),
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    throw new Error(MATERIAL_ERRORS.DUPLICATE_MATERIAL_NAME);
+  }
+}
+
 // ── 자재 코드 자동 생성 (MAT-001, MAT-002, ...) ──
 async function generateMaterialCode(companyId: string): Promise<string> {
   const result = await prisma.$queryRaw<{ code: string }[]>`
@@ -99,8 +125,9 @@ export async function createMaterial(
   companyId: string,
   input: CreateMaterialInput
 ) {
-  const code = await generateMaterialCode(companyId);
+  await assertMaterialNameAvailable(companyId, input.name); // ★ M-Fix
 
+  const code = await generateMaterialCode(companyId);
   return prisma.materialMaster.create({
     data: {
       ...input,
@@ -116,6 +143,9 @@ export async function updateMaterial(
   id: string,
   input: UpdateMaterialInput
 ) {
+  if (input.name) {
+    await assertMaterialNameAvailable(companyId, input.name, id); // ★ M-Fix
+  }
   return prisma.materialMaster.update({
     where: { id },
     data: input,
