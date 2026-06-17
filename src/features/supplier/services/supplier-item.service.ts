@@ -68,7 +68,11 @@ export async function getSupplierItemDependencies(
     prisma.mealPlanSlot.count({
       where: {
         supplierItemId: id,
-        mealPlan: { status: { in: ["CONFIRMED", "IN_PROGRESS"] } },
+        mealPlan: {
+          mealPlanGroup: {
+            status: { in: ["CONFIRMED", "IN_PROGRESS"] },
+          },
+        },
       },
     }),
     prisma.supplierItemPriceHistory.count({ where: { supplierItemId: id } }),
@@ -251,7 +255,11 @@ export async function setSupplierItemActive(id: string, isActive: boolean) {
       const activeMealPlanSlots = await tx.mealPlanSlot.count({
         where: {
           supplierItemId: id,
-          mealPlan: { status: { in: ["CONFIRMED", "IN_PROGRESS"] } },
+          mealPlan: {
+            mealPlanGroup: {
+              status: { in: ["CONFIRMED", "IN_PROGRESS"] },
+            },
+          },
         },
       });
       if (activeMealPlanSlots > 0) {
