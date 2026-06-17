@@ -35,6 +35,7 @@ function makeMaterial(
   id: string,
   name: string,
   withDefaultSupplier: boolean,
+  isActive: boolean = true, // ★ M-Fix-R1 (D14-11): 기본 활성
 ) {
   return {
     id,
@@ -42,6 +43,7 @@ function makeMaterial(
     name,
     code: `M-${id}`,
     deletedAt: null,
+    isActive, // ★ M-Fix-R1 (D14-11)
     defaultSupplierItem: withDefaultSupplier
       ? {
           id: `si_${id}`,
@@ -271,7 +273,7 @@ describe('buildPOItemsFromMR', () => {
         { id: 'mr_2', materialMasterId: 'mat_2', productionLineId: LINE_ID, locationId: LOCATION_ID, requiredQty: 1000, unit: 'g' },
       ],
       inventoryAdapter: stubAdapter,
-    });
+    });  
 
     // 같은 공장이므로 1회 호출
     expect(getStockSpy).toHaveBeenCalledTimes(1);
@@ -279,6 +281,30 @@ describe('buildPOItemsFromMR', () => {
       COMPANY_ID,
       LOCATION_ID,
       expect.arrayContaining(['mat_1', 'mat_2']),
+    );
+  });
+
+  // ★ M-Fix-R1 (D14-11) 신규: 비활성 자재 → UNMAPPED + 경고
+  it('비활성 자재 → mapped 아닌 unmapped로 분류 + 경고', async () => {
+    (prisma.materialMaster.findMany as any).mockResolvedValue([
+      makeMaterial('mat_1', '비활성자재', true, false), // ★ isActive=false
+    ]);
+    (prisma.unitConversion.findMany as any).mockResolvedValue([
+      { materialMasterId: 'mat_1', fromUnit: '포', toUnit: 'g', factor: 1000 },
+    ]);
+
+    const r = await buildPOItemsFromMR({
+      companyId: COMPANY_ID,
+      materialRequirements: [makeMR()],
+    });
+
+    expect(r.mapped).toHaveLength(0);
+    expect(r.unmapped).toHaveLength(1);
+    const item = r.unmapped[0];
+    expect(item.status).toBe('UNMAPPED');
+    expect(item.isMaterialActive).toBe(false);
+    expect(item.warnings).toContain(
+      '비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요',
     );
   });
 });

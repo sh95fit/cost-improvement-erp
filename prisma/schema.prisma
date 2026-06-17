@@ -557,6 +557,7 @@ model MaterialMaster {
   shelfLifeDays         Int?         @map("shelf_life_days")
   stockGrade            StockGrade   @default(C) @map("stock_grade")
   stockGradeUpdatedAt   DateTime?    @map("stock_grade_updated_at")
+  isActive              Boolean      @default(true) @map("is_active")  // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
@@ -582,11 +583,8 @@ model MaterialMaster {
   recipeBomSlotItems     RecipeBOMSlotItem[]
 
   @@unique([companyId, code])
-  // ★ M-Fix (D14): (companyId, name) WHERE deleted_at IS NULL —
-  //   partial unique index. Prisma @@unique는 partial 조건을 표현 못해
-  //   마이그레이션 SQL에 직접 정의.
-  //   docs/progress/PROGRESS.md D14 결정 참조.
   @@index([companyId])
+  @@index([isActive])           // ★ M-Fix-R1 (D14-7)
   @@map("material_masters")
 }
 
@@ -601,6 +599,7 @@ model SubsidiaryMaster {
   unitCategory          UnitCategory   @default(COUNT) @map("unit_category")
   stockGrade            StockGrade     @default(C) @map("stock_grade")
   stockGradeUpdatedAt   DateTime?      @map("stock_grade_updated_at")
+  isActive              Boolean        @default(true) @map("is_active")  // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?        @unique @map("default_supplier_item_id")
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
@@ -626,9 +625,9 @@ model SubsidiaryMaster {
   consumptionItems        ConsumptionItem[]
 
   @@unique([companyId, code])
-  // ★ M-Fix (D14): (companyId, name) WHERE deleted_at IS NULL — partial unique index.
   @@index([companyId])
   @@index([companyId, subsidiaryType])
+  @@index([isActive])           // ★ M-Fix-R1 (D14-7)
   @@map("subsidiary_masters")
 }
 

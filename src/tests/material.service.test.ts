@@ -196,7 +196,7 @@ describe("material.service", () => {
     });
   });
 
-  // ── deleteMaterial (soft-delete) ──
+  // ── deleteMaterial (soft-delete + ★ M-Fix-R1 의존성 가드) ──
   describe("deleteMaterial", () => {
     it("should set deletedAt instead of hard-deleting", async () => {
       mockPrisma.materialMaster.findFirst.mockResolvedValue({
@@ -205,12 +205,19 @@ describe("material.service", () => {
         deletedAt: null,
       });
       mockPrisma.materialMaster.update.mockResolvedValue({ id: "mat-1" });
+      // ★ M-Fix-R1 (D14-8): 의존성 카운트 모두 0 (삭제 가능 경로)
+      mockPrisma.supplierItem.count.mockResolvedValue(0);
+      mockPrisma.materialRequirement.count.mockResolvedValue(0);
+      mockPrisma.recipeIngredient.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlotItem.count.mockResolvedValue(0);
+      mockPrisma.bOMItem.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(0);
 
       await deleteMaterial("company-1", "mat-1");
 
       expect(mockPrisma.materialMaster.update).toHaveBeenCalledWith({
         where: { id: "mat-1" },
-        data: { deletedAt: expect.any(Date) },
+        data: { deletedAt: expect.any(Date), isActive: false }, // ★ M-Fix-R1 (D14-8)
       });
       // hard delete가 호출되지 않았는지 확인
       expect(mockPrisma.materialMaster.delete).not.toHaveBeenCalled();
@@ -221,6 +228,45 @@ describe("material.service", () => {
 
       const result = await deleteMaterial("company-1", "non-existent");
       expect(result).toBeNull();
+    });
+
+    // ★ M-Fix-R1 (D14-8) 신규: 의존성 있으면 HAS_USAGE_HISTORY
+    it("should throw HAS_USAGE_HISTORY when SupplierItem references exist", async () => {
+      mockPrisma.materialMaster.findFirst.mockResolvedValue({
+        id: "mat-1",
+        companyId: "company-1",
+        deletedAt: null,
+      });
+      mockPrisma.supplierItem.count.mockResolvedValue(1); // SupplierItem 1건 보유
+      mockPrisma.materialRequirement.count.mockResolvedValue(0);
+      mockPrisma.recipeIngredient.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlotItem.count.mockResolvedValue(0);
+      mockPrisma.bOMItem.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(0);
+
+      await expect(deleteMaterial("company-1", "mat-1")).rejects.toThrow(
+        "HAS_USAGE_HISTORY",
+      );
+      expect(mockPrisma.materialMaster.update).not.toHaveBeenCalled();
+    });
+
+    it("should throw HAS_USAGE_HISTORY when PurchaseOrderItem references exist", async () => {
+      mockPrisma.materialMaster.findFirst.mockResolvedValue({
+        id: "mat-1",
+        companyId: "company-1",
+        deletedAt: null,
+      });
+      mockPrisma.supplierItem.count.mockResolvedValue(0);
+      mockPrisma.materialRequirement.count.mockResolvedValue(0);
+      mockPrisma.recipeIngredient.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlotItem.count.mockResolvedValue(0);
+      mockPrisma.bOMItem.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(3); // PO 3건 보유
+
+      await expect(deleteMaterial("company-1", "mat-1")).rejects.toThrow(
+        "HAS_USAGE_HISTORY",
+      );
+      expect(mockPrisma.materialMaster.update).not.toHaveBeenCalled();
     });
   });
 

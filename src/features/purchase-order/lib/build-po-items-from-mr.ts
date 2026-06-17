@@ -22,6 +22,8 @@ export interface POItemCandidate {
   materialMasterId: string;
   materialName: string;
   materialCode: string;
+  /** ★ M-Fix-R1: 자재 활성 여부 (false면 위저드에서 경고) */
+  isMaterialActive: boolean;
   /** 공장/라인 */
   locationId: string;
   productionLineId: string;
@@ -192,6 +194,7 @@ export async function buildPOItemsFromMR(
         materialMasterId: mr.materialMasterId,
         materialName: '(자재 정보 없음)',
         materialCode: '-',
+        isMaterialActive: false,        // ★ M-Fix-R1
         locationId: mr.locationId,
         productionLineId: mr.productionLineId,
         requiredQtyG: mr.requiredQty,
@@ -231,6 +234,7 @@ export async function buildPOItemsFromMR(
       materialMasterId: mr.materialMasterId,
       materialName: material.name,
       materialCode: material.code,
+      isMaterialActive: material.isActive,  // ★ M-Fix-R1
       locationId: mr.locationId,
       productionLineId: mr.productionLineId,
       requiredQtyG: mr.requiredQty,
@@ -253,14 +257,17 @@ export async function buildPOItemsFromMR(
       orderQuantityRaw: calc.orderQuantityRaw,
       unitPrice: dsi ? dsi.currentPrice : null,
       status: 'UNMAPPED',
-      warnings: calc.warnings,
+      warnings: [
+        ...calc.warnings,
+        ...(material.isActive ? [] : ['비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요']),  // ★ M-Fix-R1
+      ],
     };
 
     // 분류
     if (calc.netRequiredG === 0 && calc.orderQuantity === 0) {
       candidate.status = 'NO_ORDER_NEEDED';
       noOrderNeeded.push(candidate);
-    } else if (dsi && !calc.requiresManualInput && calc.orderQuantity !== null) {
+    } else if (dsi && !calc.requiresManualInput && calc.orderQuantity !== null && material.isActive) {
       candidate.status = 'MAPPED';
       mapped.push(candidate);
       estimatedTotalAmount += calc.orderQuantity * dsi.currentPrice;

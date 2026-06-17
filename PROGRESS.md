@@ -373,6 +373,15 @@ DB·서비스 차원에서 사전 방지 필요.
 - 자재 6건, 부자재 6건 = 총 12건 신규
 - 누적 테스트: 343 → 355 PASS
 
+### D14 추가 결정 (M-Fix-R1, 2026-06-17)
+
+- **D14-7**: MaterialMaster·SubsidiaryMaster에 `isActive` Boolean 추가 (기본 true). SupplierItem의 S-Fix(D15) 패턴과 동일.
+- **D14-8**: `deleteMaterial`·`deleteSubsidiary`에 의존성 가드 적용 — SupplierItem(alive)/MR(alive)/RecipeIngredient/RecipeBOMSlotItem/BOMItem/PurchaseOrderItem/MealPlanAccessory/MealPlanSlot/ContainerSlot/MealTemplateContainer/MealTemplateAccessory/RecipeBOMSlot 어느 하나라도 참조 시 `HAS_USAGE_HISTORY` 에러. soft-delete만 허용하며 hard-delete 경로는 의존성 0건 케이스에서도 soft-delete로 통일.
+- **D14-9**: `getMaterialDependencies`·`getSubsidiaryDependencies` 신규 — UI 모달에서 사전 카운트 표시용.
+- **D14-10**: `setMaterialActive(false)`·`setSubsidiaryActive(false)` — 진행 중 식단/발주 보유 시 `IN_USE_BY_ACTIVE_MEAL_PLAN` 에러로 차단, 통과 시 산하 SupplierItem 자동 비활성화. 재활성화는 단방향(SupplierItem 수동 복구 필요).
+- **D14-11**: 위저드 `build-po-items-from-mr` — `POItemCandidate.isMaterialActive` 추가, 비활성 자재는 자동 매핑되지 않고 UNMAPPED으로 분류 + warning 표시.
+- **D14-12**: 데이터 복구 — 다진마늘 MAT-018, 국간장, 닭가슴살 alive 복원 완료 (2026-06-17). 다진마늘 MAT-014는 의존성 있는 채로 soft-deleted 유지 (개발 데이터, 테스트 종료 후 정리).
+
 ---
 
 ### M-Fix · S-Fix 결정사항 (위저드 외 운영 버그)

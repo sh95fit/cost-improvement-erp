@@ -117,7 +117,7 @@ describe("subsidiary.service", () => {
     });
   });
 
-  // ── deleteSubsidiary (soft-delete) ──
+  // ── deleteSubsidiary (soft-delete + ★ M-Fix-R1 의존성 가드) ──
   describe("deleteSubsidiary", () => {
     it("should soft-delete with deletedAt timestamp", async () => {
       mockPrisma.subsidiaryMaster.findFirst.mockResolvedValue({
@@ -125,12 +125,21 @@ describe("subsidiary.service", () => {
         deletedAt: null,
       });
       mockPrisma.subsidiaryMaster.update.mockResolvedValue({ id: "sub-1" });
+      // ★ M-Fix-R1 (D14-8): 의존성 카운트 모두 0 (삭제 가능 경로)
+      mockPrisma.supplierItem.count.mockResolvedValue(0);
+      mockPrisma.mealPlanAccessory.count.mockResolvedValue(0);
+      mockPrisma.mealPlanSlot.count.mockResolvedValue(0);
+      mockPrisma.containerSlot.count.mockResolvedValue(0);
+      mockPrisma.mealTemplateContainer.count.mockResolvedValue(0);
+      mockPrisma.mealTemplateAccessory.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlot.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(0);
 
       await deleteSubsidiary("company-1", "sub-1");
 
       expect(mockPrisma.subsidiaryMaster.update).toHaveBeenCalledWith({
         where: { id: "sub-1" },
-        data: { deletedAt: expect.any(Date) },
+        data: { deletedAt: expect.any(Date), isActive: false }, // ★ M-Fix-R1 (D14-8)
       });
       expect(mockPrisma.subsidiaryMaster.delete).not.toHaveBeenCalled();
     });
@@ -140,6 +149,47 @@ describe("subsidiary.service", () => {
 
       const result = await deleteSubsidiary("company-1", "non-existent");
       expect(result).toBeNull();
+    });
+
+    // ★ M-Fix-R1 (D14-8) 신규: 의존성 있으면 HAS_USAGE_HISTORY
+    it("should throw HAS_USAGE_HISTORY when ContainerSlot references exist", async () => {
+      mockPrisma.subsidiaryMaster.findFirst.mockResolvedValue({
+        id: "sub-1",
+        deletedAt: null,
+      });
+      mockPrisma.supplierItem.count.mockResolvedValue(0);
+      mockPrisma.mealPlanAccessory.count.mockResolvedValue(0);
+      mockPrisma.mealPlanSlot.count.mockResolvedValue(0);
+      mockPrisma.containerSlot.count.mockResolvedValue(2); // 용기 슬롯 2건 보유
+      mockPrisma.mealTemplateContainer.count.mockResolvedValue(0);
+      mockPrisma.mealTemplateAccessory.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlot.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(0);
+
+      await expect(deleteSubsidiary("company-1", "sub-1")).rejects.toThrow(
+        "HAS_USAGE_HISTORY",
+      );
+      expect(mockPrisma.subsidiaryMaster.update).not.toHaveBeenCalled();
+    });
+
+    it("should throw HAS_USAGE_HISTORY when SupplierItem references exist", async () => {
+      mockPrisma.subsidiaryMaster.findFirst.mockResolvedValue({
+        id: "sub-1",
+        deletedAt: null,
+      });
+      mockPrisma.supplierItem.count.mockResolvedValue(1); // SupplierItem 1건 보유
+      mockPrisma.mealPlanAccessory.count.mockResolvedValue(0);
+      mockPrisma.mealPlanSlot.count.mockResolvedValue(0);
+      mockPrisma.containerSlot.count.mockResolvedValue(0);
+      mockPrisma.mealTemplateContainer.count.mockResolvedValue(0);
+      mockPrisma.mealTemplateAccessory.count.mockResolvedValue(0);
+      mockPrisma.recipeBOMSlot.count.mockResolvedValue(0);
+      mockPrisma.purchaseOrderItem.count.mockResolvedValue(0);
+
+      await expect(deleteSubsidiary("company-1", "sub-1")).rejects.toThrow(
+        "HAS_USAGE_HISTORY",
+      );
+      expect(mockPrisma.subsidiaryMaster.update).not.toHaveBeenCalled();
     });
   });
 

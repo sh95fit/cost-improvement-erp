@@ -7,22 +7,25 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   getSubsidiariesAction,
   deleteSubsidiaryAction,
+  getSubsidiaryDependenciesAction,    // ★ M-Fix-R1 (D14-9)
+  setSubsidiaryActiveAction,          // ★ M-Fix-R1 (D14-10)
 } from "../actions/material.action";
 import { UNIT_CATEGORY_LABELS } from "@/lib/constants/unit-options";
 import type { UnitCategory } from "@prisma/client";
 import {
-  Search, Plus, Trash2, ChevronLeft, ChevronRight, Filter,
+  Search, Plus, Settings, ChevronLeft, ChevronRight, Filter,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DependencyActionDialog,
+  Stat,
+  type BaseDependencies,
+} from "./dependency-action-dialog";
 
 export type SubsidiaryRow = {
   id: string;
@@ -32,6 +35,7 @@ export type SubsidiaryRow = {
   unitCategory: string;
   subsidiaryType: string;
   stockGrade: string;
+  isActive: boolean;                              // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId: string | null;
   defaultSupplierItem: {
     id: string;
@@ -42,6 +46,21 @@ export type SubsidiaryRow = {
     supplier: { id: string; name: string; code: string };
   } | null;
   createdAt: Date;
+};
+
+// ★ M-Fix-R1: 부자재 의존성 카운트 타입 (subsidiary.service.ts의 SubsidiaryDependencies와 동일)
+type SubsidiaryDeps = BaseDependencies & {
+  activeSupplierItems: number;
+  totalSupplierItems: number;
+  mealPlanAccessories: number;
+  mealPlanSlots: number;
+  activeMealPlanSlots: number;
+  containerSlots: number;
+  mealTemplateContainers: number;
+  mealTemplateAccessories: number;
+  recipeBomSlots: number;
+  totalPurchaseOrderItems: number;
+  activePurchaseOrderItems: number;
 };
 
 type Props = {
@@ -88,7 +107,8 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SubsidiaryRow | null>(null);
+  // ★ M-Fix-R1: 삭제/활성토글 통합 다이얼로그
+  const [manageTarget, setManageTarget] = useState<SubsidiaryRow | null>(null);
 
   const fetchData = useCallback(
     async (page = 1) => {
@@ -125,16 +145,39 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
     if (e.key === "Enter") fetchData(1);
   };
 
+  // ★ M-Fix-R1: 의존성 조회
+  const fetchDependencies = async (): Promise<SubsidiaryDeps | null> => {
+    if (!manageTarget) return null;
+    const result = await getSubsidiaryDependenciesAction(manageTarget.id);
+    if (!result.success) {
+      toast.error(result.error?.message ?? "의존성 조회에 실패했습니다");
+      return null;
+    }
+    return result.data as SubsidiaryDeps;
+  };
+
+  // ★ M-Fix-R1: 삭제 (소프트 삭제 + 의존성 가드)
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const result = await deleteSubsidiaryAction(deleteTarget.id);
+    if (!manageTarget) return;
+    const result = await deleteSubsidiaryAction(manageTarget.id);
     if (result.success) {
       toast.success("부자재가 삭제되었습니다");
       fetchData(pagination.page);
     } else {
       toast.error(result.error?.message ?? "삭제에 실패했습니다");
     }
-    setDeleteTarget(null);
+  };
+
+  // ★ M-Fix-R1: 활성/비활성 토글
+  const handleSetActive = async (isActive: boolean) => {
+    if (!manageTarget) return;
+    const result = await setSubsidiaryActiveAction(manageTarget.id, isActive);
+    if (result.success) {
+      toast.success(isActive ? "활성화되었습니다" : "비활성화되었습니다");
+      fetchData(pagination.page);
+    } else {
+      toast.error(result.error?.message ?? "상태 변경에 실패했습니다");
+    }
   };
 
   return (
@@ -182,6 +225,7 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
               <TableHead>단위 분류</TableHead>
               <TableHead>단위</TableHead>
               <TableHead className="text-center">재고 등급</TableHead>
+              <TableHead className="w-[60px] text-center">상태</TableHead>{/* ★ M-Fix-R1 (D14-7) */}
               <TableHead>기본 공급업체</TableHead>
               <TableHead className="text-right">단가</TableHead>
               <TableHead className="w-[50px] text-right">관리</TableHead>
@@ -190,13 +234,13 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
                   등록된 부자재가 없습니다
                 </TableCell>
               </TableRow>
@@ -233,6 +277,18 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
                       {GRADE_LABELS[item.stockGrade] ?? item.stockGrade}
                     </span>
                   </TableCell>
+                  {/* ★ M-Fix-R1: 활성 상태 표시 */}
+                  <TableCell className="text-center">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        item.isActive
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {item.isActive ? "활성" : "비활성"}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     {item.defaultSupplierItem ? (
                       <span className="text-sm">
@@ -255,15 +311,17 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
+                    {/* ★ M-Fix-R1: 휴지통 → 관리(설정) 아이콘, 클릭 시 의존성 다이얼로그 */}
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDeleteTarget(item);
+                        setManageTarget(item);
                       }}
+                      title="관리(삭제/활성)"
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Settings className="h-4 w-4 text-gray-600" />
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -305,23 +363,40 @@ export function SubsidiaryList({ onNew, onSelect, refreshKey }: Props) {
         </div>
       )}
 
-      {/* 삭제 확인 */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>부자재를 삭제하시겠습니까?</AlertDialogTitle>
-            <AlertDialogDescription>
-              &quot;{deleteTarget?.name}&quot; ({deleteTarget?.code}) 부자재를 삭제합니다.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-              삭제
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* ★ M-Fix-R1 (D14-9, D14-10): 의존성 다이얼로그 (삭제/활성 토글 통합) */}
+      <DependencyActionDialog<SubsidiaryDeps>
+        open={!!manageTarget}
+        onClose={() => setManageTarget(null)}
+        entityLabel="부자재"
+        entityName={manageTarget ? `${manageTarget.code} ${manageTarget.name}` : ""}
+        isCurrentlyActive={manageTarget?.isActive ?? false}
+        fetchDependencies={fetchDependencies}
+        onDelete={handleDelete}
+        onSetActive={handleSetActive}
+        renderCounts={(d) => (
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <Stat
+              label="공급 품목 (활성/전체)"
+              value={`${d.activeSupplierItems} / ${d.totalSupplierItems}`}
+            />
+            <Stat label="식단 악세서리" value={d.mealPlanAccessories} />
+            <Stat
+              label="식단 슬롯 (진행/전체)"
+              value={`${d.activeMealPlanSlots} / ${d.mealPlanSlots}`}
+            />
+            <Stat label="용기 슬롯" value={d.containerSlots} />
+            <Stat
+              label="템플릿 (용기+악세서리)"
+              value={d.mealTemplateContainers + d.mealTemplateAccessories}
+            />
+            <Stat label="레시피 BOM 슬롯" value={d.recipeBomSlots} />
+            <Stat
+              label="PO (진행/전체)"
+              value={`${d.activePurchaseOrderItems} / ${d.totalPurchaseOrderItems}`}
+            />
+          </div>
+        )}
+      />
     </div>
   );
 }

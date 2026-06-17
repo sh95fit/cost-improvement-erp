@@ -122,7 +122,52 @@ export async function deleteMaterialAction(
     });
     return actionOk({ id });
   } catch (error) {
-    return handleActionError(error, "자재 삭제에 실패했습니다");
+    return handleActionError(error, "자재 삭제에 실패했습니다", {
+      HAS_USAGE_HISTORY: "사용 이력이 있어 삭제할 수 없습니다. '비활성화'를 사용해주세요.",  // ★ M-Fix-R1
+    });
+  }
+}
+
+// ── M-Fix-R1 신규: 의존성 조회 ──
+export async function getMaterialDependenciesAction(
+  id: string
+): Promise<ActionResult<Awaited<ReturnType<typeof materialService.getMaterialDependencies>>>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "material", "READ");
+    const deps = await materialService.getMaterialDependencies(session.companyId, id);
+    if (!deps) return handleActionError(new Error("NOT_FOUND"), "자재 의존성 조회에 실패했습니다", { NOT_FOUND: "자재를 찾을 수 없습니다" });
+    return actionOk(deps);
+  } catch (error) {
+    return handleActionError(error, "자재 의존성 조회에 실패했습니다");
+  }
+}
+
+// ── M-Fix-R1 신규: 활성/비활성 토글 ──
+export async function setMaterialActiveAction(
+  id: string,
+  isActive: boolean
+): Promise<ActionResult<MaterialMaster>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "material", "UPDATE");
+    const existing = await materialService.getMaterialById(session.companyId, id);
+    if (!existing) return handleActionError(new Error("NOT_FOUND"), "자재 상태 변경에 실패했습니다", { NOT_FOUND: "자재를 찾을 수 없습니다" });
+    const updated = await materialService.setMaterialActive(session.companyId, id, isActive);
+    if (!updated) return handleActionError(new Error("NOT_FOUND"), "자재 상태 변경에 실패했습니다", { NOT_FOUND: "자재를 찾을 수 없습니다" });
+    await createAuditLog({
+      session,
+      action: "UPDATE",
+      entityType: "MaterialMaster",
+      entityId: id,
+      before: existing as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+    });
+    return actionOk(updated);
+  } catch (error) {
+    return handleActionError(error, "자재 상태 변경에 실패했습니다", {
+      IN_USE_BY_ACTIVE_MEAL_PLAN: "진행 중인 식단/발주에 사용 중이라 비활성화할 수 없습니다",
+    });
   }
 }
 
@@ -139,7 +184,7 @@ export async function getSubsidiariesAction(
   try {
     const session = await requireCompanySession();
     assertPermission(session, "subsidiary", "READ");
-    const query = subsidiaryListQuerySchema.parse(rawQuery);  // ← 여기만 변경
+    const query = subsidiaryListQuerySchema.parse(rawQuery);
     const result = await subsidiaryService.getSubsidiaries(session.companyId, query);
     return actionOk(result);
   } catch (error) {
@@ -147,7 +192,6 @@ export async function getSubsidiariesAction(
   }
 }
 
-// ── 신규: 유형별 부자재 옵션 조회 (식단 템플릿에서 사용) ──
 export async function getSubsidiariesByTypeAction(
   subsidiaryType: string
 ): Promise<ActionResult<{ id: string; name: string; code: string }[]>> {
@@ -181,7 +225,9 @@ export async function createSubsidiaryAction(
     });
     return actionOk(subsidiary);
   } catch (error) {
-    return handleActionError(error, "부자재 생성에 실패했습니다");
+    return handleActionError(error, "부자재 생성에 실패했습니다", {
+      DUPLICATE_SUBSIDIARY_NAME: "이미 동일한 이름의 부자재가 존재합니다",  // ★ M-Fix
+    });
   }
 }
 
@@ -207,7 +253,9 @@ export async function updateSubsidiaryAction(
     });
     return actionOk(subsidiary);
   } catch (error) {
-    return handleActionError(error, "부자재 수정에 실패했습니다");
+    return handleActionError(error, "부자재 수정에 실패했습니다", {
+      DUPLICATE_SUBSIDIARY_NAME: "이미 동일한 이름의 부자재가 존재합니다",  // ★ M-Fix
+    });
   }
 }
 
@@ -229,7 +277,52 @@ export async function deleteSubsidiaryAction(
     });
     return actionOk({ id });
   } catch (error) {
-    return handleActionError(error, "부자재 삭제에 실패했습니다");
+    return handleActionError(error, "부자재 삭제에 실패했습니다", {
+      HAS_USAGE_HISTORY: "사용 이력이 있어 삭제할 수 없습니다. '비활성화'를 사용해주세요.",  // ★ M-Fix-R1
+    });
+  }
+}
+
+// ── M-Fix-R1 신규: 의존성 조회 ──
+export async function getSubsidiaryDependenciesAction(
+  id: string
+): Promise<ActionResult<Awaited<ReturnType<typeof subsidiaryService.getSubsidiaryDependencies>>>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "subsidiary", "READ");
+    const deps = await subsidiaryService.getSubsidiaryDependencies(session.companyId, id);
+    if (!deps) return handleActionError(new Error("NOT_FOUND"), "부자재 의존성 조회에 실패했습니다", { NOT_FOUND: "부자재를 찾을 수 없습니다" });
+    return actionOk(deps);
+  } catch (error) {
+    return handleActionError(error, "부자재 의존성 조회에 실패했습니다");
+  }
+}
+
+// ── M-Fix-R1 신규: 활성/비활성 토글 ──
+export async function setSubsidiaryActiveAction(
+  id: string,
+  isActive: boolean
+): Promise<ActionResult<SubsidiaryMaster>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "subsidiary", "UPDATE");
+    const existing = await subsidiaryService.getSubsidiaryById(session.companyId, id);
+    if (!existing) return handleActionError(new Error("NOT_FOUND"), "부자재 상태 변경에 실패했습니다", { NOT_FOUND: "부자재를 찾을 수 없습니다" });
+    const updated = await subsidiaryService.setSubsidiaryActive(session.companyId, id, isActive);
+    if (!updated) return handleActionError(new Error("NOT_FOUND"), "부자재 상태 변경에 실패했습니다", { NOT_FOUND: "부자재를 찾을 수 없습니다" });
+    await createAuditLog({
+      session,
+      action: "UPDATE",
+      entityType: "SubsidiaryMaster",
+      entityId: id,
+      before: existing as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+    });
+    return actionOk(updated);
+  } catch (error) {
+    return handleActionError(error, "부자재 상태 변경에 실패했습니다", {
+      IN_USE_BY_ACTIVE_MEAL_PLAN: "진행 중인 식단/발주에 사용 중이라 비활성화할 수 없습니다",
+    });
   }
 }
 
