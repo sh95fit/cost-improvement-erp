@@ -1,12 +1,20 @@
 "use client";
 
-import { useReducer, useCallback } from "react";
+import { useReducer, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { BuildPOItemsResult, POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
+import type {
+  BuildPOItemsResult,
+  POItemCandidate,
+} from "@/features/purchase-order/lib/build-po-items-from-mr";
+import type { SupplierItemWithSupplier } from "@/features/supplier/actions/supplier.action";
 import { StepMealPlanGroupSelect } from "./step-meal-plan-group-select";
 import { StepLoadSummary } from "./step-load-summary";
+import { StepMappingTable } from "./step-mapping-table";
+import { StepSplitPreview } from "./step-split-preview";
+import { StepConfirmCreate } from "./step-confirm-create";
+import { useWizardPersistence } from "./use-wizard-persistence";
 
 // ════════════════════════════════════════
 // 위저드 상태 모델
@@ -22,18 +30,15 @@ export type MealPlanGroupOption = {
 
 export interface WizardState {
   step: WizardStep;
-  // Step 1
   mealPlanGroup: MealPlanGroupOption | null;
   countSource: "ESTIMATED" | "FINAL";
-  // Step 2
   isLoading: boolean;
   loadResult: BuildPOItemsResult | null;
   loadError: string | null;
-  // Step 3 이후 편집 상태 (4-B'-5c에서 채움)
+  // 편집 상태 (모두 동일 배열에서 분리만)
   mapped: POItemCandidate[];
   unmapped: POItemCandidate[];
   noOrderNeeded: POItemCandidate[];
-  // Step 5 입력
   orderDate: Date;
   deliveryDate: Date | null;
   note: string;
@@ -47,6 +52,24 @@ type Action =
   | { type: "LOAD_ERROR"; payload: string }
   | { type: "GO_NEXT" }
   | { type: "GO_PREV" }
+  | {
+      type: "UPDATE_QUANTITY";
+      payload: { materialRequirementId: string; value: number };
+    }
+  | {
+      type: "UPDATE_UNIT_PRICE";
+      payload: { materialRequirementId: string; value: number };
+    }
+  | {
+      type: "RESOLVE_UNMAPPED";
+      payload: {
+        materialRequirementId: string;
+        supplierItem: SupplierItemWithSupplier;
+      };
+    }
+  | { type: "SET_ORDER_DATE"; payload: Date }
+  | { type: "SET_DELIVERY_DATE"; payload: Date | null }
+  | { type: "SET_NOTE"; payload: string }
   | { type: "RESET" };
 
 const initialState: WizardState = {
@@ -67,9 +90,25 @@ const initialState: WizardState = {
 function reducer(state: WizardState, action: Action): WizardState {
   switch (action.type) {
     case "SET_GROUP":
-      return { ...state, mealPlanGroup: action.payload, loadResult: null, loadError: null };
+      return {
+        ...state,
+        mealPlanGroup: action.payload,
+        loadResult: null,
+        loadError: null,
+        mapped: [],
+        unmapped: [],
+        noOrderNeeded: [],
+      };
     case "SET_COUNT_SOURCE":
-      return { ...state, countSource: action.payload, loadResult: null, loadError: null };
+      return {
+        ...state,
+        countSource: action.payload,
+        loadResult: null,
+        loadError: null,
+        mapped: [],
+        unmapped: [],
+        noOrderNeeded: [],
+      };
     case "LOAD_START":
       return { ...state, isLoading: true, loadError: null };
     case "LOAD_SUCCESS":
@@ -88,6 +127,75 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, step: Math.min(5, state.step + 1) as WizardStep };
     case "GO_PREV":
       return { ...state, step: Math.max(1, state.step - 1) as WizardStep };
+
+    case "UPDATE_QUANTITY": {
+      const { materialRequirementId, value } = action.payload;
+      const update = (rows: POItemCandidate[]) =>
+        rows.map((r) =>
+          r.materialRequirementId === materialRequirementId
+            ? { ...r, orderQuantity: value }
+            : r,
+        );
+      return { ...state, mapped: update(state.mapped) };
+    }
+    case "UPDATE_UNIT_PRICE": {
+      const { materialRequirementId, value } = action.payload;
+      const update = (rows: POItemCandidate[]) =>
+        rows.map((r) =>
+          r.materialRequirementId === materialRequirementId
+            ? { ...r, unitPrice: value }
+            : r,
+        );
+      return { ...state, mapped: update(state.mapped) };
+    }
+    case "RESOLVE_UNMAPPED": {
+      const { materialRequirementId, supplierItem } = action.payload;
+      const target = state.unmapped.find(
+        (r) => r.materialRequirementId === materialRequirementId,
+      );
+      if (!target) return state;
+      // supplyUnitQty 기반으로 ceil 재계산 (간단화: netRequiredInFromUnit / supplyUnitQty)
+      const baseQty =
+        target.netRequiredInFromUnit ?? target.netRequiredG;
+      const orderQuantityRaw =
+        supplierItem.supplyUnitQty > 0
+          ? baseQty / supplierItem.supplyUnitQty
+          : baseQty;
+      const orderQuantity = Math.ceil(orderQuantityRaw);
+      const resolved: POItemCandidate = {
+        ...target,
+        supplierItem: {
+          id: supplierItem.id,
+          supplierId: supplierItem.supplierId,
+          supplierName: supplierItem.supplier.name,
+          productName: supplierItem.productName,
+          supplyUnitName: supplierItem.supplyUnit.name,
+          supplyUnitQty: supplierItem.supplyUnitQty,
+          currentPrice: supplierItem.currentPrice,
+        },
+        orderQuantity,
+        orderQuantityRaw,
+        unitPrice: supplierItem.currentPrice,
+        status: "MAPPED",
+        warnings: target.warnings.filter(
+          (w) => !w.includes("매핑") && !w.includes("공급"),
+        ),
+      };
+      return {
+        ...state,
+        unmapped: state.unmapped.filter(
+          (r) => r.materialRequirementId !== materialRequirementId,
+        ),
+        mapped: [...state.mapped, resolved],
+      };
+    }
+
+    case "SET_ORDER_DATE":
+      return { ...state, orderDate: action.payload };
+    case "SET_DELIVERY_DATE":
+      return { ...state, deliveryDate: action.payload };
+    case "SET_NOTE":
+      return { ...state, note: action.payload };
     case "RESET":
       return initialState;
     default:
@@ -110,23 +218,50 @@ export function POWizard() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
 
+  // localStorage persistence (편집 상태만 저장 — loadResult/mapped는 다시 로드)
+  const persistedState = {
+    countSource: state.countSource,
+    edits: Object.fromEntries(
+      state.mapped
+        .filter((r) => r.supplierItem)
+        .map((r) => [
+          r.materialRequirementId,
+          {
+            supplierItemId: r.supplierItem!.id,
+            supplierId: r.supplierItem!.supplierId,
+            orderQuantity: r.orderQuantity ?? 0,
+            unitPrice: r.unitPrice ?? 0,
+          },
+        ]),
+    ),
+    orderDate: state.orderDate.toISOString(),
+    deliveryDate: state.deliveryDate?.toISOString() ?? null,
+    note: state.note,
+  };
+
+  const { clearPersisted } = useWizardPersistence(
+    state.mealPlanGroup?.id ?? null,
+    state.mapped.length > 0 ? persistedState : null,
+  );
+
   const handleCancel = useCallback(() => {
     if (
       state.step > 1 &&
-      !window.confirm("위저드를 종료하시겠습니까? 입력한 내용은 저장되지 않습니다.")
+      !window.confirm(
+        "위저드를 종료하시겠습니까? 입력한 내용은 저장되지 않습니다.",
+      )
     ) {
       return;
     }
     router.push("/purchase-orders");
   }, [state.step, router]);
 
-  // Step 1 → 2 진입 가능 여부
   const canProceedFromStep1 = state.mealPlanGroup !== null;
-  // Step 2 → 3 진입 가능 여부
   const canProceedFromStep2 =
     state.loadResult !== null &&
     state.loadResult.summary.totalCount > 0 &&
     !state.isLoading;
+  const canProceedFromStep3 = state.unmapped.length === 0;
 
   return (
     <div className="space-y-6">
@@ -181,34 +316,62 @@ export function POWizard() {
             loadResult={state.loadResult}
             loadError={state.loadError}
             onLoadStart={() => dispatch({ type: "LOAD_START" })}
-            onLoadSuccess={(r) => dispatch({ type: "LOAD_SUCCESS", payload: r })}
-            onLoadError={(e) => dispatch({ type: "LOAD_ERROR", payload: e })}
-          />
-        )}
-
-        {state.step === 3 && (
-          <PlaceholderStep
-            title="Step 3 — 자재 매핑·편집"
-            description="Phase 4-B'-5c 에서 구현됩니다. 매핑됨/미매핑 자재 행을 인라인 편집하고 미매핑 항목을 공급업체와 연결합니다."
-            preview={
-              state.loadResult && (
-                <SummaryPreview result={state.loadResult} />
-              )
+            onLoadSuccess={(r) =>
+              dispatch({ type: "LOAD_SUCCESS", payload: r })
+            }
+            onLoadError={(e) =>
+              dispatch({ type: "LOAD_ERROR", payload: e })
             }
           />
         )}
 
-        {state.step === 4 && (
-          <PlaceholderStep
-            title="Step 4 — 분할 미리보기"
-            description="Phase 4-B'-5c 에서 구현됩니다. 공급업체 × 공장 × 라인 단위로 분할될 PO 목록을 미리 확인합니다."
+        {state.step === 3 && (
+          <StepMappingTable
+            mapped={state.mapped}
+            unmapped={state.unmapped}
+            noOrderNeeded={state.noOrderNeeded}
+            onUpdateQuantity={(id, v) =>
+              dispatch({
+                type: "UPDATE_QUANTITY",
+                payload: { materialRequirementId: id, value: v },
+              })
+            }
+            onUpdateUnitPrice={(id, v) =>
+              dispatch({
+                type: "UPDATE_UNIT_PRICE",
+                payload: { materialRequirementId: id, value: v },
+              })
+            }
+            onResolveUnmapped={(id, si) =>
+              dispatch({
+                type: "RESOLVE_UNMAPPED",
+                payload: { materialRequirementId: id, supplierItem: si },
+              })
+            }
           />
         )}
 
-        {state.step === 5 && (
-          <PlaceholderStep
-            title="Step 5 — 발주 생성"
-            description="Phase 4-B'-5c 에서 구현됩니다. createPurchaseOrdersBatchAction 으로 N 개 DRAFT PO를 일괄 생성합니다."
+        {state.step === 4 && <StepSplitPreview mapped={state.mapped} />}
+
+        {state.step === 5 && state.mealPlanGroup && (
+          <StepConfirmCreate
+            mealPlanGroupId={state.mealPlanGroup.id}
+            mapped={state.mapped}
+            orderDate={state.orderDate}
+            deliveryDate={state.deliveryDate}
+            note={state.note}
+            onChangeOrderDate={(d) =>
+              dispatch({ type: "SET_ORDER_DATE", payload: d })
+            }
+            onChangeDeliveryDate={(d) =>
+              dispatch({ type: "SET_DELIVERY_DATE", payload: d })
+            }
+            onChangeNote={(s) =>
+              dispatch({ type: "SET_NOTE", payload: s })
+            }
+            onClearPersistence={() =>
+              clearPersisted(state.mealPlanGroup?.id ?? null)
+            }
           />
         )}
       </div>
@@ -237,16 +400,20 @@ export function POWizard() {
                 }
                 if (state.step === 2 && !canProceedFromStep2) {
                   if (!state.loadResult) {
-                    toast.warning("'필요량 로드' 버튼을 눌러 자재 목록을 가져오세요");
+                    toast.warning(
+                      "'필요량 로드' 결과를 기다리거나 다시 시도하세요",
+                    );
                   } else if (state.loadResult.summary.totalCount === 0) {
                     toast.warning(
-                      "해당 식단 그룹의 산출 결과가 비어 있습니다. 식단·MR 산출 상태를 확인하세요"
+                      "해당 식단 그룹의 산출 결과가 비어 있습니다",
                     );
                   }
                   return;
                 }
-                if (state.step >= 3) {
-                  toast.info("Phase 4-B'-5c에서 구현됩니다");
+                if (state.step === 3 && !canProceedFromStep3) {
+                  toast.warning(
+                    `미매핑 자재 ${state.unmapped.length}건을 먼저 매핑하세요`,
+                  );
                   return;
                 }
                 dispatch({ type: "GO_NEXT" });
@@ -258,51 +425,6 @@ export function POWizard() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════
-// 임시 placeholder (4-B'-5c에서 제거)
-// ════════════════════════════════════════
-function PlaceholderStep({
-  title,
-  description,
-  preview,
-}: {
-  title: string;
-  description: string;
-  preview?: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-600">
-        {description}
-      </div>
-      {preview}
-    </div>
-  );
-}
-
-function SummaryPreview({ result }: { result: BuildPOItemsResult }) {
-  return (
-    <div className="rounded-md border border-gray-200 p-4 text-sm">
-      <p className="mb-2 font-medium">로드된 자재 요약 (Step 2 결과)</p>
-      <ul className="space-y-1 text-gray-700">
-        <li>전체: {result.summary.totalCount} 건</li>
-        <li>자동 매핑됨: {result.summary.mappedCount} 건</li>
-        <li className="text-red-700">
-          미매핑 (공급업체 선택 필요): {result.summary.unmappedCount} 건
-        </li>
-        <li className="text-gray-500">
-          재고 충당: {result.summary.noOrderNeededCount} 건
-        </li>
-        <li>
-          예상 발주 금액 (매핑 행만):{" "}
-          {result.summary.estimatedTotalAmount.toLocaleString()} 원
-        </li>
-      </ul>
     </div>
   );
 }
