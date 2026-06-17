@@ -79,6 +79,7 @@ export const materialListQuerySchema = z.object({
     .enum(stockGradeValues)
     .transform((v) => v as StockGrade)
     .optional(),
+  isActive: z.coerce.boolean().optional(), // ★ M-Fix-R1
   sortBy: z.enum(["name", "code", "createdAt"]).default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -96,6 +97,7 @@ export const subsidiaryListQuerySchema = z.object({
     .enum(stockGradeValues)
     .transform((v) => v as StockGrade)
     .optional(),
+  isActive: z.coerce.boolean().optional(), // ★ M-Fix-R1
   sortBy: z.enum(["name", "code", "createdAt"]).default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });

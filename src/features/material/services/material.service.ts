@@ -76,7 +76,7 @@ export async function getMaterials(
   companyId: string,
   query: MaterialListQuery
 ) {
-  const { page, limit, search, materialType, stockGrade, sortBy, sortOrder } = query;
+  const { page, limit, search, materialType, stockGrade, isActive, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
   const where = {
@@ -90,6 +90,7 @@ export async function getMaterials(
     }),
     ...(materialType && { materialType }),
     ...(stockGrade && { stockGrade }),
+    ...(isActive !== undefined && { isActive }),   // ★ M-Fix-R1
   };
 
   const [items, total] = await Promise.all([

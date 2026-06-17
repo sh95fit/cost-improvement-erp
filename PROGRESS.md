@@ -382,6 +382,63 @@ DB·서비스 차원에서 사전 방지 필요.
 - **D14-11**: 위저드 `build-po-items-from-mr` — `POItemCandidate.isMaterialActive` 추가, 비활성 자재는 자동 매핑되지 않고 UNMAPPED으로 분류 + warning 표시.
 - **D14-12**: 데이터 복구 — 다진마늘 MAT-018, 국간장, 닭가슴살 alive 복원 완료 (2026-06-17). 다진마늘 MAT-014는 의존성 있는 채로 soft-deleted 유지 (개발 데이터, 테스트 종료 후 정리).
 
+### D14-7 ~ D14-12 — M-Fix-R1 (2026-06-17)
+
+**목표**: 자재/부자재의 "사용 이력이 있는 항목 삭제 시 데이터 무결성 손상" 문제를 해결하고, 운영 중 자재 수명주기 관리(활성/비활성/삭제)를 도입.
+
+#### 데이터 정합성 복구
+- 잘못 soft-delete 되어 위저드에서 "(자재 정보 없음)"으로 표시되던 행 복원
+  - MAT-018 (다진마늘, 윌스토 2,000원) — 활성 PO/MR/Recipe 의존성 유지
+  - 국간장 (cmq4yxg4p01bkxci8yv3w7xh1)
+  - 닭가슴살 (cmpza49nv0039s8i8p6i6rn46)
+- 참기름(MAT-005)은 미사용 결정 → 그대로 soft-delete 유지
+- MAT-014 (다진마늘) 테스트 목적 soft-delete 유지 → UI 비활성 필터로 가시화 확인
+
+#### 스키마 변경 (D14-7)
+- `MaterialMaster.isActive: Boolean @default(true)` 추가 + `@@index([isActive])`
+- `SubsidiaryMaster.isActive: Boolean @default(true)` 추가 + `@@index([isActive])`
+- 마이그레이션: `m_fix_r1_material_subsidiary_active`
+
+#### 서비스 가드 (D14-8 ~ D14-10)
+- `MATERIAL_ERRORS` / `SUBSIDIARY_ERRORS`에 `HAS_USAGE_HISTORY`, `IN_USE_BY_ACTIVE_MEAL_PLAN` 추가
+- `getMaterialDependencies` / `getSubsidiaryDependencies`: 공급품목·MR·레시피·BOM·PO·식단 카운트 + `canHardDelete` / `canDeactivate` 계산
+- `setMaterialActive` / `setSubsidiaryActive`:
+  - 비활성화 시 진행 중 식단(`CONFIRMED`/`IN_PROGRESS`)·진행 중 PO(`DRAFT`/`SUBMITTED`/`APPROVED`) 검사
+  - 통과 시 산하 SupplierItem 자동 비활성화 (재활성화는 수동)
+- `deleteMaterial` / `deleteSubsidiary`: 의존성 0건일 때만 soft-delete + `isActive=false`, 아니면 `HAS_USAGE_HISTORY` 차단
+- `getMaterials` / `getSubsidiaries`: `orderBy: [{ isActive: 'desc' }, ...]` — 활성 우선 정렬, `isActive` 필터 지원
+- `getSubsidiariesByType`: 활성 항목만 반환 (위저드 노출 차단)
+
+#### 액션 (D14-11)
+- `getMaterialDependenciesAction`, `setMaterialActiveAction`
+- `getSubsidiaryDependenciesAction`, `setSubsidiaryActiveAction`
+- 모두 권한 검사 + 감사 로그(`UPDATE`)
+
+#### 위저드 가드 (D14-11)
+- `build-po-items-from-mr.ts`: `isActive: false`인 자재는 UNMAPPED 분류 + 경고 "비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요"
+
+#### UI (D14-12)
+- 공용 `DependencyActionDialog` + `Stat` 컴포넌트
+  (`src/features/material/components/dependency-action-dialog.tsx`)
+- `MaterialList` / `SubsidiaryList` 전면 개편
+  - "상태" 컬럼(emerald/gray 칩) 추가
+  - "활성/비활성/전체" 드롭다운 필터 추가
+  - 기존 Trash 단순 삭제 버튼 → ⚙️ Settings 버튼 → 의존성 다이얼로그
+  - 비활성 행은 회색조 + 텍스트 흐림 처리
+
+#### 스키마 (zod)
+- `materialListQuerySchema` / `subsidiaryListQuerySchema`에 `isActive: z.coerce.boolean().optional()` 추가
+
+#### 테스트
+- `material-fix-r1.test.ts` / `subsidiary-fix-r1.test.ts` 추가 (각 9건)
+- 기존 회귀: `material.service.test.ts` / `subsidiary.service.test.ts` / `build-po-items-from-mr.test.ts` 보강
+- 최종: **Test Files 25 passed / Tests 367 passed | 2 skipped**
+
+#### 후속 과제 (Backlog)
+- supplier-item-list.tsx도 동일 패턴으로 일원화 (Sprint 3 종료 후 별도 마이크로 작업)
+- `DependencyActionDialog`를 `src/components/shared/`로 이동해 feature 경계 정리
+- 비활성 자재가 즐겨찾기/기본 공급품목으로 지정된 경우 일괄 정리 배치
+
 ---
 
 ### M-Fix · S-Fix 결정사항 (위저드 외 운영 버그)

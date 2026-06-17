@@ -77,7 +77,7 @@ export async function getSubsidiaries(
   companyId: string,
   query: SubsidiaryListQuery
 ) {
-  const { page, limit, search, subsidiaryType, sortBy, sortOrder } = query;
+  const { page, limit, search, subsidiaryType, isActive, sortBy, sortOrder } = query;
   const skip = (page - 1) * limit;
 
   const where = {
@@ -90,6 +90,7 @@ export async function getSubsidiaries(
         { code: { contains: search, mode: "insensitive" as const } },
       ],
     }),
+    ...(isActive !== undefined && { isActive }),   // ★ M-Fix-R1
   };
 
   const [items, total] = await Promise.all([
