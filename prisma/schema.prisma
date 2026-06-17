@@ -672,8 +672,10 @@ model SupplierItem {
   currentPrice       Float    @map("current_price")
   leadTimeDays       Int      @default(1) @map("lead_time_days")
   moq                Float?
+  isActive           Boolean  @default(true) @map("is_active")      // ★ S-Fix (D15-1)
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")                   // ★ S-Fix (D15-2)
 
   supplier             Supplier                   @relation(fields: [supplierId], references: [id])
   materialMaster       MaterialMaster?            @relation(fields: [materialMasterId], references: [id])
@@ -685,12 +687,16 @@ model SupplierItem {
   defaultForSubsidiary SubsidiaryMaster?          @relation("DefaultSubsidiarySupplierItem")
   mealPlanSlots        MealPlanSlot[]
 
-  @@unique([supplierId, itemType, materialMasterId, productName], map: "uq_supplier_material_product")
-  @@unique([supplierId, itemType, subsidiaryMasterId, productName], map: "uq_supplier_subsidiary_product")
+  // ★ S-Fix (D15-8): (supplier, itemType, material/subsidiary, productName) partial unique index
+  //   - WHERE deleted_at IS NULL — soft-delete 후 동일 product 재등록 가능
+  //   - Prisma @@unique는 partial 조건 미지원 → 마이그레이션 SQL 직접 정의
+  //   - 기존 uq_supplier_material_product / uq_supplier_subsidiary_product 두 unique는 제거
   @@index([supplierId])
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([supplyUnitId])
+  @@index([isActive])        // ★ S-Fix
+  @@index([deletedAt])       // ★ S-Fix
   @@map("supplier_items")
 }
 

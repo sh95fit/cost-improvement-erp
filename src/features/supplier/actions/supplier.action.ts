@@ -18,6 +18,8 @@ import * as supplierService from "../services/supplier.service";
 import * as supplierItemService from "../services/supplier-item.service";
 import type { Prisma, Supplier, SupplierItem } from "@prisma/client";
 
+import type { SupplierItemDependencies } from "../services/supplier-item.service";
+
 // ── SupplierItem (include 형태) 공용 타입 ─────────────────────────────
 // service layer가 항상 materialMaster / subsidiaryMaster / supplyUnit 을
 // include 해서 반환하므로, 액션 시그니처도 동일한 확장 타입을 노출한다.
@@ -234,7 +236,12 @@ export async function deleteSupplierItemAction(
     });
     return actionOk({ id });
   } catch (error) {
-    return handleActionError(error, "공급 품목 삭제에 실패했습니다");
+    return handleActionError(error, "공급 품목 삭제에 실패했습니다", {
+      HAS_USAGE_HISTORY:
+        "발주 또는 식단 사용 이력이 있는 공급 품목은 삭제할 수 없습니다. 대신 '비활성화'를 사용해주세요.",
+      IS_DEFAULT_SUPPLIER_ITEM:
+        "기본 공급처로 지정되어 있어 삭제할 수 없습니다. 먼저 자재 관리 화면에서 기본 공급처 매핑을 해제해주세요.",
+    });
   }
 }
 
@@ -274,5 +281,65 @@ export async function getSupplierItemsBySubsidiaryAction(
     return actionOk(items);
   } catch (error) {
     return handleActionError(error, "부자재별 공급 품목 조회에 실패했습니다");
+  }
+}
+
+// ════════════════════════════════════════
+// S-Fix (D15) 신규 액션
+// ════════════════════════════════════════
+
+// 의존성 사전 조회
+export async function getSupplierItemDependenciesAction(
+  id: string
+): Promise<ActionResult<SupplierItemDependencies>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "supplier", "READ");
+    const result = await supplierItemService.getSupplierItemDependencies(id);
+    if (!result) {
+      return handleActionError(
+        new Error("NOT_FOUND"),
+        "공급 품목 의존성 조회에 실패했습니다",
+        { NOT_FOUND: "공급 품목을 찾을 수 없습니다" }
+      );
+    }
+    return actionOk(result);
+  } catch (error) {
+    return handleActionError(error, "공급 품목 의존성 조회에 실패했습니다");
+  }
+}
+
+// 활성/비활성 토글
+export async function setSupplierItemActiveAction(
+  id: string,
+  isActive: boolean
+): Promise<ActionResult<SupplierItem>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "supplier", "UPDATE");
+    const existing = await supplierItemService.getSupplierItemById(id);
+    if (!existing) {
+      return handleActionError(
+        new Error("NOT_FOUND"),
+        "공급 품목 상태 변경에 실패했습니다",
+        { NOT_FOUND: "공급 품목을 찾을 수 없습니다" }
+      );
+    }
+    const before = existing as unknown as Record<string, unknown>;
+    const item = await supplierItemService.setSupplierItemActive(id, isActive);
+    await createAuditLog({
+      session,
+      action: "UPDATE",
+      entityType: "SupplierItem",
+      entityId: id,
+      before,
+      after: item as unknown as Record<string, unknown>,
+    });
+    return actionOk(item!);
+  } catch (error) {
+    return handleActionError(error, "공급 품목 상태 변경에 실패했습니다", {
+      IN_USE_BY_ACTIVE_MEAL_PLAN:
+        "진행 중인 식단에 사용 중인 공급 품목은 비활성화할 수 없습니다. 식단 변경 후 다시 시도해주세요.",
+    });
   }
 }
