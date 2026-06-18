@@ -3,6 +3,13 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ItemType } from "@prisma/client";
 import { POBatchMode, MealCountSource } from "@prisma/client";
+import {
+  computeDeltaPlan,
+  type ExistingPOItemForDelta,
+  type NewItemForDelta,
+  type ComputeDeltaPlanResult,
+} from "./po-delta.service";
+import { POAdjustmentAction } from "@prisma/client";
 
 // ── 도메인 에러 키 ──
 export const PO_BATCH_ERRORS = {
@@ -12,10 +19,11 @@ export const PO_BATCH_ERRORS = {
   LINE_LOCATION_MISMATCH: "LINE_LOCATION_MISMATCH",
   SUPPLIER_NOT_FOUND: "SUPPLIER_NOT_FOUND",
   SUPPLIER_ITEM_NOT_FOUND: "SUPPLIER_ITEM_NOT_FOUND",
-  // ★ R1-b1
-  IDEMPOTENT_REPLAY: "IDEMPOTENT_REPLAY",                // 동일 키로 이미 생성된 경우 (정상 동작, 기존 결과 반환)
-  // ★ R1-b4 (선행 정의)
-  REPLACE_BLOCKED_BY_NON_DRAFT_PO: "REPLACE_BLOCKED_BY_NON_DRAFT_PO",  
+  IDEMPOTENT_REPLAY: "IDEMPOTENT_REPLAY",
+  REPLACE_BLOCKED_BY_NON_DRAFT_PO: "REPLACE_BLOCKED_BY_NON_DRAFT_PO",
+  // ★ R1-b3
+  DELTA_BLOCKED_BY_APPROVED_PO: "DELTA_BLOCKED_BY_APPROVED_PO",
+  DELTA_MISSING_BASED_ON_POS: "DELTA_MISSING_BASED_ON_POS",
 } as const;
 
 // ============================================================
@@ -85,7 +93,6 @@ export type CreatePurchaseOrdersBatchInput = z.infer<
 // 결과 타입
 // ============================================================
 export interface CreatePurchaseOrdersBatchResult {
-  /** 생성된 PO 목록 */
   createdPurchaseOrders: Array<{
     id: string;
     orderNumber: string;
@@ -95,14 +102,20 @@ export interface CreatePurchaseOrdersBatchResult {
     itemCount: number;
     totalAmount: number;
   }>;
-  /** 총 PO 개수 */
   count: number;
-  /** 총 발주 금액 */
   totalAmount: number;
-  /** ★ R1-b1: 멱등 replay 여부 (true 면 신규 생성 X, 기존 batch 결과 반환) */
   isIdempotentReplay: boolean;
-  /** ★ R1-b1: 생성/조회된 batch id (멱등성 키 미사용 트랜잭션에서는 null) */
   batchId: string | null;
+  /** ★ R1-b3: DELTA 모드일 때만 채워짐 */
+  adjustmentSummary?: {
+    increased: number;
+    decreased: number;
+    added: number;
+    priceChanged: number;
+    unchanged: number;
+    totalDeltaAmount: number;
+    affectedPurchaseOrderIds: string[];
+  };
 }
 
 // ============================================================
@@ -318,6 +331,15 @@ export async function createPurchaseOrdersBatch(
         })
       : null;
 
+    // ★ R1-b3: 모드별 분기
+    if (input.mode === "DELTA") {
+      if (input.basedOnPOIds.length === 0) {
+        throw new Error("DELTA_MISSING_BASED_ON_POS");
+      }
+      return await executeDeltaMode(tx, input, batch?.id ?? null);
+    }
+    // REPLACE 는 R1-b4 에서 본격 구현. R1-b3 시점에는 NEW 와 동일하게 fallback.
+
     // ── 이하 기존 그룹핑·검증·채번·생성 로직 ──
     // 1) 그룹핑
     const groups = new Map<string, BatchPOItem[]>();
@@ -419,4 +441,352 @@ export async function createPurchaseOrdersBatch(
       batchId: batch?.id ?? null,
     };
   });
+}
+
+// ============================================================
+// ★ R1-b3: DELTA 모드 실행
+// ============================================================
+/**
+ * basedOnPOIds 의 기존 PO(DRAFT/SUBMITTED) 들과 위저드 신규 산정값을 차분하여
+ * 기존 item 갱신 / 신규 item 추가 / 신규 PO 생성을 트랜잭션 내 원자적으로 수행.
+ * 모든 변경은 POAdjustmentLog 에 적층된다.
+ *
+ * @throws Error("DELTA_BLOCKED_BY_APPROVED_PO") APPROVED 이상 PO 가 basedOnPOIds 에 포함된 경우
+ */
+async function executeDeltaMode(
+  tx: Prisma.TransactionClient,
+  input: CreatePurchaseOrdersBatchInput,
+  batchId: string | null,
+): Promise<CreatePurchaseOrdersBatchResult> {
+  // 1) basedOnPOIds 의 기존 PO + item 일괄 조회
+  const existingPOs = await tx.purchaseOrder.findMany({
+    where: {
+      id: { in: input.basedOnPOIds },
+      companyId: input.companyId,
+    },
+    select: {
+      id: true,
+      status: true,
+      supplierId: true,
+      locationId: true,
+      productionLineId: true,
+      orderDate: true,
+      deliveryDate: true,
+      items: {
+        select: {
+          id: true,
+          materialMasterId: true,
+          supplierItemId: true,
+          quantity: true,
+          unitPrice: true,
+          systemQuantity: true,
+        },
+      },
+    },
+  });
+
+  // 2) APPROVED 이상 PO 포함 시 차단
+  const locked = existingPOs.filter(
+    (po) => po.status !== "DRAFT" && po.status !== "SUBMITTED",
+  );
+  if (locked.length > 0) {
+    throw new Error("DELTA_BLOCKED_BY_APPROVED_PO");
+  }
+
+  // 3) ExistingPOItemForDelta[] 평탄화 (MATERIAL 만 — SUBSIDIARY 는 위저드 대상 외)
+  const existingItems: ExistingPOItemForDelta[] = [];
+  for (const po of existingPOs) {
+    for (const it of po.items) {
+      if (!it.materialMasterId) continue;
+      existingItems.push({
+        purchaseOrderId: po.id,
+        purchaseOrderStatus: po.status as "DRAFT" | "SUBMITTED",
+        purchaseOrderItemId: it.id,
+        materialMasterId: it.materialMasterId,
+        locationId: po.locationId,
+        productionLineId: po.productionLineId,
+        supplierId: po.supplierId,
+        supplierItemId: it.supplierItemId,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        systemQuantity: it.systemQuantity,
+      });
+    }
+  }
+
+  // 4) 위저드 BatchPOItem → NewItemForDelta 변환 (MATERIAL 만)
+  const newCandidates: NewItemForDelta[] = input.items
+    .filter((it) => it.itemType === "MATERIAL" && !!it.materialMasterId)
+    .map((it) => ({
+      materialMasterId: it.materialMasterId!,
+      locationId: it.locationId,
+      productionLineId: it.productionLineId ?? null,
+      supplierId: it.supplierId,
+      supplierItemId: it.supplierItemId,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      netRequiredG: it.systemQuantity ?? null,
+    }));
+
+  // 5) 차분 계산
+  const plan: ComputeDeltaPlanResult = computeDeltaPlan({
+    newCandidates,
+    existingItems,
+  });
+
+  // 6) 정합성 일괄 검증 (신규 그룹 + addition 행 모두)
+  const newGroupHeaders = plan.newGroups.map((g) => ({
+    locationId: g.candidate.locationId,
+    productionLineId: g.candidate.productionLineId,
+  }));
+  if (newGroupHeaders.length > 0) {
+    await assertLocationsAndLines(tx, input.companyId, newGroupHeaders);
+  }
+  const allNewItemsForValidation: BatchPOItem[] = [
+    ...plan.additions.map((a) => batchItemFromCandidate(a.candidate)),
+    ...plan.newGroups.map((n) => batchItemFromCandidate(n.candidate)),
+  ];
+  if (allNewItemsForValidation.length > 0) {
+    await assertSuppliersAndItems(tx, input.companyId, allNewItemsForValidation);
+  }
+
+  const affectedPOIds = new Set<string>();
+  const createdPurchaseOrders: CreatePurchaseOrdersBatchResult["createdPurchaseOrders"] =
+    [];
+  const actorUserId = input.createdByUserId ?? "system";
+
+  // 7) updates: 기존 item 의 quantity/unitPrice 갱신 + POAdjustmentLog 적층
+  for (const u of plan.updates) {
+    await tx.purchaseOrderItem.update({
+      where: { id: u.purchaseOrderItemId },
+      data: {
+        quantity: u.afterQuantity,
+        unitPrice: u.afterUnitPrice,
+        totalPrice: u.afterQuantity * u.afterUnitPrice,
+        systemQuantity: u.afterSystemQuantity,
+        adjustedQuantity: u.afterQuantity,
+        adjustmentReason: u.quantityReason ?? u.priceReason ?? null,
+      },
+    });
+
+    if (u.quantityReason) {
+      await tx.pOAdjustmentLog.create({
+        data: {
+          purchaseOrderId: u.purchaseOrderId,
+          purchaseOrderItemId: u.purchaseOrderItemId,
+          action: POAdjustmentAction.UPDATE_QUANTITY,
+          fieldName: "quantity",
+          beforeValue: JSON.stringify({
+            quantity: u.beforeQuantity,
+            systemQuantity: u.beforeSystemQuantity,
+          }),
+          afterValue: JSON.stringify({
+            quantity: u.afterQuantity,
+            systemQuantity: u.afterSystemQuantity,
+          }),
+          reason: u.quantityReason,
+          sourceBatchId: batchId,
+          actorUserId,
+        },
+      });
+    }
+    if (u.priceReason) {
+      await tx.pOAdjustmentLog.create({
+        data: {
+          purchaseOrderId: u.purchaseOrderId,
+          purchaseOrderItemId: u.purchaseOrderItemId,
+          action: POAdjustmentAction.UPDATE_UNIT_PRICE,
+          fieldName: "unitPrice",
+          beforeValue: JSON.stringify({ unitPrice: u.beforeUnitPrice }),
+          afterValue: JSON.stringify({ unitPrice: u.afterUnitPrice }),
+          reason: u.priceReason,
+          sourceBatchId: batchId,
+          actorUserId,
+        },
+      });
+    }
+    affectedPOIds.add(u.purchaseOrderId);
+  }
+
+  // 8) additions: 기존 PO 에 새 item 추가 + POAdjustmentLog(ADD) 적층
+  for (const a of plan.additions) {
+    const created = await tx.purchaseOrderItem.create({
+      data: {
+        purchaseOrderId: a.purchaseOrderId,
+        supplierItemId: a.candidate.supplierItemId,
+        itemType: ItemType.MATERIAL,
+        materialMasterId: a.candidate.materialMasterId,
+        quantity: a.candidate.quantity,
+        unitPrice: a.candidate.unitPrice,
+        totalPrice: a.candidate.quantity * a.candidate.unitPrice,
+        systemQuantity: a.candidate.netRequiredG ?? null,
+        sourceType: "WIZARD_AUTO",
+      },
+      select: { id: true },
+    });
+
+    await tx.pOAdjustmentLog.create({
+      data: {
+        purchaseOrderId: a.purchaseOrderId,
+        purchaseOrderItemId: created.id,
+        action: POAdjustmentAction.ADD,
+        fieldName: "item",
+        beforeValue: null,
+        afterValue: JSON.stringify({
+          materialMasterId: a.candidate.materialMasterId,
+          quantity: a.candidate.quantity,
+          unitPrice: a.candidate.unitPrice,
+        }),
+        reason: "식단 수정으로 신규 자재 추가",
+        sourceBatchId: batchId,
+        actorUserId,
+      },
+    });
+    affectedPOIds.add(a.purchaseOrderId);
+  }
+
+  // 9) 기존 PO 들의 totalAmount 재계산
+  for (const poId of affectedPOIds) {
+    const items = await tx.purchaseOrderItem.findMany({
+      where: { purchaseOrderId: poId },
+      select: { quantity: true, unitPrice: true },
+    });
+    const newTotal = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
+    await tx.purchaseOrder.update({
+      where: { id: poId },
+      data: { totalAmount: newTotal },
+    });
+  }
+
+  // 10) newGroups: 매칭되는 기존 PO 가 없는 그룹 → 신규 PO 생성
+  //     기존 NEW 모드 로직과 동일하게 그룹핑·채번·생성을 수행
+  const usedOrderNumbers = new Set<string>();
+  if (plan.newGroups.length > 0) {
+    // 신규 그룹들을 (supplier × location × line) 기준 재그룹핑
+    const newGroupsMap = new Map<string, NewItemForDelta[]>();
+    for (const ng of plan.newGroups) {
+      const key = `${ng.candidate.supplierId}|${ng.candidate.locationId}|${ng.candidate.productionLineId ?? "_"}`;
+      if (!newGroupsMap.has(key)) newGroupsMap.set(key, []);
+      newGroupsMap.get(key)!.push(ng.candidate);
+    }
+
+    for (const [, candidates] of newGroupsMap) {
+      const first = candidates[0];
+      const totalAmount = candidates.reduce(
+        (s, c) => s + c.quantity * c.unitPrice,
+        0,
+      );
+
+      const orderNumber = await generateNextOrderNumber(
+        tx,
+        input.companyId,
+        input.orderDate,
+        usedOrderNumbers,
+      );
+
+      const po = await tx.purchaseOrder.create({
+        data: {
+          companyId: input.companyId,
+          supplierId: first.supplierId,
+          locationId: first.locationId,
+          productionLineId: first.productionLineId,
+          batchId,
+          orderNumber,
+          status: "DRAFT",
+          orderDate: input.orderDate,
+          deliveryDate: input.deliveryDate,
+          note: input.note,
+          isManual: false,
+          mealPlanGroupId: input.mealPlanGroupId ?? null,
+          createdByUserId: input.createdByUserId,
+          totalAmount,
+          items: {
+            create: candidates.map((c) => ({
+              supplierItemId: c.supplierItemId,
+              itemType: ItemType.MATERIAL,
+              materialMasterId: c.materialMasterId,
+              quantity: c.quantity,
+              unitPrice: c.unitPrice,
+              totalPrice: c.quantity * c.unitPrice,
+              systemQuantity: c.netRequiredG ?? null,
+              sourceType: "WIZARD_AUTO",
+            })),
+          },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          supplierId: true,
+          locationId: true,
+          productionLineId: true,
+          totalAmount: true,
+          _count: { select: { items: true } },
+        },
+      });
+
+      createdPurchaseOrders.push({
+        id: po.id,
+        orderNumber: po.orderNumber,
+        supplierId: po.supplierId,
+        locationId: po.locationId,
+        productionLineId: po.productionLineId,
+        itemCount: po._count.items,
+        totalAmount: po.totalAmount ?? 0,
+      });
+    }
+  }
+
+  // 11) 결과 집계 — 영향받은 기존 PO + 신규 생성된 PO 모두 포함
+  const affectedPOSummaries = await tx.purchaseOrder.findMany({
+    where: { id: { in: Array.from(affectedPOIds) } },
+    select: {
+      id: true,
+      orderNumber: true,
+      supplierId: true,
+      locationId: true,
+      productionLineId: true,
+      totalAmount: true,
+      _count: { select: { items: true } },
+    },
+  });
+
+  const allPOs = [
+    ...affectedPOSummaries.map((po) => ({
+      id: po.id,
+      orderNumber: po.orderNumber,
+      supplierId: po.supplierId,
+      locationId: po.locationId,
+      productionLineId: po.productionLineId,
+      itemCount: po._count.items,
+      totalAmount: po.totalAmount ?? 0,
+    })),
+    ...createdPurchaseOrders,
+  ];
+
+  return {
+    createdPurchaseOrders: allPOs,
+    count: allPOs.length,
+    totalAmount: allPOs.reduce((s, po) => s + po.totalAmount, 0),
+    isIdempotentReplay: false,
+    batchId,
+    adjustmentSummary: {
+      ...plan.summary,
+      affectedPurchaseOrderIds: Array.from(affectedPOIds),
+    },
+  };
+}
+
+/** NewItemForDelta → BatchPOItem 어댑터 (검증 함수 재사용용) */
+function batchItemFromCandidate(c: NewItemForDelta): BatchPOItem {
+  return {
+    supplierId: c.supplierId,
+    supplierItemId: c.supplierItemId,
+    itemType: ItemType.MATERIAL,
+    materialMasterId: c.materialMasterId,
+    locationId: c.locationId,
+    productionLineId: c.productionLineId,
+    quantity: c.quantity,
+    unitPrice: c.unitPrice,
+    systemQuantity: c.netRequiredG ?? undefined,
+  };
 }

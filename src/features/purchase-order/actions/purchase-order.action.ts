@@ -367,9 +367,13 @@ export async function createPurchaseOrdersBatchAction(
       LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
       SUPPLIER_NOT_FOUND: "공급업체를 찾을 수 없습니다",
       SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목 정보가 올바르지 않습니다",
-      // ★ R1-b4 (선행 정의)
       REPLACE_BLOCKED_BY_NON_DRAFT_PO:
         "발주등록 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요",
+      // ★ R1-b3
+      DELTA_BLOCKED_BY_APPROVED_PO:
+        "발주확정 이상 상태의 PO가 포함되어 변경할 수 없습니다. 부족분은 신규 발주로, 오배송·과다는 재고 실사로 처리하세요",
+      DELTA_MISSING_BASED_ON_POS:
+        "차분 발주 대상 PO가 지정되지 않았습니다",
     });
   }
 }
@@ -396,13 +400,20 @@ export interface ExistingPOSummary {
   batchMode: POBatchMode | null;
 }
 
-/**
- * 동일 식단그룹에 이미 생성된 활성 PO 목록 (CANCELLED 제외).
- * 위저드 Step 1·Step 5에서 사전 안내 카드로 표시.
- */
+export interface ExistingPOsSummaryResult {
+  pos: ExistingPOSummary[];
+  counts: {
+    total: number;
+    draft: number;
+    submitted: number;
+    approved: number;
+    received: number;
+  };
+}
+
 export async function getExistingPOsForMealPlanGroupAction(
   mealPlanGroupId: string,
-): Promise<ActionResult<ExistingPOSummary[]>> {
+): Promise<ActionResult<ExistingPOsSummaryResult>> {
   try {
     const session = await requireCompanySession();
     assertPermission(session, "purchase-order", "READ");
@@ -425,22 +436,30 @@ export async function getExistingPOsForMealPlanGroupAction(
       orderBy: { createdAt: "desc" },
     });
 
-    return actionOk(
-      pos.map((po) => ({
-        id: po.id,
-        orderNumber: po.orderNumber,
-        status: po.status,
-        supplierName: po.supplier.name,
-        locationName: po.location.name,
-        productionLineName: po.productionLine?.name ?? null,
-        totalAmount: po.totalAmount ?? 0,
-        itemCount: po._count.items,
-        createdByName: po.createdByUser?.name ?? null,
-        createdAt: po.createdAt,
-        batchId: po.batch?.id ?? null,
-        batchMode: po.batch?.mode ?? null,
-      })),
-    );
+    const summaries: ExistingPOSummary[] = pos.map((po) => ({
+      id: po.id,
+      orderNumber: po.orderNumber,
+      status: po.status,
+      supplierName: po.supplier.name,
+      locationName: po.location.name,
+      productionLineName: po.productionLine?.name ?? null,
+      totalAmount: po.totalAmount ?? 0,
+      itemCount: po._count.items,
+      createdByName: po.createdByUser?.name ?? null,
+      createdAt: po.createdAt,
+      batchId: po.batch?.id ?? null,
+      batchMode: po.batch?.mode ?? null,
+    }));
+
+    const counts = {
+      total: summaries.length,
+      draft: summaries.filter((p) => p.status === "DRAFT").length,
+      submitted: summaries.filter((p) => p.status === "SUBMITTED").length,
+      approved: summaries.filter((p) => p.status === "APPROVED").length,
+      received: summaries.filter((p) => p.status === "RECEIVED").length,
+    };
+
+    return actionOk({ pos: summaries, counts });
   } catch (error) {
     return handleActionError(error, "기존 발주서 조회에 실패했습니다");
   }

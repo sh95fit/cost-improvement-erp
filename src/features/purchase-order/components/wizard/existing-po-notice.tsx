@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   getExistingPOsForMealPlanGroupAction,
   type ExistingPOSummary,
+  type ExistingPOsSummaryResult,
 } from "@/features/purchase-order/actions/purchase-order.action";
 import type { POStatus } from "@prisma/client";
 
@@ -27,10 +28,9 @@ const STATUS_COLOR: Record<POStatus, string> = {
 
 interface Props {
   mealPlanGroupId: string;
-  /** 표시 컨텍스트: Step 1 vs Step 5 (안내 문구 차이) */
   context: "step1" | "step5";
-  /** ★ R1-b2: 활성 PO id 목록을 부모(위저드)에 알려 mode/basedOnPOIds 동기화에 사용 */
-  onLoaded?: (pos: ExistingPOSummary[]) => void;
+  /** ★ R1-b3: pos + counts 를 모두 부모에 전달 (모드 가용성 판정용) */
+  onLoaded?: (result: ExistingPOsSummaryResult) => void;
 }
 
 /**
@@ -51,10 +51,13 @@ export function ExistingPONotice({ mealPlanGroupId, context, onLoaded }: Props) 
         if (cancelled) return;
         if (!res.success) {
           setError(res.error.message);
-          onLoaded?.([]);
+          onLoaded?.({
+            pos: [],
+            counts: { total: 0, draft: 0, submitted: 0, approved: 0, received: 0 },
+          });
           return;
         }
-        setPos(res.data);
+        setPos(res.data.pos);
         onLoaded?.(res.data);
       })
       .catch((err) => {
@@ -85,9 +88,23 @@ export function ExistingPONotice({ mealPlanGroupId, context, onLoaded }: Props) 
         <div className="flex-1">
           <p className="text-sm font-medium text-amber-900">{headline}</p>
           <p className="mt-1 text-xs text-amber-800">
-            계속 진행하면 신규 발주서가 추가로 생성됩니다. 식수 변경/식단 수정으로
-            기존 발주서를 수정하려면 차분 발주(DELTA) 또는 덮어쓰기(REPLACE) 모드가
-            필요합니다 (다음 단계에서 도입 예정).
+            {(() => {
+              const draft = pos.filter((p) => p.status === "DRAFT").length;
+              const submitted = pos.filter((p) => p.status === "SUBMITTED").length;
+              const locked = pos.filter(
+                (p) => p.status === "APPROVED" || p.status === "RECEIVED",
+              ).length;
+              const parts: string[] = [];
+              if (draft > 0) parts.push(`작성중 ${draft}건`);
+              if (submitted > 0) parts.push(`발주등록 ${submitted}건`);
+              if (locked > 0) parts.push(`발주확정·입고완료 ${locked}건 (변경 불가)`);
+              return `상태별: ${parts.join(" · ")}`;
+            })()}
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            작성중·발주등록 PO는 차분 발주(DELTA)로 수정 가능, 작성중은 덮어쓰기(REPLACE)도
+            가능합니다. 발주확정 이상은 변경 불가 — 부족분은 신규 발주로, 오배송·과다는
+            재고 실사로 처리하세요.
           </p>
 
           <ul className="mt-3 space-y-1.5 text-xs">

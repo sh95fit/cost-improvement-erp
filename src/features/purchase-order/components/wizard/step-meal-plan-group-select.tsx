@@ -10,7 +10,7 @@ import {
   WizardModeSelector,
   type WizardMode,
 } from "./wizard-mode-selector";
-import type { ExistingPOSummary } from "@/features/purchase-order/actions/purchase-order.action";
+import type { ExistingPOsSummaryResult } from "@/features/purchase-order/actions/purchase-order.action";
 
 
 interface Props {
@@ -76,16 +76,31 @@ export function StepMealPlanGroupSelect({
     };
   }, []);
 
-  // ★ R1-b2: 활성 PO 개수 (ExistingPONotice 가 콜백으로 알려줌)
-  const [existingPOIds, setExistingPOIds] = useState<string[]>([]);
-  const existingPOCount = existingPOIds.length;
+  // ★ R1-b3: 활성 PO 상세 (모드 가용성 판정 + basedOnPOIds 산정용)
+  const [existingPOCounts, setExistingPOCounts] = useState({
+    total: 0,
+    draft: 0,
+    submitted: 0,
+    approved: 0,
+    received: 0,
+  });
+  // 모드별 basedOnPOIds 후보 (DELTA = DRAFT+SUBMITTED, REPLACE = DRAFT only)
+  const [deltaTargetIds, setDeltaTargetIds] = useState<string[]>([]);
+  const [replaceTargetIds, setReplaceTargetIds] = useState<string[]>([]);
 
   const handleExistingPOsLoaded = useCallback(
-    (pos: ExistingPOSummary[]) => {
-      const ids = pos.map((po) => po.id);
-      setExistingPOIds(ids);
+    (result: ExistingPOsSummaryResult) => {
+      setExistingPOCounts(result.counts);
+      setDeltaTargetIds(
+        result.pos
+          .filter((p) => p.status === "DRAFT" || p.status === "SUBMITTED")
+          .map((p) => p.id),
+      );
+      setReplaceTargetIds(
+        result.pos.filter((p) => p.status === "DRAFT").map((p) => p.id),
+      );
       // PO가 사라졌으면 모드를 NEW로 리셋
-      if (ids.length === 0 && mode !== "NEW") {
+      if (result.counts.total === 0 && mode !== "NEW") {
         onChangeMode("NEW", []);
       }
     },
@@ -94,10 +109,16 @@ export function StepMealPlanGroupSelect({
 
   const handleModeChange = useCallback(
     (next: WizardMode) => {
-      // 추천(A)대로 DELTA/REPLACE 선택 시 활성 PO 전체 ID를 basedOnPOIds로 자동 세팅
-      onChangeMode(next, next === "NEW" ? [] : existingPOIds);
+      // ★ R1-b3: 모드별로 적절한 PO id 목록만 basedOnPOIds 에 채움
+      const targetIds =
+        next === "DELTA"
+          ? deltaTargetIds
+          : next === "REPLACE"
+            ? replaceTargetIds
+            : [];
+      onChangeMode(next, targetIds);
     },
-    [existingPOIds, onChangeMode],
+    [deltaTargetIds, replaceTargetIds, onChangeMode],
   );
 
   return (
@@ -217,7 +238,10 @@ export function StepMealPlanGroupSelect({
           <WizardModeSelector
             value={mode}
             onChange={handleModeChange}
-            existingPOCount={existingPOCount}
+            existingPOCount={existingPOCounts.total}
+            draftCount={existingPOCounts.draft}
+            submittedCount={existingPOCounts.submitted}
+            lockedCount={existingPOCounts.approved + existingPOCounts.received}
           />
         </>
       )}

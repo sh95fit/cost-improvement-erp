@@ -72,10 +72,10 @@ export function StepConfirmCreate({
       );
       return;
     }
-    // ★ R1-b2: 현 단계에서는 NEW 모드만 지원 (DELTA/REPLACE는 R1-b3/b4)
-    if (mode !== "NEW") {
+    // ★ R1-b3: NEW + DELTA 허용. REPLACE 는 R1-b4 에서 본격 구현.
+    if (mode === "REPLACE") {
       toast.error(
-        `${MODE_LABEL[mode]} 모드는 아직 지원되지 않습니다 (R1-b3/b4 도입 예정). Step 1에서 "신규 발주" 를 선택하세요`,
+        `덮어쓰기 발주(REPLACE)는 R1-b4 에서 도입됩니다. Step 1에서 "신규 발주" 또는 "차분 발주" 를 선택하세요`,
       );
       return;
     }
@@ -129,9 +129,17 @@ export function StepConfirmCreate({
       }
 
       onClearPersistence();
-      toast.success(
-        `${res.data.count} 개 발주서를 생성했습니다 (총 ${res.data.totalAmount.toLocaleString()}원)`,
-      );
+      // ★ R1-b3: DELTA 결과면 adjustmentSummary 로 변경 요약 노출
+      const summary = res.data.adjustmentSummary;
+      if (summary) {
+        toast.success(
+          `차분 발주 완료 — 증가 ${summary.increased} · 감소 ${summary.decreased} · 신규 ${summary.added} · 단가변경 ${summary.priceChanged} · 변경없음 ${summary.unchanged}`,
+        );
+      } else {
+        toast.success(
+          `${res.data.count} 개 발주서를 생성했습니다 (총 ${res.data.totalAmount.toLocaleString()}원)`,
+        );
+      }
       router.push("/purchase-orders");
     } catch (err) {
       toast.error(
@@ -165,14 +173,19 @@ export function StepConfirmCreate({
         >
           {MODE_LABEL[mode]}
         </span>
-        {mode !== "NEW" && (
+        {mode === "REPLACE" && (
           <span className="text-xs text-amber-700">
-            (현재 단계에서는 NEW 만 지원 — Step 1에서 변경하세요)
+            (덮어쓰기는 R1-b4 도입 예정 — Step 1에서 신규/차분으로 변경하세요)
           </span>
         )}
         {basedOnPOIds.length > 0 && (
           <span className="text-xs text-gray-500">
             기준 PO {basedOnPOIds.length}건
+          </span>
+        )}
+        {mode === "DELTA" && (
+          <span className="ml-2 text-xs text-blue-700">
+            기존 PO 의 수량·단가가 갱신되고 변경 이력이 적층됩니다
           </span>
         )}
       </div>
@@ -248,15 +261,17 @@ export function StepConfirmCreate({
         <Button
           onClick={handleSubmit}
           disabled={
-            isSubmitting || validMapped.length === 0 || mode !== "NEW"
+            isSubmitting || validMapped.length === 0 || mode === "REPLACE"
           }
           className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           {isSubmitting
             ? "생성 중..."
-            : mode !== "NEW"
-            ? `${MODE_LABEL[mode]} 모드는 미지원`
-            : `${validMapped.length}개 발주서 생성`}
+            : mode === "REPLACE"
+              ? "덮어쓰기 모드는 미지원"
+              : mode === "DELTA"
+                ? `차분 발주 적용 (${validMapped.length}건 비교)`
+                : `${validMapped.length}개 발주서 생성`}
         </Button>
       </div>
     </div>

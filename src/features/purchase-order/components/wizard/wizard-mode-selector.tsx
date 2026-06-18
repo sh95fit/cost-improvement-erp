@@ -12,41 +12,61 @@ interface ModeOption {
   comingSoonLabel?: string;
 }
 
-const MODE_OPTIONS: ModeOption[] = [
-  {
-    value: "NEW",
-    label: "신규 발주",
-    description:
-      "기존 발주서와 별개로 새 발주서를 추가 생성합니다. 식단 외 추가 자재가 필요할 때 사용합니다.",
-    enabled: true,
-  },
-  {
-    value: "DELTA",
-    label: "차분 발주",
-    description:
-      "기존 발주서의 자재 수량을 비교해 부족분만 추가로 발주합니다. 식수 증가 시 사용합니다.",
-    enabled: false,
-    comingSoonLabel: "R1-b3 도입 예정",
-  },
-  {
-    value: "REPLACE",
-    label: "덮어쓰기 발주",
-    description:
-      "기존 DRAFT 발주서를 취소하고 새 발주서로 대체합니다. 식단 자체가 크게 변경되었을 때 사용합니다.",
-    enabled: false,
-    comingSoonLabel: "R1-b4 도입 예정",
-  },
-];
-
 interface Props {
   value: WizardMode;
   onChange: (mode: WizardMode) => void;
   /** 활성 PO가 있는 식단그룹에서만 의미가 있음 — 없으면 컴포넌트 자체를 렌더하지 않음 */
   existingPOCount: number;
+  /** ★ R1-b3: 상태별 카운트 — 모드 가용성 판정에 사용 */
+  draftCount: number;
+  submittedCount: number;
+  /** APPROVED + RECEIVED 합산 */
+  lockedCount: number;
 }
 
-export function WizardModeSelector({ value, onChange, existingPOCount }: Props) {
+export function WizardModeSelector({
+  value,
+  onChange,
+  existingPOCount,
+  draftCount,
+  submittedCount,
+  lockedCount,
+}: Props) {
   if (existingPOCount === 0) return null;
+
+  // DELTA 는 DRAFT 또는 SUBMITTED 가 1건이라도 있어야 가능
+  const deltaEnabled = draftCount + submittedCount > 0;
+  // REPLACE 는 DRAFT 만 있어야 가능 (DRAFT 이외 활성 PO 가 섞이면 불가 — R1-b4 정책)
+  const replaceEnabled = draftCount > 0 && submittedCount === 0 && lockedCount === 0;
+
+  const options: ModeOption[] = [
+    {
+      value: "NEW",
+      label: "신규 발주",
+      description:
+        "기존 발주서와 별개로 새 발주서를 추가 생성합니다. 식단 외 추가 자재가 필요할 때 사용합니다.",
+      enabled: true,
+    },
+    {
+      value: "DELTA",
+      label: "차분 발주",
+      description: deltaEnabled
+        ? `기존 작성중·발주등록 PO와 비교해 변경된 수량만큼 자동 갱신하고 변경 이력을 적층합니다. (대상 ${draftCount + submittedCount}건)`
+        : "변경 가능한 작성중·발주등록 PO가 없어 사용할 수 없습니다.",
+      enabled: deltaEnabled,
+    },
+    {
+      value: "REPLACE",
+      label: "덮어쓰기 발주",
+      description: replaceEnabled
+        ? `기존 작성중 PO를 모두 취소하고 새 발주서로 대체합니다. (대상 ${draftCount}건)`
+        : submittedCount > 0 || lockedCount > 0
+          ? "발주등록 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하세요."
+          : "작성중 PO가 없어 사용할 수 없습니다.",
+      enabled: replaceEnabled,
+      comingSoonLabel: "R1-b4 도입 예정",
+    },
+  ];
 
   return (
     <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50/50 p-4">
@@ -58,7 +78,7 @@ export function WizardModeSelector({ value, onChange, existingPOCount }: Props) 
       </div>
 
       <div className="grid gap-2">
-        {MODE_OPTIONS.map((opt) => {
+        {options.map((opt) => {
           const isSelected = value === opt.value;
           const isDisabled = !opt.enabled;
           return (
