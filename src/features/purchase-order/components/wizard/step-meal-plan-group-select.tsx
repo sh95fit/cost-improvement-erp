@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { getMealPlanGroupsForOrderAction } from "@/features/purchase-order/actions/purchase-order.action";
 import { Label } from "@/components/ui/label";
 import type { MealPlanGroupOption } from "./po-wizard";
+import { ExistingPONotice } from "./existing-po-notice";
 
 interface Props {
   value: MealPlanGroupOption | null;
@@ -162,10 +163,15 @@ export function StepMealPlanGroupSelect({
                   );
                 })}
               </tbody>
-            </table>
+              </table>
           </div>
         )}
       </div>
+
+      {/* ★ R1-b1: 선택된 식단그룹의 기존 활성 PO 사전 안내 */}
+      {value && (
+        <ExistingPONotice mealPlanGroupId={value.id} context="step1" />
+      )}
     </div>
   );
 }

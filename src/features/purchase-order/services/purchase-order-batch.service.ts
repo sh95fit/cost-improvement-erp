@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ItemType } from "@prisma/client";
+import { POBatchMode, MealCountSource } from "@prisma/client";
 
 // ── 도메인 에러 키 ──
 export const PO_BATCH_ERRORS = {
@@ -11,6 +12,10 @@ export const PO_BATCH_ERRORS = {
   LINE_LOCATION_MISMATCH: "LINE_LOCATION_MISMATCH",
   SUPPLIER_NOT_FOUND: "SUPPLIER_NOT_FOUND",
   SUPPLIER_ITEM_NOT_FOUND: "SUPPLIER_ITEM_NOT_FOUND",
+  // ★ R1-b1
+  IDEMPOTENT_REPLAY: "IDEMPOTENT_REPLAY",                // 동일 키로 이미 생성된 경우 (정상 동작, 기존 결과 반환)
+  // ★ R1-b4 (선행 정의)
+  REPLACE_BLOCKED_BY_NON_DRAFT_PO: "REPLACE_BLOCKED_BY_NON_DRAFT_PO",  
 } as const;
 
 // ============================================================
@@ -59,6 +64,11 @@ export const createPurchaseOrdersBatchSchema = z.object({
   orderDate: z.coerce.date(),
   deliveryDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
+  // ★ R1-b1: 멱등성 키 + 모드
+  idempotencyKey: z.string().min(8, "위저드 세션 키가 필요합니다").max(128),
+  countSource: z.nativeEnum(MealCountSource).default("ESTIMATED"),
+  mode: z.nativeEnum(POBatchMode).default("NEW"),
+  basedOnPOIds: z.array(z.string()).default([]),
   items: z.array(batchPOItemSchema).min(1, "발주 항목은 1개 이상이어야 합니다"),
 });
 
@@ -80,6 +90,10 @@ export interface CreatePurchaseOrdersBatchResult {
     productionLineId: string | null;
     itemCount: number;
     totalAmount: number;
+    /** ★ R1-b1: 멱등 replay 여부 (true 면 신규 생성 X, 기존 batch 결과 반환) */
+    isIdempotentReplay?: boolean;
+    /** ★ R1-b1: 생성/조회된 batch id */
+    batchId?: string;    
   }>;
   /** 총 PO 개수 */
   count: number;
@@ -237,6 +251,67 @@ export async function createPurchaseOrdersBatch(
   if (input.items.length === 0) throw new Error("EMPTY_ITEMS");
 
   return prisma.$transaction(async (tx) => {
+    // ★ R1-b1: 멱등성 키 사전 확인
+    // 동일 키로 이미 생성된 batch 가 있으면 기존 결과를 그대로 반환.
+    // 더블클릭·재시도·동시 제출에 안전.
+    const existingBatch = await tx.purchaseOrderBatch.findUnique({
+      where: {
+        companyId_idempotencyKey: {
+          companyId: input.companyId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+      include: {
+        purchaseOrders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            supplierId: true,
+            locationId: true,
+            productionLineId: true,
+            totalAmount: true,
+            _count: { select: { items: true } },
+          },
+        },
+      },
+    });
+
+    if (existingBatch) {
+      return {
+        createdPurchaseOrders: existingBatch.purchaseOrders.map((po) => ({
+          id: po.id,
+          orderNumber: po.orderNumber,
+          supplierId: po.supplierId,
+          locationId: po.locationId,
+          productionLineId: po.productionLineId,
+          itemCount: po._count.items,
+          totalAmount: po.totalAmount ?? 0,
+        })),
+        count: existingBatch.purchaseOrders.length,
+        totalAmount: existingBatch.purchaseOrders.reduce(
+          (s, po) => s + (po.totalAmount ?? 0),
+          0,
+        ),
+        // ★ R1-b1: 멱등 replay 임을 호출자에게 알림
+        isIdempotentReplay: true,
+        batchId: existingBatch.id,
+      };
+    }
+
+    // ★ R1-b1: 신규 batch 행 생성 (PO 들과 같은 트랜잭션 안에서)
+    const batch = await tx.purchaseOrderBatch.create({
+      data: {
+        companyId: input.companyId,
+        idempotencyKey: input.idempotencyKey,
+        mealPlanGroupId: input.mealPlanGroupId ?? null,
+        countSource: input.countSource,
+        mode: input.mode,
+        basedOnPOIds: input.basedOnPOIds,
+        createdByUserId: input.createdByUserId ?? "system",
+      },
+    });
+
+    // ── 이하 기존 그룹핑·검증·채번·생성 로직 ──
     // 1) 그룹핑
     const groups = new Map<string, BatchPOItem[]>();
     for (const item of input.items) {
@@ -280,6 +355,7 @@ export async function createPurchaseOrdersBatch(
           supplierId: first.supplierId,
           locationId: first.locationId,
           productionLineId: first.productionLineId ?? null,
+          batchId: batch.id,                       // ★ R1-b1
           orderNumber,
           status: "DRAFT",
           orderDate: input.orderDate,
@@ -332,6 +408,8 @@ export async function createPurchaseOrdersBatch(
       createdPurchaseOrders,
       count: createdPurchaseOrders.length,
       totalAmount: grandTotal,
+      isIdempotentReplay: false,
+      batchId: batch.id,      
     };
   });
 }

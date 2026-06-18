@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { createPurchaseOrdersBatchAction } from "@/features/purchase-order/actions/purchase-order.action";
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
+import { ExistingPONotice } from "./existing-po-notice";
 
 interface Props {
   mealPlanGroupId: string;
@@ -14,6 +15,11 @@ interface Props {
   orderDate: Date;
   deliveryDate: Date | null;
   note: string;
+  // ★ R1-b1
+  idempotencyKey: string;
+  countSource: "ESTIMATED" | "FINAL";
+  mode: "NEW" | "DELTA" | "REPLACE";
+  basedOnPOIds: string[];
   onChangeOrderDate: (d: Date) => void;
   onChangeDeliveryDate: (d: Date | null) => void;
   onChangeNote: (s: string) => void;
@@ -26,6 +32,10 @@ export function StepConfirmCreate({
   orderDate,
   deliveryDate,
   note,
+  idempotencyKey,
+  countSource,
+  mode,
+  basedOnPOIds,
   onChangeOrderDate,
   onChangeDeliveryDate,
   onChangeNote,
@@ -34,13 +44,11 @@ export function StepConfirmCreate({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const validMapped = mapped.filter(
-    (r) =>
-      r.supplierItem !== null &&
-      (r.orderQuantity ?? 0) > 0 &&
-      (r.unitPrice ?? 0) >= 0,
+  const allMapped = [...mapped, ...mappedPartialStock];
+  const validMapped = allMapped.filter(
+    (r) => r.supplierItem && r.orderQuantity > 0 && r.unitPrice >= 0,
   );
-
+  
   async function handleSubmit() {
     if (validMapped.length === 0) {
       toast.warning("생성할 발주 항목이 없습니다");
@@ -71,11 +79,26 @@ export function StepConfirmCreate({
         orderDate,
         deliveryDate: deliveryDate ?? undefined,
         note: note.trim() || undefined,
+        // ★ R1-b1
+        idempotencyKey,
+        countSource,
+        mode,
+        basedOnPOIds,
         items,
       });
 
       if (!res.success) {
         toast.error(res.error.message);
+        return;
+      }
+
+      // ★ R1-b1: 멱등 replay (이미 같은 토큰으로 생성된 결과를 반환받은 경우)
+      if (res.data.isIdempotentReplay) {
+        onClearPersistence();
+        toast.info(
+          `이미 동일 세션으로 생성된 발주서 ${res.data.count}건이 있어 기존 결과를 반환합니다`,
+        );
+        router.push("/purchase-orders");
         return;
       }
 
@@ -104,6 +127,8 @@ export function StepConfirmCreate({
         </p>
       </div>
 
+      {/* ★ R1-b1: 동일 식단그룹의 기존 활성 PO 사전 안내 */}
+      <ExistingPONotice mealPlanGroupId={mealPlanGroupId} context="step5" />
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="orderDate">주문일 *</Label>

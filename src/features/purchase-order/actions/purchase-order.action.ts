@@ -21,7 +21,7 @@ import {
   type CreatePurchaseOrdersBatchResult,
 } from "../services/purchase-order-batch.service"; // ★ 4-B'-5a 추가
 import { buildPOItemsFromMR } from "../lib/build-po-items-from-mr"; // ★ 4-B'-5a 추가
-import type { PurchaseOrder } from "@prisma/client";
+import type { PurchaseOrder, POStatus, POBatchMode } from "@prisma/client";
 
 // ════════════════════════════════════════
 // 공통 도메인 에러 메시지
@@ -367,6 +367,81 @@ export async function createPurchaseOrdersBatchAction(
       LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
       SUPPLIER_NOT_FOUND: "공급업체를 찾을 수 없습니다",
       SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목 정보가 올바르지 않습니다",
+      // ★ R1-b4 (선행 정의)
+      REPLACE_BLOCKED_BY_NON_DRAFT_PO:
+        "발주등록 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요",
     });
+  }
+}
+
+// ============================================================
+// ★ R1-b1: 위저드 사전 안내 — 기존 활성 PO 조회
+// ============================================================
+//
+// Step 1 (식단그룹 선택 직후) 및 Step 5 (생성 직전) 에서 호출.
+// 동일 식단그룹에 이미 생성된 활성 PO 들을 표시해 사용자가 신규/차분/덮어쓰기 결정 가능.
+
+export interface ExistingPOSummary {
+  id: string;
+  orderNumber: string;
+  status: POStatus;
+  supplierName: string;
+  locationName: string;
+  productionLineName: string | null;
+  totalAmount: number;
+  itemCount: number;
+  createdByName: string | null;
+  createdAt: Date;
+  batchId: string | null;
+  batchMode: POBatchMode | null;
+}
+
+/**
+ * 동일 식단그룹에 이미 생성된 활성 PO 목록 (CANCELLED 제외).
+ * 위저드 Step 1·Step 5에서 사전 안내 카드로 표시.
+ */
+export async function getExistingPOsForMealPlanGroupAction(
+  mealPlanGroupId: string,
+): Promise<ActionResult<ExistingPOSummary[]>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "purchase-order", "READ");
+
+    const { prisma } = await import("@/lib/prisma");
+    const pos = await prisma.purchaseOrder.findMany({
+      where: {
+        companyId: session.companyId,
+        mealPlanGroupId,
+        status: { notIn: ["CANCELLED"] },
+      },
+      include: {
+        supplier: { select: { name: true } },
+        location: { select: { name: true } },
+        productionLine: { select: { name: true } },
+        createdByUser: { select: { name: true } },
+        batch: { select: { id: true, mode: true } },
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return actionOk(
+      pos.map((po) => ({
+        id: po.id,
+        orderNumber: po.orderNumber,
+        status: po.status,
+        supplierName: po.supplier.name,
+        locationName: po.location.name,
+        productionLineName: po.productionLine?.name ?? null,
+        totalAmount: po.totalAmount ?? 0,
+        itemCount: po._count.items,
+        createdByName: po.createdByUser?.name ?? null,
+        createdAt: po.createdAt,
+        batchId: po.batch?.id ?? null,
+        batchMode: po.batch?.mode ?? null,
+      })),
+    );
+  } catch (error) {
+    return handleActionError(error, "기존 발주서 조회에 실패했습니다");
   }
 }

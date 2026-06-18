@@ -29,6 +29,12 @@ export type MealPlanGroupOption = {
 };
 
 export interface WizardState {
+  // ★ R1-b1: 위저드 세션 멱등성 키 (Step 1 진입 시 발급)
+  idempotencyKey: string | null;
+  // ★ R1-b1: 위저드 모드 (R1-b2 부터 사용자 선택, R1-b1 단계에서는 항상 "NEW")
+  mode: "NEW" | "DELTA" | "REPLACE";
+  // ★ R1-b1: 모드 선택 시 참조한 기존 PO id 목록 (DELTA/REPLACE 시 사용)
+  basedOnPOIds: string[];  
   step: WizardStep;
   mealPlanGroup: MealPlanGroupOption | null;
   countSource: "ESTIMATED" | "FINAL";
@@ -71,23 +77,103 @@ type Action =
   | { type: "SET_ORDER_DATE"; payload: Date }
   | { type: "SET_DELIVERY_DATE"; payload: Date | null }
   | { type: "SET_NOTE"; payload: string }
+  // ★ R1-b1
+  | { type: "SET_IDEMPOTENCY_KEY"; payload: string }
+  | {
+      type: "SET_MODE";
+      payload: { mode: "NEW" | "DELTA" | "REPLACE"; basedOnPOIds: string[] };
+    }
   | { type: "RESET" };
 
-const initialState: WizardState = {
-  step: 1,
-  mealPlanGroup: null,
-  countSource: "ESTIMATED",
-  isLoading: false,
-  loadResult: null,
-  loadError: null,
-  mapped: [],
-  mappedPartialStock: [],
-  mappedFullStock: [],
-  unmapped: [],
-  orderDate: new Date(),
-  deliveryDate: null,
-  note: "",
-};
+  const initialState: WizardState = {
+    // ★ R1-b1
+    idempotencyKey: null,
+    mode: "NEW",
+    basedOnPOIds: [],
+    step: 1,
+    mealPlanGroup: null,
+    countSource: "ESTIMATED",
+    isLoading: false,
+    loadResult: null,
+    loadError: null,
+    mapped: [],
+    mappedPartialStock: [],
+    mappedFullStock: [],
+    unmapped: [],
+    orderDate: new Date(),
+    deliveryDate: null,
+    note: "",
+  };
+
+// ════════════════════════════════════════
+// ★ R1-b1: 멱등성 토큰 헬퍼
+// ════════════════════════════════════════
+const IDEMPOTENCY_STORAGE_PREFIX = "po-wizard-idem:";
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function makeIdempotencyStorageKey(
+  mealPlanGroupId: string,
+  countSource: string,
+): string {
+  return `${IDEMPOTENCY_STORAGE_PREFIX}${mealPlanGroupId}:${countSource}`;
+}
+
+function generateIdempotencyToken(
+  mealPlanGroupId: string,
+  countSource: string,
+): string {
+  const uuid =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `wiz_${mealPlanGroupId}_${countSource}_${uuid}`;
+}
+
+/**
+ * localStorage에서 토큰을 복원하거나 새로 발급.
+ * - 24시간 이내 저장된 토큰 → 재사용
+ * - 그 외 → 새로 발급 후 저장
+ */
+function getOrCreateIdempotencyToken(
+  mealPlanGroupId: string,
+  countSource: string,
+): string {
+  if (typeof window === "undefined") {
+    return generateIdempotencyToken(mealPlanGroupId, countSource);
+  }
+  const storageKey = makeIdempotencyStorageKey(mealPlanGroupId, countSource);
+  const raw = window.localStorage.getItem(storageKey);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { token: string; createdAt: number };
+      if (
+        parsed.token &&
+        typeof parsed.createdAt === "number" &&
+        Date.now() - parsed.createdAt < IDEMPOTENCY_TTL_MS
+      ) {
+        return parsed.token;
+      }
+    } catch {
+      // ignore — 손상된 데이터는 새로 발급
+    }
+  }
+  const token = generateIdempotencyToken(mealPlanGroupId, countSource);
+  window.localStorage.setItem(
+    storageKey,
+    JSON.stringify({ token, createdAt: Date.now() }),
+  );
+  return token;
+}
+
+function clearIdempotencyToken(
+  mealPlanGroupId: string,
+  countSource: string,
+): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(
+    makeIdempotencyStorageKey(mealPlanGroupId, countSource),
+  );
+}
 
 function reducer(state: WizardState, action: Action): WizardState {
   switch (action.type) {
@@ -95,6 +181,10 @@ function reducer(state: WizardState, action: Action): WizardState {
       return {
         ...state,
         mealPlanGroup: action.payload,
+        // ★ R1-b1: 그룹 변경 시 토큰 리셋 (useEffect가 새로 발급)
+        idempotencyKey: null,
+        mode: "NEW",
+        basedOnPOIds: [],
         loadResult: null,
         loadError: null,
         mapped: [],
@@ -106,6 +196,8 @@ function reducer(state: WizardState, action: Action): WizardState {
       return {
         ...state,
         countSource: action.payload,
+        // ★ R1-b1: countSource 변경 시 토큰 리셋
+        idempotencyKey: null,
         loadResult: null,
         loadError: null,
         mapped: [],
@@ -209,6 +301,15 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, deliveryDate: action.payload };
     case "SET_NOTE":
       return { ...state, note: action.payload };
+    // ★ R1-b1
+    case "SET_IDEMPOTENCY_KEY":
+      return { ...state, idempotencyKey: action.payload };
+    case "SET_MODE":
+      return {
+        ...state,
+        mode: action.payload.mode,
+        basedOnPOIds: action.payload.basedOnPOIds,
+      };
     case "RESET":
       return initialState;
     default:
@@ -230,6 +331,17 @@ const STEP_LABELS: Record<WizardStep, string> = {
 export function POWizard() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  // ★ R1-b1: 식단그룹 + countSource가 정해지면 멱등성 토큰 발급/복원
+  useEffect(() => {
+    if (!state.mealPlanGroup) return;
+    if (state.idempotencyKey) return;
+    const token = getOrCreateIdempotencyToken(
+      state.mealPlanGroup.id,
+      state.countSource,
+    );
+    dispatch({ type: "SET_IDEMPOTENCY_KEY", payload: token });
+  }, [state.mealPlanGroup, state.countSource, state.idempotencyKey]);
 
   // localStorage persistence (편집 상태만 저장 — loadResult/mapped는 다시 로드)
   const persistedState = {
@@ -369,13 +481,19 @@ export function POWizard() {
 
         {state.step === 4 && <StepSplitPreview mapped={state.mapped} />}
 
-        {state.step === 5 && state.mealPlanGroup && (
+        state.step === 5 && state.mealPlanGroup && (
           <StepConfirmCreate
             mealPlanGroupId={state.mealPlanGroup.id}
             mapped={state.mapped}
+            mappedPartialStock={state.mappedPartialStock}
             orderDate={state.orderDate}
             deliveryDate={state.deliveryDate}
             note={state.note}
+            /* R1-b1: 멱등성 + 모드 정보 전달 */
+            idempotencyKey={state.idempotencyKey}
+            countSource={state.countSource}
+            mode={state.mode}
+            basedOnPOIds={state.basedOnPOIds}
             onChangeOrderDate={(d) =>
               dispatch({ type: "SET_ORDER_DATE", payload: d })
             }

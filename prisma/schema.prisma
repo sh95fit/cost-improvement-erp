@@ -329,6 +329,93 @@ enum DisposalReason {
 }
 
 // ============================================================
+// ★ R1-b1: 위저드 batch (멱등성·모드 추적)
+// ============================================================
+//
+// 위저드 1회 실행 = 1 PurchaseOrderBatch.
+// idempotencyKey 는 클라이언트가 Step 1 진입 시 발급 (localStorage 저장).
+// 동일 키 재호출 시 batch 가 이미 있으면 신규 PO 생성하지 않고 기존 batch 의 PO 목록 반환.
+//
+// mode:
+//   NEW     — 기존 PO 유지하고 새 PO 만 생성
+//   DELTA   — 기존 PO 의 item 수량 합산 + 신규 자재 추가 (R1-b3)
+//   REPLACE — 기존 DRAFT PO 일괄 취소 + 신규 PO 생성 (R1-b4)
+//
+// basedOnPOIds — DELTA/REPLACE 모드에서 참조한 기존 PO 들의 id 목록.
+
+model PurchaseOrderBatch {
+  id              String          @id @default(cuid())
+  companyId       String          @map("company_id")
+  idempotencyKey  String          @map("idempotency_key")
+  mealPlanGroupId String?         @map("meal_plan_group_id")
+  countSource     MealCountSource
+  mode            POBatchMode
+  basedOnPOIds    String[]        @map("based_on_po_ids")
+  createdByUserId String          @map("created_by_user_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  company         Company         @relation(fields: [companyId], references: [id])
+  mealPlanGroup   MealPlanGroup?  @relation(fields: [mealPlanGroupId], references: [id])
+  createdByUser   User            @relation(fields: [createdByUserId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+  adjustmentLogs  POAdjustmentLog[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([mealPlanGroupId])
+  @@index([createdAt])
+  @@map("purchase_order_batches")
+}
+
+enum POBatchMode {
+  NEW
+  DELTA
+  REPLACE
+
+  @@map("po_batch_mode")
+}
+
+// ============================================================
+// ★ R1-b3 (DELTA): PO 조정 이력 — 모델 정의만 R1-b1 에서 선행
+// ============================================================
+//
+// DELTA 모드에서 기존 PO 의 item 을 수정할 때마다 1 행씩 적층.
+// R1-b1 단계에서는 모델만 만들고 실제 적층 로직은 R1-b3 에서 구현.
+
+model POAdjustmentLog {
+  id                  String              @id @default(cuid())
+  purchaseOrderId     String              @map("purchase_order_id")
+  purchaseOrderItemId String?             @map("purchase_order_item_id")
+  action              POAdjustmentAction
+  fieldName           String?             @map("field_name")
+  beforeValue         String?             @map("before_value") // JSON 직렬화
+  afterValue          String?             @map("after_value")  // JSON 직렬화
+  reason              String
+  sourceBatchId       String?             @map("source_batch_id")
+  actorUserId         String              @map("actor_user_id")
+  createdAt           DateTime            @default(now()) @map("created_at")
+
+  purchaseOrder     PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderItem PurchaseOrderItem?  @relation(fields: [purchaseOrderItemId], references: [id])
+  sourceBatch       PurchaseOrderBatch? @relation(fields: [sourceBatchId], references: [id])
+  actorUser         User                @relation(fields: [actorUserId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([sourceBatchId])
+  @@index([createdAt])
+  @@map("po_adjustment_logs")
+}
+
+enum POAdjustmentAction {
+  ADD
+  UPDATE_QUANTITY
+  UPDATE_UNIT_PRICE
+  REMOVE
+  NOTE_CHANGE
+
+  @@map("po_adjustment_action")
+}
+
+// ============================================================
 // MODELS
 // ============================================================
 
@@ -362,6 +449,7 @@ model Company {
   mealPlanGroups        MealPlanGroup[]
   autoGenLogs           AutoGenLog[]
   purchaseOrders        PurchaseOrder[]
+  purchaseOrderBatches  PurchaseOrderBatch[]
   inventoryLots         InventoryLot[]
   inventoryTransactions InventoryTransaction[]
   inventoryReservations InventoryReservation[]
@@ -472,6 +560,10 @@ model User {
   createdPurchaseOrders   PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
   approvedPurchaseOrders  PurchaseOrder[]      @relation("PurchaseOrderApprovedBy")
   cancelledPurchaseOrders PurchaseOrder[]      @relation("PurchaseOrderCancelledBy")
+  // ★ R1-b1: 위저드 batch 생성자
+  createdPOBatches        PurchaseOrderBatch[]
+  // ★ R1-b3: PO 조정 이력 액터
+  poAdjustmentLogs        POAdjustmentLog[]  
 
   @@map("users")
 }
@@ -1013,6 +1105,7 @@ model MealPlanGroup {
   mealCounts           MealCount[]
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[]
+  purchaseOrderBatches PurchaseOrderBatch[]
   shippingOrders       ShippingOrder[]
 
   @@unique([companyId, planDate])
@@ -1307,6 +1400,9 @@ model PurchaseOrder {
   productionLineId  String?   @map("production_line_id")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+  // ★ R1-b1: 위저드 batch 추적 (NEW/DELTA/REPLACE 어느 모드든 batch 에 묶임)
+  batchId String? @map("batch_id")
+  batch   PurchaseOrderBatch? @relation(fields: [batchId], references: [id])
 
   company         Company             @relation(fields: [companyId], references: [id])
   supplier        Supplier            @relation(fields: [supplierId], references: [id])
@@ -1318,7 +1414,10 @@ model PurchaseOrder {
   receivingNotes  ReceivingNote[]
   location        Location            @relation(fields: [locationId], references: [id])
   productionLine  ProductionLine?     @relation(fields: [productionLineId], references: [id])
+  // ★ R1-b3: 조정 이력 (DELTA 모드에서 적층)
+  adjustmentLogs POAdjustmentLog[]
 
+  @@index([batchId])  // ★ R1-b1 추가
   @@index([companyId])
   @@index([supplierId])
   @@index([orderDate])
@@ -1354,6 +1453,8 @@ model PurchaseOrderItem {
   subsidiaryMaster    SubsidiaryMaster?    @relation(fields: [subsidiaryMasterId], references: [id])
   materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
   receivingNoteItems  ReceivingNoteItem[]
+  // ★ R1-b3: 조정 이력 역참조
+  adjustmentLogs POAdjustmentLog[]
 
   @@index([purchaseOrderId])
   @@index([supplierItemId])
