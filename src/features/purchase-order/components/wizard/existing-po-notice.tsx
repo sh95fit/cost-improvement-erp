@@ -29,6 +29,8 @@ interface Props {
   mealPlanGroupId: string;
   /** 표시 컨텍스트: Step 1 vs Step 5 (안내 문구 차이) */
   context: "step1" | "step5";
+  /** ★ R1-b2: 활성 PO id 목록을 부모(위저드)에 알려 mode/basedOnPOIds 동기화에 사용 */
+  onLoaded?: (pos: ExistingPOSummary[]) => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface Props {
  *
  * 차단이 아닌 정보 제공. PO가 없으면 아무것도 렌더링하지 않음.
  */
-export function ExistingPONotice({ mealPlanGroupId, context }: Props) {
+export function ExistingPONotice({ mealPlanGroupId, context, onLoaded }: Props) {
   const [pos, setPos] = useState<ExistingPOSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +51,11 @@ export function ExistingPONotice({ mealPlanGroupId, context }: Props) {
         if (cancelled) return;
         if (!res.success) {
           setError(res.error.message);
+          onLoaded?.([]);
           return;
         }
         setPos(res.data);
+        onLoaded?.(res.data);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -63,7 +67,7 @@ export function ExistingPONotice({ mealPlanGroupId, context }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [mealPlanGroupId]);
+  }, [mealPlanGroupId, onLoaded]);
 
   if (isLoading || error || pos.length === 0) {
     return null;

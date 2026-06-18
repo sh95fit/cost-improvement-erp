@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getMealPlanGroupsForOrderAction } from "@/features/purchase-order/actions/purchase-order.action";
 import { Label } from "@/components/ui/label";
 import type { MealPlanGroupOption } from "./po-wizard";
 import { ExistingPONotice } from "./existing-po-notice";
+import {
+  WizardModeSelector,
+  type WizardMode,
+} from "./wizard-mode-selector";
+import type { ExistingPOSummary } from "@/features/purchase-order/actions/purchase-order.action";
+
 
 interface Props {
   value: MealPlanGroupOption | null;
   onChange: (group: MealPlanGroupOption | null) => void;
   countSource: "ESTIMATED" | "FINAL";
   onCountSourceChange: (cs: "ESTIMATED" | "FINAL") => void;
+  // ★ R1-b2
+  mode: WizardMode;
+  basedOnPOIds: string[];
+  onChangeMode: (mode: WizardMode, basedOnPOIds: string[]) => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -24,6 +34,9 @@ export function StepMealPlanGroupSelect({
   onChange,
   countSource,
   onCountSourceChange,
+  mode,
+  basedOnPOIds,
+  onChangeMode,
 }: Props) {
   const [options, setOptions] = useState<MealPlanGroupOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,6 +75,30 @@ export function StepMealPlanGroupSelect({
       cancelled = true;
     };
   }, []);
+
+  // ★ R1-b2: 활성 PO 개수 (ExistingPONotice 가 콜백으로 알려줌)
+  const [existingPOIds, setExistingPOIds] = useState<string[]>([]);
+  const existingPOCount = existingPOIds.length;
+
+  const handleExistingPOsLoaded = useCallback(
+    (pos: ExistingPOSummary[]) => {
+      const ids = pos.map((po) => po.id);
+      setExistingPOIds(ids);
+      // PO가 사라졌으면 모드를 NEW로 리셋
+      if (ids.length === 0 && mode !== "NEW") {
+        onChangeMode("NEW", []);
+      }
+    },
+    [mode, onChangeMode],
+  );
+
+  const handleModeChange = useCallback(
+    (next: WizardMode) => {
+      // 추천(A)대로 DELTA/REPLACE 선택 시 활성 PO 전체 ID를 basedOnPOIds로 자동 세팅
+      onChangeMode(next, next === "NEW" ? [] : existingPOIds);
+    },
+    [existingPOIds, onChangeMode],
+  );
 
   return (
     <div className="space-y-6">
@@ -170,7 +207,19 @@ export function StepMealPlanGroupSelect({
 
       {/* ★ R1-b1: 선택된 식단그룹의 기존 활성 PO 사전 안내 */}
       {value && (
-        <ExistingPONotice mealPlanGroupId={value.id} context="step1" />
+        <>
+          <ExistingPONotice
+            mealPlanGroupId={value.id}
+            context="step1"
+            onLoaded={handleExistingPOsLoaded}
+          />
+          {/* ★ R1-b2: 활성 PO 가 있을 때만 모드 선택 노출 */}
+          <WizardModeSelector
+            value={mode}
+            onChange={handleModeChange}
+            existingPOCount={existingPOCount}
+          />
+        </>
       )}
     </div>
   );

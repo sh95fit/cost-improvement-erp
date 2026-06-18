@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { createPurchaseOrdersBatchAction } from "@/features/purchase-order/actions/purchase-order.action";
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
 import { ExistingPONotice } from "./existing-po-notice";
+import { MODE_LABEL } from "./wizard-mode-selector";
 
 interface Props {
   mealPlanGroupId: string;
@@ -71,7 +72,15 @@ export function StepConfirmCreate({
       );
       return;
     }
+    // ★ R1-b2: 현 단계에서는 NEW 모드만 지원 (DELTA/REPLACE는 R1-b3/b4)
+    if (mode !== "NEW") {
+      toast.error(
+        `${MODE_LABEL[mode]} 모드는 아직 지원되지 않습니다 (R1-b3/b4 도입 예정). Step 1에서 "신규 발주" 를 선택하세요`,
+      );
+      return;
+    }
     setIsSubmitting(true);
+
     try {
       const items = validMapped.map((r) => ({
         supplierId: r.supplierItem!.supplierId,
@@ -144,6 +153,30 @@ export function StepConfirmCreate({
         </p>
       </div>
 
+      {/* ★ R1-b2: 현재 모드 배지 */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-gray-600">진행 모드:</span>
+        <span
+          className={`rounded px-2 py-0.5 text-xs font-medium ${
+            mode === "NEW"
+              ? "bg-blue-100 text-blue-800"
+              : "bg-amber-100 text-amber-800"
+          }`}
+        >
+          {MODE_LABEL[mode]}
+        </span>
+        {mode !== "NEW" && (
+          <span className="text-xs text-amber-700">
+            (현재 단계에서는 NEW 만 지원 — Step 1에서 변경하세요)
+          </span>
+        )}
+        {basedOnPOIds.length > 0 && (
+          <span className="text-xs text-gray-500">
+            기준 PO {basedOnPOIds.length}건
+          </span>
+        )}
+      </div>
+
       {/* ★ R1-b1: 동일 식단그룹의 기존 활성 PO 사전 안내 */}
       <ExistingPONotice mealPlanGroupId={mealPlanGroupId} context="step5" />
       <div className="grid grid-cols-2 gap-4">
@@ -214,10 +247,16 @@ export function StepConfirmCreate({
       <div className="flex justify-end">
         <Button
           onClick={handleSubmit}
-          disabled={isSubmitting || validMapped.length === 0}
+          disabled={
+            isSubmitting || validMapped.length === 0 || mode !== "NEW"
+          }
           className="bg-blue-600 hover:bg-blue-700 text-white"
         >
-          {isSubmitting ? "생성 중..." : `${validMapped.length}개 발주서 생성`}
+          {isSubmitting
+            ? "생성 중..."
+            : mode !== "NEW"
+            ? `${MODE_LABEL[mode]} 모드는 미지원`
+            : `${validMapped.length}개 발주서 생성`}
         </Button>
       </div>
     </div>

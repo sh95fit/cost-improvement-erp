@@ -431,6 +431,12 @@ export function POWizard() {
             onCountSourceChange={(cs) =>
               dispatch({ type: "SET_COUNT_SOURCE", payload: cs })
             }
+            // ★ R1-b2: 모드 선택
+            mode={state.mode}
+            basedOnPOIds={state.basedOnPOIds}
+            onChangeMode={(mode, basedOnPOIds) =>
+              dispatch({ type: "SET_MODE", payload: { mode, basedOnPOIds } })
+            }
           />
         )}
 
