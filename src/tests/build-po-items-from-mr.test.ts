@@ -145,7 +145,7 @@ describe('buildPOItemsFromMR', () => {
     expect(item.orderQuantity).toBe(250); // 5000g / 20 = 250박스
   });
 
-  it('재고가 충분한 자재 → mappedFullStock으로 분류', async () => {
+  it('재고가 전량 활용 → mappedFullStock으로 분류', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),
     ]);
@@ -170,10 +170,12 @@ describe('buildPOItemsFromMR', () => {
     expect(r.mappedPartialStock).toHaveLength(0);
     expect(r.mappedFullStock[0].status).toBe('MAPPED_FULL_STOCK');
     expect(r.summary.estimatedTotalAmount).toBe(0);
-    expect(r.summary.stockOffsetAmount).toBeGreaterThan(0);
+    // R1-a-fix: raw 기준 — 50,000g 재고로 19,000g 전량 활용 → gross 0.95박스 × 50,000 = 47,500원 차감
+    expect(r.summary.stockOffsetAmount).toBe(47500);
+    expect(r.summary.mappedGrossAmount).toBe(47500);
   });
 
-  it('재고가 일부 충당 → mappedPartialStock으로 분류 + 순필요량 반영', async () => {
+  it('재고가 일부 활용 → mappedPartialStock으로 분류 + 순필요량 반영 + raw 기반 offset', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),
     ]);
@@ -202,8 +204,11 @@ describe('buildPOItemsFromMR', () => {
     expect(item.netRequiredG).toBe(15000);
     expect(item.netRequiredInFromUnit).toBe(15);
     expect(item.orderQuantity).toBe(1); // 0.75 → ceil 1
-    expect(r.summary.stockOffsetAmount).toBeGreaterThan(0);
+    // R1-a-fix: raw 기준 offset = (0.95 - 0.75) × 50,000 = 10,000원
+    expect(r.summary.stockOffsetAmount).toBe(10000);
     expect(r.summary.estimatedTotalAmount).toBe(50000);
+    // gross(raw) = 0.95 × 50,000 = 47,500원
+    expect(r.summary.mappedGrossAmount).toBe(47500);
   });
 
   it('자재 마스터 미존재 → unmapped + 자재 정보 없음 경고', async () => {
@@ -220,7 +225,7 @@ describe('buildPOItemsFromMR', () => {
     expect(r.unmapped[0].warnings).toContain('자재 마스터를 찾을 수 없습니다');
   });
 
-  it('여러 자재 혼합 — 매핑/미매핑/재고충당 모두 발생', async () => {
+  it('여러 자재 혼합 — 매핑/미매핑/재고활용 모두 발생', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),    // mapped
       makeMaterial('mat_2', '마늘', false),   // unmapped
@@ -321,8 +326,8 @@ describe('buildPOItemsFromMR', () => {
   it('summary — mappedGrossAmount − stockOffsetAmount = estimatedTotalAmount', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),  // 전량 발주
-      makeMaterial('mat_2', '마늘', true),  // 일부 충당
-      makeMaterial('mat_3', '당근', true),  // 전체 충당
+      makeMaterial('mat_2', '마늘', true),  // 일부 활용
+      makeMaterial('mat_3', '당근', true),  // 전체 활용
     ]);
     (prisma.unitConversion.findMany as any).mockResolvedValue([
       { materialMasterId: 'mat_1', fromUnit: '포', toUnit: 'g', factor: 1000 },

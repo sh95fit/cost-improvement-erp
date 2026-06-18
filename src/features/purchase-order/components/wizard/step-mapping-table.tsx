@@ -59,19 +59,19 @@ export function StepMappingTable({
         </section>
       )}
 
-      {/* 매핑됨 섹션 (전량/일부 충당/전체 충당 통합) */}
+      {/* 매핑됨 섹션 (전량/일부 활용/전체 활용 통합) */}
       <section className="rounded-md border border-gray-200">
         <header className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-900">
           <span>
             ✓ 자동 매핑됨 ({allMapped.length}건)
             {mappedPartialStock.length > 0 && (
               <span className="ml-2 text-amber-700">
-                · 일부 충당 {mappedPartialStock.length}
+                · 일부 활용 {mappedPartialStock.length}
               </span>
             )}
             {mappedFullStock.length > 0 && (
               <span className="ml-2 text-gray-500">
-                · 전체 충당 {mappedFullStock.length}
+                · 전체 활용 {mappedFullStock.length}
               </span>
             )}
           </span>
@@ -155,12 +155,12 @@ function RowsTable({
                     </span>
                     {r.status === "MAPPED_PARTIAL_STOCK" && (
                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                        일부 충당
+                        일부 활용
                       </span>
                     )}
                     {r.status === "MAPPED_FULL_STOCK" && (
                       <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-700">
-                        전체 충당
+                        전체 활용
                       </span>
                     )}
                   </div>

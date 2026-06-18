@@ -149,13 +149,13 @@ export function StepLoadSummary({
               note={`매핑 합계 ${loadResult.summary.mappedGrossAmount.toLocaleString()}원`}
             />
             <SummaryCard
-              label="재고 충당"
+              label="재고 활용"
               value={
                 loadResult.summary.mappedPartialStockCount +
                 loadResult.summary.mappedFullStockCount
               }
               tone="muted"
-              note={`일부 ${loadResult.summary.mappedPartialStockCount} · 전체 ${loadResult.summary.mappedFullStockCount} · 차감 ${loadResult.summary.stockOffsetAmount.toLocaleString()}원`}
+              note={`일부 ${loadResult.summary.mappedPartialStockCount} · 전체 ${loadResult.summary.mappedFullStockCount} · 활용 ${loadResult.summary.stockOffsetAmount.toLocaleString()}원`}
             />
             <SummaryCard
               label="미매핑"
@@ -173,16 +173,9 @@ export function StepLoadSummary({
               </span>{" "}
               −{" "}
               <span className="font-mono">
-                재고 차감 {loadResult.summary.stockOffsetAmount.toLocaleString()}
+                재고 활용 {loadResult.summary.stockOffsetAmount.toLocaleString()}
               </span>
             </p>
-            <p className="mt-1 text-xl font-semibold">
-              {loadResult.summary.estimatedTotalAmount.toLocaleString()} 원
-            </p>
-          </div>
-
-          <div className="rounded-md border border-gray-200 p-4 text-sm">
-            <p className="text-gray-600">예상 발주 금액 (매핑 행만)</p>
             <p className="mt-1 text-xl font-semibold">
               {loadResult.summary.estimatedTotalAmount.toLocaleString()} 원
             </p>

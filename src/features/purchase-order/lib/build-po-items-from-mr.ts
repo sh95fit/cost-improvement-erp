@@ -13,8 +13,8 @@ import {
  *
  * Fix-R1-a (D10): 4분류 도입
  * - MAPPED            : 매핑됨 + 재고 0
- * - MAPPED_PARTIAL_STOCK: 매핑됨 + 재고 일부 충당 (감량 발주)
- * - MAPPED_FULL_STOCK : 매핑됨 + 재고 전량 충당 (발주 0)
+ * - MAPPED_PARTIAL_STOCK: 매핑됨 + 재고 일부 활용 (감량 발주)
+ * - MAPPED_FULL_STOCK : 매핑됨 + 재고 전량 활용 (발주 0)
  * - UNMAPPED          : 공급업체 미지정 / 자재 비활성 / 자재 정보 없음
  */
 export interface POItemCandidate {
@@ -53,9 +53,9 @@ export interface POItemCandidate {
 export interface BuildPOItemsResult {
   /** 매핑됨 — 재고 0 → 전량 발주 */
   mapped: POItemCandidate[];
-  /** 매핑됨 — 재고 일부 충당 → 감량 발주 */
+  /** 매핑됨 — 재고 일부 활용 → 감량 발주 */
   mappedPartialStock: POItemCandidate[];
-  /** 매핑됨 — 재고 전량 충당 → 발주 불필요 */
+  /** 매핑됨 — 재고 전량 활용 → 발주 불필요 */
   mappedFullStock: POItemCandidate[];
   /** 미매핑 — 공급업체 선택 필요 */
   unmapped: POItemCandidate[];
@@ -68,7 +68,7 @@ export interface BuildPOItemsResult {
     unmappedCount: number;
     /** 매핑 합계 (재고 차감 전 가정) — 매핑된 모든 행에서 currentPrice × baseOrderQty */
     mappedGrossAmount: number;
-    /** 재고 충당으로 차감된 금액 — partial/full에서만 발생 */
+    /** 재고 활용으로 차감된 금액 — partial/full에서만 발생 (raw 수량 기준) */
     stockOffsetAmount: number;
     /** 실제 예상 발주 금액 = mappedGrossAmount - stockOffsetAmount */
     estimatedTotalAmount: number;
@@ -280,30 +280,38 @@ export async function buildPOItemsFromMR(
       continue;
     }
 
-    // 이하 매핑된 케이스 — 재고 충당 정도로 세분
-    const grossOrder = calcGross.orderQuantity ?? 0;
+    // 이하 매핑된 케이스 — 재고 활용 정도로 세분
+    //
+    // ★ R1-a-fix: stockOffsetAmount 는 박스 올림 전(raw 수량) 기준으로 계산한다.
+    //   이유: 발주 수량은 박스 단위로 올림되므로 (예: 0.95박스 → 1박스, 0.75박스 → 1박스),
+    //   gross/net 양쪽 다 올림된 박스 수량으로 차이를 계산하면 0이 나와 의미가 소실된다.
+    //   사용자에게 "재고 활용으로 얼마만큼 차감되었는지" 보여주는 게 본래 목적이므로
+    //   raw 수량 × 단가로 계산한다.
+    //   estimatedTotalAmount 는 실제 발주 금액(박스 올림 후)을 유지한다.
+    const grossOrderRaw = calcGross.orderQuantityRaw ?? 0;
+    const netOrderRaw = calcNet.orderQuantityRaw ?? 0;
     const netOrder = calcNet.orderQuantity ?? 0;
-    const grossAmt = grossOrder * dsi.currentPrice;
+    const grossAmtRaw = grossOrderRaw * dsi.currentPrice;
     const netAmt = netOrder * dsi.currentPrice;
-    const offsetAmt = Math.max(0, grossAmt - netAmt);
+    const offsetAmt = Math.max(0, (grossOrderRaw - netOrderRaw) * dsi.currentPrice);
 
     if (stockG <= 0) {
       // 재고 없음 — 일반 mapped
       candidate.status = 'MAPPED';
       mapped.push(candidate);
-      mappedGrossAmount += grossAmt;
+      mappedGrossAmount += grossAmtRaw;
       estimatedTotalAmount += netAmt;
     } else if (netOrder === 0) {
-      // 재고가 전량 충당
+      // 재고가 전량 활용
       candidate.status = 'MAPPED_FULL_STOCK';
       mappedFullStock.push(candidate);
-      mappedGrossAmount += grossAmt;
-      stockOffsetAmount += grossAmt; // 전량 차감
+      mappedGrossAmount += grossAmtRaw;
+      stockOffsetAmount += grossAmtRaw; // 전량 차감 (raw 기준)
     } else {
-      // 재고 일부 충당
+      // 재고 일부 활용
       candidate.status = 'MAPPED_PARTIAL_STOCK';
       mappedPartialStock.push(candidate);
-      mappedGrossAmount += grossAmt;
+      mappedGrossAmount += grossAmtRaw;
       stockOffsetAmount += offsetAmt;
       estimatedTotalAmount += netAmt;
     }

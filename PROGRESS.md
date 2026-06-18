@@ -92,10 +92,10 @@
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase 4-B'-5c (위저드 UI 5단계 1차 완성)
-- **다음 진행 항목**: M-Fix (MaterialMaster 품목명 중복 방지) → S-Fix → 4-B'-5c-Fix-R1 → Phase 1.6 (D9) → 4-B'-5c-Fix-R2 → Phase 4-C
-- **현재 블로커**: 없음 (단, Phase 1.6 적용 전까지 위저드의 "출고일" 표기는 라벨만 변경 / 컬럼은 deliveryDate 유지)
-- **누적 테스트**: 343 PASS / 2 skipped / 0 fail (4-B'-5a·5b는 thin wrapper / UI-only로 테스트 미추가)
+- **현재 기준 완료 지점**: Sprint 3 Phase 4-B'-5c-Fix-R1-a (위저드 4분류 도입, commit `5afb0113`)
+- **다음 진행 항목**: R1-a-fix (stockOffset 계산 + 명칭) → R1-b1 (멱등성) → R1-b2 (모드 UI) → R1-b3 (DELTA) → R1-b4 (REPLACE) → M-Fix·S-Fix는 D14에서 완료 → Phase 1.6 (D9) → R1-c (Step 3 UX·단위환산 인라인) → Phase 4-C
+- **현재 블로커**: R1-a-fix 테스트 1건 실패 — `stockOffsetAmount` 계산이 박스 올림 후 차이로 계산되어 partial 시나리오에서 0 반환. raw 수량 기반으로 수정 필요
+- **누적 테스트**: 367 PASS / 1 fail / 2 skipped (M-Fix-R1 +24, R1-a +5)
 - **TypeScript errors**: 0
 - **백엔드 위저드 파이프라인**: 완성 (Step 1 액션 → MR 조회 → 환산 → 후보 분류 → 배치 생성 → PriceHistory 적층)
 
@@ -127,6 +127,13 @@
 | **M-Fix** | MaterialMaster (companyId, name) unique 가드 + 마이그레이션 (사용자 피드백 B-4) | 🔄 **착수 대기** | - |
 | **S-Fix** | SupplierItem 삭제 의존성 가드 + 도메인 에러 메시지 (사용자 피드백 B-5) | ⬜ | - |
 | **4-B'-5c-Fix-R1** | 위저드 UI 개선 R1 (Step 2 4분류 카드 / Step 3 드롭다운 위·아래 자동 / 순필요·포장단위 열 분리 / Step 4 계층·공급업체 뷰 / Step 5 문구) | ⬜ | - |
+| **R1-a** | 4분류 도입 (mapped / partial / full / unmapped) + Step 2 카드 + Step 3 통합 섹션 | ✅ | `5afb0113` |
+| **R1-a-fix** | stockOffsetAmount raw 기반 계산 + "충당"→"활용" 명칭 통일 + invariant 테스트 완화 | 🔄 **진행 중** | - |
+| **R1-b1** | 멱등성 키 (`PurchaseOrderBatch` 테이블) + Step 1·5 기존 PO 사전 안내 | ⬜ | - |
+| **R1-b2** | 위저드 모드 선택 UI (NEW/DELTA/REPLACE 라디오) — DELTA·REPLACE는 골격만 disabled | ⬜ | - |
+| **R1-b3** | DELTA 모드 본격 구현 + `POAdjustmentLog` 신규 모델 + 기존 PO에 item 병합 + 이력 적층 | ⬜ | - |
+| **R1-b4** | REPLACE 모드 본격 구현 (DRAFT 한정, 일괄 CANCELLED 전이 + 신규 PO 생성 원자성) | ⬜ | - |
+| **R1-c** | Step 3 SupplierItemPicker portal 전환 + 검색 + ✓ 표시 + 단위환산 인라인 모달 | ⬜ | - |
 | **1.6** | **D9 적용**: PurchaseOrder.deliveryDate → outboundDate 마이그레이션 + 서비스·액션·UI 일괄 갱신 | ⬜ | - |
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 (Step 5 품목별 예상 입고일 / Step 3 단위환산 인라인 등록 / Step 4 라인업 뷰 — 백엔드 lineupBreakdown 추가) | ⬜ | - |
 | 4-C | 상세보기 + 상태 전이 다이얼로그 (Fix-R2 완료 후 착수) | ⬜ | - |
@@ -453,6 +460,53 @@ DB·서비스 차원에서 사전 방지 필요.
 - **의존성 5종**: `PurchaseOrderItem`, `MealPlanSlot`, `MaterialMaster.defaultSupplierItem`, `SubsidiaryMaster.defaultSupplierItem`, `SupplierItemPriceHistory`.
 - **변경**: 삭제 전 의존성 카운트 조회 → 0이 아니면 도메인 에러 `SUPPLIER_ITEM_IN_USE` 반환, 메시지에 어떤 엔티티에 N건 연결되어 있는지 명시.
 - **예외**: `SupplierItemPriceHistory` 는 가격 이력이므로 함께 삭제 (CASCADE 또는 사전 정리).
+
+#### Phase 4-B'-5c-Fix-R1 — 위저드 모드 분리 결정 (R1-b 그룹)
+
+##### 배경
+사용자 피드백:
+1. 회사에 발주 담당자가 복수 존재할 때, 동시 위저드 실행으로 PO가 두 벌 생성되는 사고 우려
+2. 식단 식수가 변경/조정되면 기존 PO를 수정하거나 덮어쓸 수 있어야 함
+
+##### 결정 — 위저드 3가지 모드 도입
+
+| 모드 | 정의 | 적용 가능 상태 | 동작 |
+|------|------|----------------|------|
+| **NEW (신규)** | 별도 PO 추가 생성 | 무관 | 기존 PO 유지 + 신규 PO 생성. 분할 발주 / 신규 자재 발주 |
+| **DELTA (차분)** | 기존 PO에 병합 | DRAFT / SUBMITTED / APPROVED | 동일 (material × line × location × supplier) item은 수량 합산 + `adjustedQuantity` 기록, 신규 자재는 item 추가. `POAdjustmentLog`에 시계열 이력 적층 |
+| **REPLACE (덮어쓰기)** | 기존 PO 취소 후 재생성 | **DRAFT 전용** | 대상 PO 전체를 `CANCELLED` 전이 (사유: "재산출에 의한 덮어쓰기") + 신규 PO 생성을 단일 트랜잭션. SUBMITTED·APPROVED는 차단 |
+
+`RECEIVED` / `CANCELLED` PO는 어느 모드에서도 대상 제외.
+
+##### 멱등성 키 정책 (R1-b1)
+모든 모드 공통으로 위저드 세션마다 `idempotencyKey` 발급 (Step 1 진입 시 1회). batch service는 `PurchaseOrderBatch.idempotencyKey` unique 제약으로 중복 제출을 멱등 처리. 동일 키 재호출 시 기존 batch의 PO 목록을 그대로 반환.
+
+세션 토큰은 클라이언트의 `localStorage` 에 `mealPlanGroupId + countSource` 단위로 저장 — 새로고침·재진입 시 같은 토큰 재사용. 위저드 완료(`onClearPersistence`) 또는 24시간 경과 시 삭제.
+
+##### 사전 안내 카드 (R1-b1)
+Step 1 (식단 그룹 선택 직후) 및 Step 5 (생성 직전) 에 동일 식단그룹의 활성 PO(`status NOT IN (CANCELLED)`) 목록을 표시.
+
+표시 정보: 발주번호 / 상태 뱃지 / 라인 / 공급사 / 총액 / 생성자 / 생성시각 + 상세보기 링크.
+
+차단 아닌 **정보 제공**. 사용자가 모드를 명시 선택하면 그에 맞춰 진행.
+
+##### DELTA 병합 규칙 (R1-b3)
+- 병합 키: `(mealPlanGroupId, materialMasterId, locationId, productionLineId, supplierId)` — 즉 같은 자재가 같은 라인·공장·공급사로 이미 발주되어 있으면 동일 PO의 동일 item에 합산
+- 합산 시:
+  - `PurchaseOrderItem.quantity` = 기존값 + 추가분
+  - `PurchaseOrderItem.systemQuantity` = 새 MR 산출의 raw 값
+  - `PurchaseOrderItem.adjustedQuantity` = 합산 후 최종 발주 수량
+  - `PurchaseOrderItem.adjustmentReason` = "식수 변경 재산출 (N→M명, by {user}, {timestamp})"
+- 신규 자재 (기존 PO에 없는 자재)는 적합한 PO(같은 라인·공장·공급사) 또는 신규 PO로 추가
+- `POAdjustmentLog` 시계열 이력에 행별로 적층 (before/after qty, reason, actorUserId, createdAt)
+- `PurchaseOrder.totalAmount` 재계산
+- 상태 전이는 발생하지 않음 (DRAFT는 DRAFT 유지, SUBMITTED는 SUBMITTED 유지)
+- SUBMITTED·APPROVED PO 수정 시 `AuditLog`에 추가 기록
+
+##### REPLACE 가드 (R1-b4)
+- 대상 PO 중 하나라도 `status NOT IN (DRAFT, CANCELLED)` 이면 차단. 에러: `REPLACE_BLOCKED_BY_SUBMITTED_PO` — UI 메시지: "발주등록 또는 발주확정 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
+- 트랜잭션: 대상 PO 전체를 `CANCELLED` 전이 (cancelReason="REGENERATED_FROM_WIZARD_REPLACE: {새 batchId}") + 신규 PO 생성 + 새 batch 행 생성 — 모두 단일 `prisma.$transaction`
+- 신규 PO의 `note` 메타에 "PO-001, PO-002 대체 (REPLACE by {user})" 기록
 
 ---
 
