@@ -6,8 +6,9 @@ import { SupplierItemPicker } from "./supplier-item-picker";
 
 interface Props {
   mapped: POItemCandidate[];
+  mappedPartialStock: POItemCandidate[];
+  mappedFullStock: POItemCandidate[];
   unmapped: POItemCandidate[];
-  noOrderNeeded: POItemCandidate[];
   onUpdateQuantity: (materialRequirementId: string, value: number) => void;
   onUpdateUnitPrice: (materialRequirementId: string, value: number) => void;
   onResolveUnmapped: (
@@ -18,13 +19,16 @@ interface Props {
 
 export function StepMappingTable({
   mapped,
+  mappedPartialStock,
+  mappedFullStock,
   unmapped,
-  noOrderNeeded,
   onUpdateQuantity,
   onUpdateUnitPrice,
   onResolveUnmapped,
 }: Props) {
-  const totalAmount = mapped.reduce(
+  // Fix-R1-a (D10·D11): 매핑된 모든 행(전량/일부/전체)을 하나의 섹션에 통합. 뱃지로 구분.
+  const allMapped = [...mapped, ...mappedPartialStock, ...mappedFullStock];
+  const totalAmount = allMapped.reduce(
     (sum, r) => sum + (r.orderQuantity ?? 0) * (r.unitPrice ?? 0),
     0,
   );
@@ -55,10 +59,22 @@ export function StepMappingTable({
         </section>
       )}
 
-      {/* 매핑됨 섹션 */}
+      {/* 매핑됨 섹션 (전량/일부 충당/전체 충당 통합) */}
       <section className="rounded-md border border-gray-200">
         <header className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-900">
-          <span>✓ 자동 매핑됨 ({mapped.length}건)</span>
+          <span>
+            ✓ 자동 매핑됨 ({allMapped.length}건)
+            {mappedPartialStock.length > 0 && (
+              <span className="ml-2 text-amber-700">
+                · 일부 충당 {mappedPartialStock.length}
+              </span>
+            )}
+            {mappedFullStock.length > 0 && (
+              <span className="ml-2 text-gray-500">
+                · 전체 충당 {mappedFullStock.length}
+              </span>
+            )}
+          </span>
           <span className="text-gray-600">
             예상 합계:{" "}
             <span className="font-semibold text-gray-900">
@@ -66,13 +82,13 @@ export function StepMappingTable({
             </span>
           </span>
         </header>
-        {mapped.length === 0 ? (
+        {allMapped.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-500">
             자동 매핑된 자재가 없습니다.
           </p>
         ) : (
           <RowsTable
-            rows={mapped}
+            rows={allMapped}
             mode="mapped"
             onUpdateQuantity={onUpdateQuantity}
             onUpdateUnitPrice={onUpdateUnitPrice}
@@ -80,22 +96,6 @@ export function StepMappingTable({
           />
         )}
       </section>
-
-      {/* 발주 불필요 섹션 */}
-      {noOrderNeeded.length > 0 && (
-        <section className="rounded-md border border-gray-200 bg-gray-50">
-          <header className="border-b border-gray-200 px-4 py-2 text-sm font-medium text-gray-700">
-            재고 충당 — 발주 불필요 ({noOrderNeeded.length}건)
-          </header>
-          <RowsTable
-            rows={noOrderNeeded}
-            mode="noOrderNeeded"
-            onUpdateQuantity={onUpdateQuantity}
-            onUpdateUnitPrice={onUpdateUnitPrice}
-            onResolveUnmapped={onResolveUnmapped}
-          />
-        </section>
-      )}
     </div>
   );
 }
@@ -111,7 +111,7 @@ function RowsTable({
   onResolveUnmapped,
 }: {
   rows: POItemCandidate[];
-  mode: "mapped" | "unmapped" | "noOrderNeeded";
+  mode: "mapped" | "unmapped";
   onUpdateQuantity: (id: string, v: number) => void;
   onUpdateUnitPrice: (id: string, v: number) => void;
   onResolveUnmapped: (
@@ -119,8 +119,9 @@ function RowsTable({
     si: SupplierItemWithSupplier,
   ) => void;
 }) {
+  // mapped 모드면 모든 행이 편집 가능. MAPPED_FULL_STOCK는 orderQuantity=0이라
+  // 사용자가 직접 늘리지 않는 한 발주서에 포함되지 않음.
   const editable = mode === "mapped";
-  const disabled = mode === "noOrderNeeded";
 
   return (
     <div className="overflow-x-auto">
@@ -148,8 +149,20 @@ function RowsTable({
                 className="border-t border-gray-100 align-middle"
               >
                 <td className="px-3 py-2">
-                  <div className="font-medium text-gray-900">
-                    {r.materialName}
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-gray-900">
+                      {r.materialName}
+                    </span>
+                    {r.status === "MAPPED_PARTIAL_STOCK" && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                        일부 충당
+                      </span>
+                    )}
+                    {r.status === "MAPPED_FULL_STOCK" && (
+                      <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-700">
+                        전체 충당
+                      </span>
+                    )}
                   </div>
                   <div className="text-gray-500">{r.materialCode}</div>
                 </td>
@@ -209,11 +222,7 @@ function RowsTable({
                       className="w-20 rounded border border-gray-300 px-2 py-1 text-right"
                     />
                   ) : (
-                    <span
-                      className={
-                        disabled ? "text-gray-400" : "text-gray-700"
-                      }
-                    >
+                    <span className="text-gray-700">
                       {r.orderQuantity ?? "—"}
                     </span>
                   )}
@@ -234,11 +243,7 @@ function RowsTable({
                       className="w-24 rounded border border-gray-300 px-2 py-1 text-right"
                     />
                   ) : (
-                    <span
-                      className={
-                        disabled ? "text-gray-400" : "text-gray-700"
-                      }
-                    >
+                    <span className="text-gray-700">
                       {r.unitPrice != null
                         ? r.unitPrice.toLocaleString()
                         : "—"}

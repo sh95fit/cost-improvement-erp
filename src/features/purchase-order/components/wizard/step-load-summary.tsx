@@ -55,8 +55,12 @@ export function StepLoadSummary({
         return;
       }
       onLoadSuccess(res.data);
+      const mappedTotal =
+        res.data.summary.mappedCount +
+        res.data.summary.mappedPartialStockCount +
+        res.data.summary.mappedFullStockCount;
       toast.success(
-        `자재 ${res.data.summary.totalCount}건을 로드했습니다 (매핑됨 ${res.data.summary.mappedCount} · 미매핑 ${res.data.summary.unmappedCount})`,
+        `자재 ${res.data.summary.totalCount}건을 로드했습니다 (매핑 ${mappedTotal} · 미매핑 ${res.data.summary.unmappedCount})`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "자재 로드 실패";
@@ -136,8 +140,22 @@ export function StepLoadSummary({
             />
             <SummaryCard
               label="자동 매핑됨"
-              value={loadResult.summary.mappedCount}
+              value={
+                loadResult.summary.mappedCount +
+                loadResult.summary.mappedPartialStockCount +
+                loadResult.summary.mappedFullStockCount
+              }
               tone="success"
+              note={`매핑 합계 ${loadResult.summary.mappedGrossAmount.toLocaleString()}원`}
+            />
+            <SummaryCard
+              label="재고 충당"
+              value={
+                loadResult.summary.mappedPartialStockCount +
+                loadResult.summary.mappedFullStockCount
+              }
+              tone="muted"
+              note={`일부 ${loadResult.summary.mappedPartialStockCount} · 전체 ${loadResult.summary.mappedFullStockCount} · 차감 ${loadResult.summary.stockOffsetAmount.toLocaleString()}원`}
             />
             <SummaryCard
               label="미매핑"
@@ -145,12 +163,22 @@ export function StepLoadSummary({
               tone="warning"
               note="공급업체 선택 필요"
             />
-            <SummaryCard
-              label="재고 충당"
-              value={loadResult.summary.noOrderNeededCount}
-              tone="muted"
-              note="발주 불필요"
-            />
+          </div>
+
+          <div className="rounded-md border border-gray-200 p-4 text-sm">
+            <p className="text-gray-600">
+              예상 발주 금액 ={" "}
+              <span className="font-mono">
+                매핑 합계 {loadResult.summary.mappedGrossAmount.toLocaleString()}
+              </span>{" "}
+              −{" "}
+              <span className="font-mono">
+                재고 차감 {loadResult.summary.stockOffsetAmount.toLocaleString()}
+              </span>
+            </p>
+            <p className="mt-1 text-xl font-semibold">
+              {loadResult.summary.estimatedTotalAmount.toLocaleString()} 원
+            </p>
           </div>
 
           <div className="rounded-md border border-gray-200 p-4 text-sm">

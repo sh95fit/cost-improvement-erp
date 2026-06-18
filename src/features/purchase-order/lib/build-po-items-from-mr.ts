@@ -11,32 +11,25 @@ import {
 /**
  * 발주 후보 항목 1건
  *
- * UI Step 3 테이블의 한 행에 매핑됨.
- * - 매핑됨(MAPPED): supplierItem 채워짐 + orderQuantity 산출됨
- * - 미매핑(UNMAPPED): supplierItem=null, orderQuantity=null
+ * Fix-R1-a (D10): 4분류 도입
+ * - MAPPED            : 매핑됨 + 재고 0
+ * - MAPPED_PARTIAL_STOCK: 매핑됨 + 재고 일부 충당 (감량 발주)
+ * - MAPPED_FULL_STOCK : 매핑됨 + 재고 전량 충당 (발주 0)
+ * - UNMAPPED          : 공급업체 미지정 / 자재 비활성 / 자재 정보 없음
  */
 export interface POItemCandidate {
-  /** MR 행 ID (1:1 추적용) */
   materialRequirementId: string;
-  /** 자재 마스터 정보 */
   materialMasterId: string;
   materialName: string;
   materialCode: string;
-  /** ★ M-Fix-R1: 자재 활성 여부 (false면 위저드에서 경고) */
   isMaterialActive: boolean;
-  /** 공장/라인 */
   locationId: string;
   productionLineId: string;
-  /** 필요량 (g) */
   requiredQtyG: number;
-  /** 현재 재고 (g) — placeholder 0 */
   stockQtyG: number;
-  /** 순필요량 (g) = max(0, required - stock) */
   netRequiredG: number;
-  /** 환산전 단위 표시 */
   fromUnitName: string | null;
   netRequiredInFromUnit: number | null;
-  /** 매핑된 공급업체 품목 (즐겨찾기) — 없으면 null */
   supplierItem: {
     id: string;
     supplierId: string;
@@ -46,38 +39,44 @@ export interface POItemCandidate {
     supplyUnitQty: number;
     currentPrice: number;
   } | null;
-  /** 발주 단위 수량 (ceil 적용) — 미매핑 시 null */
   orderQuantity: number | null;
-  /** 발주 단위 수량 (소수 원시값) */
   orderQuantityRaw: number | null;
-  /** UI 행 단위 가격 (currentPrice 자동 채움, 사용자 편집 가능) */
   unitPrice: number | null;
-  /** 매핑 상태 */
-  status: 'MAPPED' | 'UNMAPPED' | 'NO_ORDER_NEEDED';
-  /** 경고/안내 메시지 */
+  status:
+    | 'MAPPED'
+    | 'MAPPED_PARTIAL_STOCK'
+    | 'MAPPED_FULL_STOCK'
+    | 'UNMAPPED';
   warnings: string[];
 }
 
 export interface BuildPOItemsResult {
-  /** 매핑됨 — 즐겨찾기로 자동 매핑된 항목 */
+  /** 매핑됨 — 재고 0 → 전량 발주 */
   mapped: POItemCandidate[];
+  /** 매핑됨 — 재고 일부 충당 → 감량 발주 */
+  mappedPartialStock: POItemCandidate[];
+  /** 매핑됨 — 재고 전량 충당 → 발주 불필요 */
+  mappedFullStock: POItemCandidate[];
   /** 미매핑 — 공급업체 선택 필요 */
   unmapped: POItemCandidate[];
-  /** 재고 충당으로 발주 불필요한 항목 */
-  noOrderNeeded: POItemCandidate[];
-  /** 전체 합계 (집계용) */
+  /** 합계 (Step 2 카드용) */
   summary: {
     totalCount: number;
     mappedCount: number;
+    mappedPartialStockCount: number;
+    mappedFullStockCount: number;
     unmappedCount: number;
-    noOrderNeededCount: number;
-    estimatedTotalAmount: number; // 매핑된 행만 합산
+    /** 매핑 합계 (재고 차감 전 가정) — 매핑된 모든 행에서 currentPrice × baseOrderQty */
+    mappedGrossAmount: number;
+    /** 재고 충당으로 차감된 금액 — partial/full에서만 발생 */
+    stockOffsetAmount: number;
+    /** 실제 예상 발주 금액 = mappedGrossAmount - stockOffsetAmount */
+    estimatedTotalAmount: number;
   };
 }
 
 export interface BuildPOItemsInput {
   companyId: string;
-  /** MR 목록 (이미 조회된 상태로 전달 — 보통 MaterialRequirement[]) */
   materialRequirements: Array<{
     id: string;
     materialMasterId: string;
@@ -86,20 +85,9 @@ export interface BuildPOItemsInput {
     requiredQty: number;
     unit: string;
   }>;
-  /** 재고 어댑터 (기본: noopInventoryAdapter) */
   inventoryAdapter?: InventoryAdapter;
 }
 
-/**
- * MR 목록을 받아 위저드 Step 3에 표시할 발주 후보 항목을 생성
- *
- * 흐름:
- *   1) MR 목록 → 자재 ID 추출 → MaterialMaster + defaultSupplierItem(+supplier+supplyUnit) 일괄 조회
- *   2) UnitConversion 일괄 조회 (자재별 fromUnit→g 환산 정보)
- *   3) 공장별로 그룹화하여 재고 일괄 조회
- *   4) 각 MR에 대해 calculateOrderQuantity() 호출
- *   5) 매핑됨/미매핑/발주불필요 3그룹으로 분류
- */
 export async function buildPOItemsFromMR(
   input: BuildPOItemsInput,
 ): Promise<BuildPOItemsResult> {
@@ -109,13 +97,17 @@ export async function buildPOItemsFromMR(
   if (mrs.length === 0) {
     return {
       mapped: [],
+      mappedPartialStock: [],
+      mappedFullStock: [],
       unmapped: [],
-      noOrderNeeded: [],
       summary: {
         totalCount: 0,
         mappedCount: 0,
+        mappedPartialStockCount: 0,
+        mappedFullStockCount: 0,
         unmappedCount: 0,
-        noOrderNeededCount: 0,
+        mappedGrossAmount: 0,
+        stockOffsetAmount: 0,
         estimatedTotalAmount: 0,
       },
     };
@@ -140,8 +132,7 @@ export async function buildPOItemsFromMR(
   });
   const materialMap = new Map(materials.map((m) => [m.id, m]));
 
-  // 2) UnitConversion 일괄 조회 (자재별 단위 환산 정보)
-  //    자재의 unit(=환산전 단위) → "g" 환산 정보를 찾음
+  // 2) UnitConversion 일괄 조회
   const unitConversions = await prisma.unitConversion.findMany({
     where: {
       companyId: input.companyId,
@@ -167,7 +158,7 @@ export async function buildPOItemsFromMR(
     }
     locationToMaterials.get(mr.locationId)!.add(mr.materialMasterId);
   }
-  const stockMap = new Map<string, number>(); // key: `${locationId}:${materialId}`
+  const stockMap = new Map<string, number>();
   for (const [locationId, mIds] of locationToMaterials) {
     const partial = await adapter.getStockGByMaterials(
       input.companyId,
@@ -181,20 +172,22 @@ export async function buildPOItemsFromMR(
 
   // 4) 각 MR 처리
   const mapped: POItemCandidate[] = [];
+  const mappedPartialStock: POItemCandidate[] = [];
+  const mappedFullStock: POItemCandidate[] = [];
   const unmapped: POItemCandidate[] = [];
-  const noOrderNeeded: POItemCandidate[] = [];
+  let mappedGrossAmount = 0;
+  let stockOffsetAmount = 0;
   let estimatedTotalAmount = 0;
 
   for (const mr of mrs) {
     const material = materialMap.get(mr.materialMasterId);
     if (!material) {
-      // 자재가 삭제됐거나 다른 회사 — 미매핑으로 분류
       unmapped.push({
         materialRequirementId: mr.id,
         materialMasterId: mr.materialMasterId,
         materialName: '(자재 정보 없음)',
         materialCode: '-',
-        isMaterialActive: false,        // ★ M-Fix-R1
+        isMaterialActive: false,
         locationId: mr.locationId,
         productionLineId: mr.productionLineId,
         requiredQtyG: mr.requiredQty,
@@ -222,9 +215,18 @@ export async function buildPOItemsFromMR(
         }
       : null;
 
-    const calc: CalculateOrderQuantityResult = calculateOrderQuantity({
+    // 재고 차감 후 (실제 발주)
+    const calcNet: CalculateOrderQuantityResult = calculateOrderQuantity({
       requiredQtyG: mr.requiredQty,
       stockQtyG: stockG,
+      unitConversion: conv,
+      supplierItem: supplierItemInput,
+    });
+
+    // 재고 차감 전 (gross — Step 2 카드 차감 표시용)
+    const calcGross: CalculateOrderQuantityResult = calculateOrderQuantity({
+      requiredQtyG: mr.requiredQty,
+      stockQtyG: 0,
       unitConversion: conv,
       supplierItem: supplierItemInput,
     });
@@ -234,14 +236,14 @@ export async function buildPOItemsFromMR(
       materialMasterId: mr.materialMasterId,
       materialName: material.name,
       materialCode: material.code,
-      isMaterialActive: material.isActive,  // ★ M-Fix-R1
+      isMaterialActive: material.isActive,
       locationId: mr.locationId,
       productionLineId: mr.productionLineId,
       requiredQtyG: mr.requiredQty,
       stockQtyG: stockG,
-      netRequiredG: calc.netRequiredG,
+      netRequiredG: calcNet.netRequiredG,
       fromUnitName: conv?.fromUnit ?? null,
-      netRequiredInFromUnit: calc.netRequiredInFromUnit,
+      netRequiredInFromUnit: calcNet.netRequiredInFromUnit,
       supplierItem: dsi
         ? {
             id: dsi.id,
@@ -253,39 +255,73 @@ export async function buildPOItemsFromMR(
             currentPrice: dsi.currentPrice,
           }
         : null,
-      orderQuantity: calc.orderQuantity,
-      orderQuantityRaw: calc.orderQuantityRaw,
+      orderQuantity: calcNet.orderQuantity,
+      orderQuantityRaw: calcNet.orderQuantityRaw,
       unitPrice: dsi ? dsi.currentPrice : null,
       status: 'UNMAPPED',
       warnings: [
-        ...calc.warnings,
-        ...(material.isActive ? [] : ['비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요']),  // ★ M-Fix-R1
+        ...calcNet.warnings,
+        ...(material.isActive
+          ? []
+          : ['비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요']),
       ],
     };
 
-    // 분류
-    if (calc.netRequiredG === 0 && calc.orderQuantity === 0) {
-      candidate.status = 'NO_ORDER_NEEDED';
-      noOrderNeeded.push(candidate);
-    } else if (dsi && !calc.requiresManualInput && calc.orderQuantity !== null && material.isActive) {
-      candidate.status = 'MAPPED';
-      mapped.push(candidate);
-      estimatedTotalAmount += calc.orderQuantity * dsi.currentPrice;
-    } else {
+    // ── 분류 ──
+    // (1) 매핑 불가 (자재 비활성 / 즐겨찾기 없음 / 수동 입력 필요)
+    if (
+      !dsi ||
+      calcNet.requiresManualInput ||
+      calcNet.orderQuantity === null ||
+      !material.isActive
+    ) {
       candidate.status = 'UNMAPPED';
       unmapped.push(candidate);
+      continue;
+    }
+
+    // 이하 매핑된 케이스 — 재고 충당 정도로 세분
+    const grossOrder = calcGross.orderQuantity ?? 0;
+    const netOrder = calcNet.orderQuantity ?? 0;
+    const grossAmt = grossOrder * dsi.currentPrice;
+    const netAmt = netOrder * dsi.currentPrice;
+    const offsetAmt = Math.max(0, grossAmt - netAmt);
+
+    if (stockG <= 0) {
+      // 재고 없음 — 일반 mapped
+      candidate.status = 'MAPPED';
+      mapped.push(candidate);
+      mappedGrossAmount += grossAmt;
+      estimatedTotalAmount += netAmt;
+    } else if (netOrder === 0) {
+      // 재고가 전량 충당
+      candidate.status = 'MAPPED_FULL_STOCK';
+      mappedFullStock.push(candidate);
+      mappedGrossAmount += grossAmt;
+      stockOffsetAmount += grossAmt; // 전량 차감
+    } else {
+      // 재고 일부 충당
+      candidate.status = 'MAPPED_PARTIAL_STOCK';
+      mappedPartialStock.push(candidate);
+      mappedGrossAmount += grossAmt;
+      stockOffsetAmount += offsetAmt;
+      estimatedTotalAmount += netAmt;
     }
   }
 
   return {
     mapped,
+    mappedPartialStock,
+    mappedFullStock,
     unmapped,
-    noOrderNeeded,
     summary: {
       totalCount: mrs.length,
       mappedCount: mapped.length,
+      mappedPartialStockCount: mappedPartialStock.length,
+      mappedFullStockCount: mappedFullStock.length,
       unmappedCount: unmapped.length,
-      noOrderNeededCount: noOrderNeeded.length,
+      mappedGrossAmount,
+      stockOffsetAmount,
       estimatedTotalAmount,
     },
   };

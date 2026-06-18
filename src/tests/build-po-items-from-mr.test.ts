@@ -145,7 +145,7 @@ describe('buildPOItemsFromMR', () => {
     expect(item.orderQuantity).toBe(250); // 5000g / 20 = 250박스
   });
 
-  it('재고가 충분한 자재 → noOrderNeeded로 분류', async () => {
+  it('재고가 충분한 자재 → mappedFullStock으로 분류', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),
     ]);
@@ -165,13 +165,15 @@ describe('buildPOItemsFromMR', () => {
       inventoryAdapter: stubAdapter,
     });
 
-    expect(r.noOrderNeeded).toHaveLength(1);
+    expect(r.mappedFullStock).toHaveLength(1);
     expect(r.mapped).toHaveLength(0);
-    expect(r.noOrderNeeded[0].status).toBe('NO_ORDER_NEEDED');
+    expect(r.mappedPartialStock).toHaveLength(0);
+    expect(r.mappedFullStock[0].status).toBe('MAPPED_FULL_STOCK');
     expect(r.summary.estimatedTotalAmount).toBe(0);
+    expect(r.summary.stockOffsetAmount).toBeGreaterThan(0);
   });
 
-  it('재고가 일부 충당 → 순필요량 반영', async () => {
+  it('재고가 일부 충당 → mappedPartialStock으로 분류 + 순필요량 반영', async () => {
     (prisma.materialMaster.findMany as any).mockResolvedValue([
       makeMaterial('mat_1', '양파', true),
     ]);
@@ -191,12 +193,17 @@ describe('buildPOItemsFromMR', () => {
       inventoryAdapter: stubAdapter,
     });
 
-    expect(r.mapped).toHaveLength(1);
-    const item = r.mapped[0];
+    expect(r.mapped).toHaveLength(0);
+    expect(r.mappedPartialStock).toHaveLength(1);
+    expect(r.mappedFullStock).toHaveLength(0);
+    const item = r.mappedPartialStock[0];
+    expect(item.status).toBe('MAPPED_PARTIAL_STOCK');
     expect(item.stockQtyG).toBe(4000);
     expect(item.netRequiredG).toBe(15000);
     expect(item.netRequiredInFromUnit).toBe(15);
     expect(item.orderQuantity).toBe(1); // 0.75 → ceil 1
+    expect(r.summary.stockOffsetAmount).toBeGreaterThan(0);
+    expect(r.summary.estimatedTotalAmount).toBe(50000);
   });
 
   it('자재 마스터 미존재 → unmapped + 자재 정보 없음 경고', async () => {
@@ -247,11 +254,13 @@ describe('buildPOItemsFromMR', () => {
 
     expect(r.mapped).toHaveLength(1);
     expect(r.unmapped).toHaveLength(1);
-    expect(r.noOrderNeeded).toHaveLength(1);
+    expect(r.mappedFullStock).toHaveLength(1);
+    expect(r.mappedPartialStock).toHaveLength(0);
     expect(r.summary.totalCount).toBe(3);
     expect(r.summary.mappedCount).toBe(1);
     expect(r.summary.unmappedCount).toBe(1);
-    expect(r.summary.noOrderNeededCount).toBe(1);
+    expect(r.summary.mappedFullStockCount).toBe(1);
+    expect(r.summary.mappedPartialStockCount).toBe(0);
   });
 
   it('재고 조회는 공장별로 1회씩 호출됨 (배치 최적화)', async () => {
@@ -306,5 +315,47 @@ describe('buildPOItemsFromMR', () => {
     expect(item.warnings).toContain(
       '비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요',
     );
+  });
+
+  // ★ Fix-R1-a (D10): 4분류 합산 검증
+  it('summary — mappedGrossAmount − stockOffsetAmount = estimatedTotalAmount', async () => {
+    (prisma.materialMaster.findMany as any).mockResolvedValue([
+      makeMaterial('mat_1', '양파', true),  // 전량 발주
+      makeMaterial('mat_2', '마늘', true),  // 일부 충당
+      makeMaterial('mat_3', '당근', true),  // 전체 충당
+    ]);
+    (prisma.unitConversion.findMany as any).mockResolvedValue([
+      { materialMasterId: 'mat_1', fromUnit: '포', toUnit: 'g', factor: 1000 },
+      { materialMasterId: 'mat_2', fromUnit: '포', toUnit: 'g', factor: 1000 },
+      { materialMasterId: 'mat_3', fromUnit: '포', toUnit: 'g', factor: 1000 },
+    ]);
+    const stubAdapter: InventoryAdapter = {
+      async getStockGByMaterials(_c, _l, ids) {
+        const m = new Map<string, number>();
+        for (const id of ids) {
+          if (id === 'mat_1') m.set(id, 0);
+          else if (id === 'mat_2') m.set(id, 4000);
+          else m.set(id, 99999);
+        }
+        return m;
+      },
+    };
+
+    const r = await buildPOItemsFromMR({
+      companyId: COMPANY_ID,
+      materialRequirements: [
+        makeMR({ id: 'mr_1', materialMasterId: 'mat_1', requiredQty: 19000 }),
+        makeMR({ id: 'mr_2', materialMasterId: 'mat_2', requiredQty: 19000 }),
+        makeMR({ id: 'mr_3', materialMasterId: 'mat_3', requiredQty: 3000 }),
+      ],
+      inventoryAdapter: stubAdapter,
+    });
+
+    expect(r.mapped).toHaveLength(1);
+    expect(r.mappedPartialStock).toHaveLength(1);
+    expect(r.mappedFullStock).toHaveLength(1);
+    expect(
+      r.summary.mappedGrossAmount - r.summary.stockOffsetAmount,
+    ).toBe(r.summary.estimatedTotalAmount);
   });
 });

@@ -35,10 +35,11 @@ export interface WizardState {
   isLoading: boolean;
   loadResult: BuildPOItemsResult | null;
   loadError: string | null;
-  // 편집 상태 (모두 동일 배열에서 분리만)
+  // 편집 상태 — Fix-R1-a (D10): 4분류
   mapped: POItemCandidate[];
+  mappedPartialStock: POItemCandidate[];
+  mappedFullStock: POItemCandidate[];
   unmapped: POItemCandidate[];
-  noOrderNeeded: POItemCandidate[];
   orderDate: Date;
   deliveryDate: Date | null;
   note: string;
@@ -80,8 +81,9 @@ const initialState: WizardState = {
   loadResult: null,
   loadError: null,
   mapped: [],
+  mappedPartialStock: [],
+  mappedFullStock: [],
   unmapped: [],
-  noOrderNeeded: [],
   orderDate: new Date(),
   deliveryDate: null,
   note: "",
@@ -96,8 +98,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         loadResult: null,
         loadError: null,
         mapped: [],
+        mappedPartialStock: [],
+        mappedFullStock: [],
         unmapped: [],
-        noOrderNeeded: [],
       };
     case "SET_COUNT_SOURCE":
       return {
@@ -106,8 +109,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         loadResult: null,
         loadError: null,
         mapped: [],
+        mappedPartialStock: [],
+        mappedFullStock: [],
         unmapped: [],
-        noOrderNeeded: [],
       };
     case "LOAD_START":
       return { ...state, isLoading: true, loadError: null };
@@ -117,8 +121,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         isLoading: false,
         loadResult: action.payload,
         mapped: action.payload.mapped,
+        mappedPartialStock: action.payload.mappedPartialStock,
+        mappedFullStock: action.payload.mappedFullStock,
         unmapped: action.payload.unmapped,
-        noOrderNeeded: action.payload.noOrderNeeded,
         loadError: null,
       };
     case "LOAD_ERROR":
@@ -128,26 +133,34 @@ function reducer(state: WizardState, action: Action): WizardState {
     case "GO_PREV":
       return { ...state, step: Math.max(1, state.step - 1) as WizardStep };
 
-    case "UPDATE_QUANTITY": {
-      const { materialRequirementId, value } = action.payload;
-      const update = (rows: POItemCandidate[]) =>
-        rows.map((r) =>
-          r.materialRequirementId === materialRequirementId
-            ? { ...r, orderQuantity: value }
-            : r,
-        );
-      return { ...state, mapped: update(state.mapped) };
-    }
-    case "UPDATE_UNIT_PRICE": {
-      const { materialRequirementId, value } = action.payload;
-      const update = (rows: POItemCandidate[]) =>
-        rows.map((r) =>
-          r.materialRequirementId === materialRequirementId
-            ? { ...r, unitPrice: value }
-            : r,
-        );
-      return { ...state, mapped: update(state.mapped) };
-    }
+      case "UPDATE_QUANTITY": {
+        const { materialRequirementId, value } = action.payload;
+        const update = (rows: POItemCandidate[]) =>
+          rows.map((r) =>
+            r.materialRequirementId === materialRequirementId
+              ? { ...r, orderQuantity: value }
+              : r,
+          );
+        return {
+          ...state,
+          mapped: update(state.mapped),
+          mappedPartialStock: update(state.mappedPartialStock),
+        };
+      }
+      case "UPDATE_UNIT_PRICE": {
+        const { materialRequirementId, value } = action.payload;
+        const update = (rows: POItemCandidate[]) =>
+          rows.map((r) =>
+            r.materialRequirementId === materialRequirementId
+              ? { ...r, unitPrice: value }
+              : r,
+          );
+        return {
+          ...state,
+          mapped: update(state.mapped),
+          mappedPartialStock: update(state.mappedPartialStock),
+        };
+      }  
     case "RESOLVE_UNMAPPED": {
       const { materialRequirementId, supplierItem } = action.payload;
       const target = state.unmapped.find(
@@ -222,7 +235,7 @@ export function POWizard() {
   const persistedState = {
     countSource: state.countSource,
     edits: Object.fromEntries(
-      state.mapped
+      [...state.mapped, ...state.mappedPartialStock]
         .filter((r) => r.supplierItem)
         .map((r) => [
           r.materialRequirementId,
@@ -241,7 +254,9 @@ export function POWizard() {
 
   const { clearPersisted } = useWizardPersistence(
     state.mealPlanGroup?.id ?? null,
-    state.mapped.length > 0 ? persistedState : null,
+    state.mapped.length + state.mappedPartialStock.length > 0
+      ? persistedState
+      : null,
   );
 
   const handleCancel = useCallback(() => {
@@ -325,11 +340,12 @@ export function POWizard() {
           />
         )}
 
-        {state.step === 3 && (
+{state.step === 3 && (
           <StepMappingTable
             mapped={state.mapped}
+            mappedPartialStock={state.mappedPartialStock}
+            mappedFullStock={state.mappedFullStock}
             unmapped={state.unmapped}
-            noOrderNeeded={state.noOrderNeeded}
             onUpdateQuantity={(id, v) =>
               dispatch({
                 type: "UPDATE_QUANTITY",
