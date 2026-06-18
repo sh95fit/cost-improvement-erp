@@ -291,9 +291,13 @@ export async function buildPOItemsFromMR(
     const grossOrderRaw = calcGross.orderQuantityRaw ?? 0;
     const netOrderRaw = calcNet.orderQuantityRaw ?? 0;
     const netOrder = calcNet.orderQuantity ?? 0;
-    const grossAmtRaw = grossOrderRaw * dsi.currentPrice;
-    const netAmt = netOrder * dsi.currentPrice;
-    const offsetAmt = Math.max(0, (grossOrderRaw - netOrderRaw) * dsi.currentPrice);
+    // ★ R1-a-fix-2: 금액은 원(KRW) 단위 — 정수로 반올림하여 부동소수점 오차 누적 방지
+    const grossAmtRaw = Math.round(grossOrderRaw * dsi.currentPrice);
+    const netAmt = Math.round(netOrder * dsi.currentPrice);
+    const offsetAmt = Math.max(
+      0,
+      Math.round((grossOrderRaw - netOrderRaw) * dsi.currentPrice),
+    );
 
     if (stockG <= 0) {
       // 재고 없음 — 일반 mapped

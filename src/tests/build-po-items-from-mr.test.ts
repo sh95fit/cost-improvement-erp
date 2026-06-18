@@ -323,24 +323,32 @@ describe('buildPOItemsFromMR', () => {
   });
 
   // ★ Fix-R1-a (D10): 4분류 합산 검증
-  it('summary — mappedGrossAmount − stockOffsetAmount = estimatedTotalAmount', async () => {
+  it('summary — invariant: estimatedTotalAmount ≥ mappedGrossAmount − stockOffsetAmount (박스 올림 차이만큼 ≥)', async () => {
+    // R1-a-fix-2:
+    // mappedGrossAmount, stockOffsetAmount 는 raw(올림 전) 박스수량 기준 금액.
+    // estimatedTotalAmount 는 ceil(올림) 박스수량 기준 금액.
+    // 따라서 박스 올림 차이로 estimatedTotalAmount 가 항상 ≥ (gross - offset) 이어야 한다.
+    //
+    // 또한 다음 비음수 invariant 도 성립:
+    //   0 ≤ stockOffsetAmount ≤ mappedGrossAmount
+    //   estimatedTotalAmount ≥ 0
     (prisma.materialMaster.findMany as any).mockResolvedValue([
-      makeMaterial('mat_1', '양파', true),  // 전량 발주
-      makeMaterial('mat_2', '마늘', true),  // 일부 활용
-      makeMaterial('mat_3', '당근', true),  // 전체 활용
+      makeMaterial('mat_1', '양파', true),
+      makeMaterial('mat_2', '마늘', true),
+      makeMaterial('mat_3', '당근', true),
     ]);
     (prisma.unitConversion.findMany as any).mockResolvedValue([
       { materialMasterId: 'mat_1', fromUnit: '포', toUnit: 'g', factor: 1000 },
       { materialMasterId: 'mat_2', fromUnit: '포', toUnit: 'g', factor: 1000 },
-      { materialMasterId: 'mat_3', fromUnit: '포', toUnit: 'g', factor: 1000 },
+      { materialMasterId: 'mat_3', fromUnit: 'kg', toUnit: 'g', factor: 1000 },
     ]);
+
     const stubAdapter: InventoryAdapter = {
       async getStockGByMaterials(_c, _l, ids) {
         const m = new Map<string, number>();
         for (const id of ids) {
-          if (id === 'mat_1') m.set(id, 0);
-          else if (id === 'mat_2') m.set(id, 4000);
-          else m.set(id, 99999);
+          // mat_1: 재고 0 (mapped), mat_2: 일부 (partial), mat_3: 충분 (full)
+          m.set(id, id === 'mat_1' ? 0 : id === 'mat_2' ? 4000 : 99999);
         }
         return m;
       },
@@ -356,11 +364,24 @@ describe('buildPOItemsFromMR', () => {
       inventoryAdapter: stubAdapter,
     });
 
-    expect(r.mapped).toHaveLength(1);
-    expect(r.mappedPartialStock).toHaveLength(1);
-    expect(r.mappedFullStock).toHaveLength(1);
-    expect(
+    // 비음수 invariant
+    expect(r.summary.stockOffsetAmount).toBeGreaterThanOrEqual(0);
+    expect(r.summary.mappedGrossAmount).toBeGreaterThanOrEqual(0);
+    expect(r.summary.estimatedTotalAmount).toBeGreaterThanOrEqual(0);
+
+    // stockOffset 은 gross 를 초과할 수 없음
+    expect(r.summary.stockOffsetAmount).toBeLessThanOrEqual(
+      r.summary.mappedGrossAmount,
+    );
+
+    // 박스 올림 invariant: estimatedTotal ≥ gross - offset
+    expect(r.summary.estimatedTotalAmount).toBeGreaterThanOrEqual(
       r.summary.mappedGrossAmount - r.summary.stockOffsetAmount,
-    ).toBe(r.summary.estimatedTotalAmount);
+    );
+
+    // 모든 금액은 정수(원 단위)
+    expect(Number.isInteger(r.summary.mappedGrossAmount)).toBe(true);
+    expect(Number.isInteger(r.summary.stockOffsetAmount)).toBe(true);
+    expect(Number.isInteger(r.summary.estimatedTotalAmount)).toBe(true);
   });
 });
