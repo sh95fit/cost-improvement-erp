@@ -10,7 +10,20 @@ const mockTx = {
   productionLine: { findMany: vi.fn() },
   supplier: { findMany: vi.fn() },
   supplierItem: { findMany: vi.fn() },
-  purchaseOrder: { findFirst: vi.fn(), create: vi.fn() },
+  purchaseOrder: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    // ★ R1-b3: DELTA 모드용
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+  // ★ R1-b3: DELTA 모드용
+  purchaseOrderItem: {
+    update: vi.fn(),
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
+  pOAdjustmentLog: { create: vi.fn() },
   // ★ R1-b1: 멱등성 batch 모델
   purchaseOrderBatch: { findUnique: vi.fn(), create: vi.fn() },
 };
@@ -92,6 +105,22 @@ beforeEach(() => {
       _count: { items: data.items.create.length },
     });
   });
+
+  // ★ R1-b3: DELTA 모드 mock 기본값 (각 테스트에서 필요시 덮어씀)
+  mockTx.purchaseOrder.findMany.mockResolvedValue([]);
+  mockTx.purchaseOrder.update.mockImplementation(({ where, data }: any) =>
+    Promise.resolve({ id: where.id, totalAmount: data.totalAmount }),
+  );
+  let itemSeq = 0;
+  mockTx.purchaseOrderItem.update.mockImplementation(({ where, data }: any) =>
+    Promise.resolve({ id: where.id, ...data }),
+  );
+  mockTx.purchaseOrderItem.create.mockImplementation(({ data }: any) => {
+    itemSeq += 1;
+    return Promise.resolve({ id: `poi_new_${itemSeq}`, ...data });
+  });
+  mockTx.purchaseOrderItem.findMany.mockResolvedValue([]);
+  mockTx.pOAdjustmentLog.create.mockResolvedValue({ id: "log_1" });
 });
 
 describe("createPurchaseOrdersBatch", () => {
@@ -296,5 +325,411 @@ describe("createPurchaseOrdersBatch", () => {
       ]),
     );
     expect(r.count).toBe(4);
+  });
+
+  
+  // ════════════════════════════════════════════════════════
+  // ★ R1-b3: DELTA 모드 통합 테스트
+  // ════════════════════════════════════════════════════════
+  describe("DELTA mode (R1-b3)", () => {
+    const IDEMPOTENCY_KEY = "wiz-session-abc12345";
+
+    function makeDeltaInput(
+      items: any[],
+      basedOnPOIds: string[],
+    ): CreatePurchaseOrdersBatchInput {
+      return {
+        companyId: COMPANY_ID,
+        orderDate: ORDER_DATE,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        countSource: "ESTIMATED",
+        mode: "DELTA",
+        basedOnPOIds,
+        items,
+      };
+    }
+
+    /** 기존 DRAFT PO 1건 + item 1건 mock */
+    function mockExistingDraftPO(opts: {
+      poId?: string;
+      itemId?: string;
+      materialMasterId?: string;
+      quantity?: number;
+      unitPrice?: number;
+      status?: "DRAFT" | "SUBMITTED";
+    } = {}) {
+      mockTx.purchaseOrder.findMany.mockImplementation(({ where }: any) => {
+        // 단계 1: basedOnPOIds 조회 vs 단계 11: affectedPOSummaries 집계
+        if (where.id?.in && where.companyId) {
+          return Promise.resolve([
+            {
+              id: opts.poId ?? "po_existing_1",
+              status: opts.status ?? "DRAFT",
+              supplierId: "sup_1",
+              locationId: "loc_1",
+              productionLineId: null,
+              orderDate: ORDER_DATE,
+              deliveryDate: null,
+              items: [
+                {
+                  id: opts.itemId ?? "poi_existing_1",
+                  materialMasterId: opts.materialMasterId ?? "mat_1",
+                  supplierItemId: "si_1",
+                  quantity: opts.quantity ?? 1,
+                  unitPrice: opts.unitPrice ?? 50000,
+                  systemQuantity: null,
+                },
+              ],
+            },
+          ]);
+        }
+        // 단계 11: affectedPOSummaries
+        return Promise.resolve([
+          {
+            id: opts.poId ?? "po_existing_1",
+            orderNumber: "PO-20260620-001",
+            supplierId: "sup_1",
+            locationId: "loc_1",
+            productionLineId: null,
+            totalAmount: 100000,
+            _count: { items: 1 },
+          },
+        ]);
+      });
+    }
+
+    // ── 입력 검증 ──
+    it("basedOnPOIds 가 비어있으면 DELTA_MISSING_BASED_ON_POS", async () => {
+      await expect(
+        createPurchaseOrdersBatch(makeDeltaInput([makeItem()], [])),
+      ).rejects.toThrow("DELTA_MISSING_BASED_ON_POS");
+    });
+
+    it("APPROVED 상태 PO 포함 시 DELTA_BLOCKED_BY_APPROVED_PO", async () => {
+      mockTx.purchaseOrder.findMany.mockResolvedValue([
+        {
+          id: "po_locked",
+          status: "APPROVED",
+          supplierId: "sup_1",
+          locationId: "loc_1",
+          productionLineId: null,
+          orderDate: ORDER_DATE,
+          deliveryDate: null,
+          items: [],
+        },
+      ]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeDeltaInput([makeItem()], ["po_locked"]),
+        ),
+      ).rejects.toThrow("DELTA_BLOCKED_BY_APPROVED_PO");
+    });
+
+    it("RECEIVED 상태 PO 포함 시도 DELTA_BLOCKED_BY_APPROVED_PO", async () => {
+      mockTx.purchaseOrder.findMany.mockResolvedValue([
+        {
+          id: "po_received",
+          status: "RECEIVED",
+          supplierId: "sup_1",
+          locationId: "loc_1",
+          productionLineId: null,
+          orderDate: ORDER_DATE,
+          deliveryDate: null,
+          items: [],
+        },
+      ]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeDeltaInput([makeItem()], ["po_received"]),
+        ),
+      ).rejects.toThrow("DELTA_BLOCKED_BY_APPROVED_PO");
+    });
+
+    // ── 수량 변경 ──
+    it("DRAFT PO 수량 증가 → item.update + UPDATE_QUANTITY 로그", async () => {
+      mockExistingDraftPO({ quantity: 1, unitPrice: 50000 });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2, unitPrice: 50000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      // item.update 호출 검증
+      expect(mockTx.purchaseOrderItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "poi_existing_1" },
+          data: expect.objectContaining({
+            quantity: 2,
+            unitPrice: 50000,
+            totalPrice: 100000,
+          }),
+        }),
+      );
+
+      // POAdjustmentLog (UPDATE_QUANTITY) 1회만 적층
+      const logCalls = mockTx.pOAdjustmentLog.create.mock.calls;
+      const qtyLogs = logCalls.filter(
+        ([arg]: any) => arg.data.action === "UPDATE_QUANTITY",
+      );
+      const priceLogs = logCalls.filter(
+        ([arg]: any) => arg.data.action === "UPDATE_UNIT_PRICE",
+      );
+      expect(qtyLogs).toHaveLength(1);
+      expect(priceLogs).toHaveLength(0);
+      expect(qtyLogs[0][0].data.reason).toContain("+1박스");
+
+      // adjustmentSummary 검증
+      expect(r.adjustmentSummary).toBeDefined();
+      expect(r.adjustmentSummary!.increased).toBe(1);
+      expect(r.adjustmentSummary!.decreased).toBe(0);
+      expect(r.adjustmentSummary!.added).toBe(0);
+      expect(r.adjustmentSummary!.totalDeltaAmount).toBe(50000);
+      expect(r.adjustmentSummary!.affectedPurchaseOrderIds).toEqual([
+        "po_existing_1",
+      ]);
+    });
+
+    it("DRAFT PO 수량 감소 → -delta 로그 + totalDeltaAmount 음수", async () => {
+      mockExistingDraftPO({ quantity: 3, unitPrice: 50000 });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 1, unitPrice: 50000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(r.adjustmentSummary!.decreased).toBe(1);
+      expect(r.adjustmentSummary!.totalDeltaAmount).toBe(-100000);
+      const qtyLogs = mockTx.pOAdjustmentLog.create.mock.calls.filter(
+        ([arg]: any) => arg.data.action === "UPDATE_QUANTITY",
+      );
+      expect(qtyLogs[0][0].data.reason).toContain("-2박스");
+    });
+
+    // ── 단가 변경 ──
+    it("단가만 변경 → UPDATE_UNIT_PRICE 로그만 적층", async () => {
+      mockExistingDraftPO({ quantity: 2, unitPrice: 50000 });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2, unitPrice: 55000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      const logCalls = mockTx.pOAdjustmentLog.create.mock.calls;
+      const qtyLogs = logCalls.filter(
+        ([arg]: any) => arg.data.action === "UPDATE_QUANTITY",
+      );
+      const priceLogs = logCalls.filter(
+        ([arg]: any) => arg.data.action === "UPDATE_UNIT_PRICE",
+      );
+      expect(qtyLogs).toHaveLength(0);
+      expect(priceLogs).toHaveLength(1);
+      expect(r.adjustmentSummary!.priceChanged).toBe(1);
+      expect(r.adjustmentSummary!.totalDeltaAmount).toBe(10000); // 2 × 5000
+    });
+
+    it("수량+단가 동시 변경 → 두 로그 모두 적층", async () => {
+      mockExistingDraftPO({ quantity: 1, unitPrice: 50000 });
+
+      await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2, unitPrice: 55000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      const logCalls = mockTx.pOAdjustmentLog.create.mock.calls;
+      expect(
+        logCalls.filter(([arg]: any) => arg.data.action === "UPDATE_QUANTITY"),
+      ).toHaveLength(1);
+      expect(
+        logCalls.filter(
+          ([arg]: any) => arg.data.action === "UPDATE_UNIT_PRICE",
+        ),
+      ).toHaveLength(1);
+    });
+
+    // ── SUBMITTED 도 허용 ──
+    it("SUBMITTED 상태 PO 도 DELTA 가능 (변경됨)", async () => {
+      mockExistingDraftPO({
+        status: "SUBMITTED",
+        quantity: 1,
+        unitPrice: 50000,
+      });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 3, unitPrice: 50000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(mockTx.purchaseOrderItem.update).toHaveBeenCalled();
+      expect(r.adjustmentSummary!.increased).toBe(1);
+    });
+
+    // ── 변경 없음 ──
+    it("수량·단가 모두 동일 → unchanged, DB 호출 없음", async () => {
+      mockExistingDraftPO({ quantity: 2, unitPrice: 50000 });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2, unitPrice: 50000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(mockTx.purchaseOrderItem.update).not.toHaveBeenCalled();
+      expect(mockTx.purchaseOrderItem.create).not.toHaveBeenCalled();
+      expect(mockTx.pOAdjustmentLog.create).not.toHaveBeenCalled();
+      expect(r.adjustmentSummary!.unchanged).toBe(1);
+      expect(r.adjustmentSummary!.totalDeltaAmount).toBe(0);
+    });
+
+    // ── 신규 자재 추가 (같은 그룹) ──
+    it("같은 그룹 신규 자재 → item.create + ADD 로그", async () => {
+      mockExistingDraftPO({
+        materialMasterId: "mat_1",
+        quantity: 1,
+        unitPrice: 50000,
+      });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [
+            // 기존 mat_1 그대로 + 신규 mat_2 (같은 supplier/loc/line)
+            makeItem({
+              materialMasterId: "mat_1",
+              supplierItemId: "si_1",
+              quantity: 1,
+              unitPrice: 50000,
+            }),
+            makeItem({
+              materialMasterId: "mat_2",
+              supplierItemId: "si_3",
+              quantity: 2,
+              unitPrice: 30000,
+            }),
+          ],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(mockTx.purchaseOrderItem.create).toHaveBeenCalledTimes(1);
+      const addLogs = mockTx.pOAdjustmentLog.create.mock.calls.filter(
+        ([arg]: any) => arg.data.action === "ADD",
+      );
+      expect(addLogs).toHaveLength(1);
+      expect(r.adjustmentSummary!.added).toBe(1);
+    });
+
+    // ── 신규 그룹 (다른 supplier) ──
+    it("다른 supplier 신규 자재 → 신규 PO 생성", async () => {
+      mockExistingDraftPO({
+        materialMasterId: "mat_1",
+        quantity: 1,
+        unitPrice: 50000,
+      });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [
+            makeItem({
+              materialMasterId: "mat_1",
+              supplierItemId: "si_1",
+              quantity: 1,
+              unitPrice: 50000,
+            }),
+            // 다른 supplier → 신규 그룹
+            makeItem({
+              supplierId: "sup_2",
+              supplierItemId: "si_2",
+              materialMasterId: "mat_2",
+              quantity: 1,
+              unitPrice: 30000,
+            }),
+          ],
+          ["po_existing_1"],
+        ),
+      );
+
+      // 신규 PO 1건 생성됐는지 확인
+      expect(mockTx.purchaseOrder.create).toHaveBeenCalledTimes(1);
+      expect(r.adjustmentSummary!.added).toBe(1);
+      // 결과에는 영향받은 PO(없음, mat_1 변경없음) + 신규 PO 1건 = 1건
+      expect(r.count).toBeGreaterThanOrEqual(1);
+    });
+
+    // ── 영향받은 PO totalAmount 재계산 ──
+    it("기존 PO 의 totalAmount 재계산 호출", async () => {
+      mockExistingDraftPO({ quantity: 1, unitPrice: 50000 });
+      mockTx.purchaseOrderItem.findMany.mockResolvedValue([
+        { quantity: 2, unitPrice: 50000 },
+      ]);
+
+      await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2, unitPrice: 50000 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(mockTx.purchaseOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "po_existing_1" },
+          data: { totalAmount: 100000 },
+        }),
+      );
+    });
+
+    // ── 멱등성 (DELTA 도 적용) ──
+    it("같은 idempotencyKey 재실행 → 기존 batch 결과 반환 (DELTA 분기 진입 안 함)", async () => {
+      mockTx.purchaseOrderBatch.findUnique.mockResolvedValue({
+        id: "batch_existing",
+        purchaseOrders: [
+          {
+            id: "po_existing_1",
+            orderNumber: "PO-20260620-001",
+            supplierId: "sup_1",
+            locationId: "loc_1",
+            productionLineId: null,
+            totalAmount: 50000,
+            _count: { items: 1 },
+          },
+        ],
+      });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput([makeItem()], ["po_existing_1"]),
+      );
+
+      expect(r.isIdempotentReplay).toBe(true);
+      expect(r.batchId).toBe("batch_existing");
+      // DELTA 분기 진입하지 않으므로 update/create 호출 없음
+      expect(mockTx.purchaseOrderItem.update).not.toHaveBeenCalled();
+      expect(mockTx.pOAdjustmentLog.create).not.toHaveBeenCalled();
+    });
+
+    // ── adjustmentSummary 구조 ──
+    it("adjustmentSummary 가 영향받은 PO id 목록을 포함", async () => {
+      mockExistingDraftPO({ quantity: 1, unitPrice: 50000 });
+
+      const r = await createPurchaseOrdersBatch(
+        makeDeltaInput(
+          [makeItem({ quantity: 2 })],
+          ["po_existing_1"],
+        ),
+      );
+
+      expect(r.adjustmentSummary).toBeDefined();
+      expect(r.adjustmentSummary!.affectedPurchaseOrderIds).toEqual([
+        "po_existing_1",
+      ]);
+    });
   });
 });
