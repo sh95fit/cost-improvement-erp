@@ -11,6 +11,8 @@ const mockTx = {
   supplier: { findMany: vi.fn() },
   supplierItem: { findMany: vi.fn() },
   purchaseOrder: { findFirst: vi.fn(), create: vi.fn() },
+  // ★ R1-b1: 멱등성 batch 모델
+  purchaseOrderBatch: { findUnique: vi.fn(), create: vi.fn() },
 };
 
 vi.mock("@/lib/prisma", () => ({
@@ -47,6 +49,10 @@ function makeInput(items: any[]): CreatePurchaseOrdersBatchInput {
   return {
     companyId: COMPANY_ID,
     orderDate: ORDER_DATE,
+    // ★ R1-b1: 본 테스트는 idempotencyKey 미지정 경로(레거시 호환) 검증
+    countSource: "ESTIMATED",
+    mode: "NEW",
+    basedOnPOIds: [],
     items,
   };
 }
@@ -54,6 +60,11 @@ function makeInput(items: any[]): CreatePurchaseOrdersBatchInput {
 beforeEach(() => {
   vi.clearAllMocks();
   // 기본 mock 동작
+  // ★ R1-b1: idempotencyKey 미지정 경로면 호출되지 않지만 안전망으로 기본값 설정
+  mockTx.purchaseOrderBatch.findUnique.mockResolvedValue(null);
+  mockTx.purchaseOrderBatch.create.mockImplementation(({ data }: any) =>
+    Promise.resolve({ id: "batch_test", ...data }),
+  );
   mockTx.location.findMany.mockResolvedValue([{ id: "loc_1" }, { id: "loc_2" }]);
   mockTx.productionLine.findMany.mockResolvedValue([
     { id: "line_1", locationId: "loc_1" },

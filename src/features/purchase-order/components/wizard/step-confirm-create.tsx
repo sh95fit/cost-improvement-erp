@@ -12,11 +12,14 @@ import { ExistingPONotice } from "./existing-po-notice";
 interface Props {
   mealPlanGroupId: string;
   mapped: POItemCandidate[];
+  /** ★ R1-a (D10) 분류 — 일부 재고 활용 행도 발주에 포함 */
+  mappedPartialStock: POItemCandidate[];
   orderDate: Date;
   deliveryDate: Date | null;
   note: string;
   // ★ R1-b1
-  idempotencyKey: string;
+  /** 위저드 세션 멱등성 키 — 그룹/countSource 정해지기 전에는 null */
+  idempotencyKey: string | null;
   countSource: "ESTIMATED" | "FINAL";
   mode: "NEW" | "DELTA" | "REPLACE";
   basedOnPOIds: string[];
@@ -29,6 +32,7 @@ interface Props {
 export function StepConfirmCreate({
   mealPlanGroupId,
   mapped,
+  mappedPartialStock,
   orderDate,
   deliveryDate,
   note,
@@ -44,14 +48,27 @@ export function StepConfirmCreate({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ★ R1-a (D10): mapped + mappedPartialStock 양쪽 모두 발주 대상
   const allMapped = [...mapped, ...mappedPartialStock];
   const validMapped = allMapped.filter(
-    (r) => r.supplierItem && r.orderQuantity > 0 && r.unitPrice >= 0,
+    (r) =>
+      r.supplierItem !== null &&
+      r.orderQuantity !== null &&
+      r.orderQuantity > 0 &&
+      r.unitPrice !== null &&
+      r.unitPrice >= 0,
   );
-  
+
   async function handleSubmit() {
     if (validMapped.length === 0) {
       toast.warning("생성할 발주 항목이 없습니다");
+      return;
+    }
+    // ★ R1-b1: 멱등성 키는 Step 1에서 발급되어야 함 — 누락 시 진행 차단
+    if (!idempotencyKey) {
+      toast.error(
+        "위저드 세션 키가 없습니다. Step 1으로 돌아가 식단그룹을 다시 선택하세요",
+      );
       return;
     }
     setIsSubmitting(true);

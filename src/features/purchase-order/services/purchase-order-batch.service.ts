@@ -64,8 +64,12 @@ export const createPurchaseOrdersBatchSchema = z.object({
   orderDate: z.coerce.date(),
   deliveryDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
-  // ★ R1-b1: 멱등성 키 + 모드
-  idempotencyKey: z.string().min(8, "위저드 세션 키가 필요합니다").max(128),
+  // ★ R1-b1: 멱등성 키 + 모드 (옵션 — 미지정 시 멱등 가드 비활성, 항상 신규 생성)
+  idempotencyKey: z
+    .string()
+    .min(8, "위저드 세션 키는 8자 이상이어야 합니다")
+    .max(128)
+    .optional(),
   countSource: z.nativeEnum(MealCountSource).default("ESTIMATED"),
   mode: z.nativeEnum(POBatchMode).default("NEW"),
   basedOnPOIds: z.array(z.string()).default([]),
@@ -90,15 +94,15 @@ export interface CreatePurchaseOrdersBatchResult {
     productionLineId: string | null;
     itemCount: number;
     totalAmount: number;
-    /** ★ R1-b1: 멱등 replay 여부 (true 면 신규 생성 X, 기존 batch 결과 반환) */
-    isIdempotentReplay?: boolean;
-    /** ★ R1-b1: 생성/조회된 batch id */
-    batchId?: string;    
   }>;
   /** 총 PO 개수 */
   count: number;
   /** 총 발주 금액 */
   totalAmount: number;
+  /** ★ R1-b1: 멱등 replay 여부 (true 면 신규 생성 X, 기존 batch 결과 반환) */
+  isIdempotentReplay: boolean;
+  /** ★ R1-b1: 생성/조회된 batch id (멱등성 키 미사용 트랜잭션에서는 null) */
+  batchId: string | null;
 }
 
 // ============================================================
@@ -251,65 +255,68 @@ export async function createPurchaseOrdersBatch(
   if (input.items.length === 0) throw new Error("EMPTY_ITEMS");
 
   return prisma.$transaction(async (tx) => {
-    // ★ R1-b1: 멱등성 키 사전 확인
-    // 동일 키로 이미 생성된 batch 가 있으면 기존 결과를 그대로 반환.
-    // 더블클릭·재시도·동시 제출에 안전.
-    const existingBatch = await tx.purchaseOrderBatch.findUnique({
-      where: {
-        companyId_idempotencyKey: {
-          companyId: input.companyId,
-          idempotencyKey: input.idempotencyKey,
-        },
-      },
-      include: {
-        purchaseOrders: {
-          select: {
-            id: true,
-            orderNumber: true,
-            supplierId: true,
-            locationId: true,
-            productionLineId: true,
-            totalAmount: true,
-            _count: { select: { items: true } },
+    // ★ R1-b1: 멱등성 키가 있으면 동일 키로 이미 생성된 batch 조회.
+    // 더블클릭·재시도·동시 제출에 안전. 미지정 시 가드 비활성 (테스트/레거시 호환).
+    if (input.idempotencyKey) {
+      const existingBatch = await tx.purchaseOrderBatch.findUnique({
+        where: {
+          companyId_idempotencyKey: {
+            companyId: input.companyId,
+            idempotencyKey: input.idempotencyKey,
           },
         },
-      },
-    });
+        include: {
+          purchaseOrders: {
+            select: {
+              id: true,
+              orderNumber: true,
+              supplierId: true,
+              locationId: true,
+              productionLineId: true,
+              totalAmount: true,
+              _count: { select: { items: true } },
+            },
+          },
+        },
+      });
 
-    if (existingBatch) {
-      return {
-        createdPurchaseOrders: existingBatch.purchaseOrders.map((po) => ({
-          id: po.id,
-          orderNumber: po.orderNumber,
-          supplierId: po.supplierId,
-          locationId: po.locationId,
-          productionLineId: po.productionLineId,
-          itemCount: po._count.items,
-          totalAmount: po.totalAmount ?? 0,
-        })),
-        count: existingBatch.purchaseOrders.length,
-        totalAmount: existingBatch.purchaseOrders.reduce(
-          (s, po) => s + (po.totalAmount ?? 0),
-          0,
-        ),
-        // ★ R1-b1: 멱등 replay 임을 호출자에게 알림
-        isIdempotentReplay: true,
-        batchId: existingBatch.id,
-      };
+      if (existingBatch) {
+        return {
+          createdPurchaseOrders: existingBatch.purchaseOrders.map((po) => ({
+            id: po.id,
+            orderNumber: po.orderNumber,
+            supplierId: po.supplierId,
+            locationId: po.locationId,
+            productionLineId: po.productionLineId,
+            itemCount: po._count.items,
+            totalAmount: po.totalAmount ?? 0,
+          })),
+          count: existingBatch.purchaseOrders.length,
+          totalAmount: existingBatch.purchaseOrders.reduce(
+            (s, po) => s + (po.totalAmount ?? 0),
+            0,
+          ),
+          // ★ R1-b1: 멱등 replay 임을 호출자에게 알림
+          isIdempotentReplay: true,
+          batchId: existingBatch.id,
+        };
+      }
     }
 
-    // ★ R1-b1: 신규 batch 행 생성 (PO 들과 같은 트랜잭션 안에서)
-    const batch = await tx.purchaseOrderBatch.create({
-      data: {
-        companyId: input.companyId,
-        idempotencyKey: input.idempotencyKey,
-        mealPlanGroupId: input.mealPlanGroupId ?? null,
-        countSource: input.countSource,
-        mode: input.mode,
-        basedOnPOIds: input.basedOnPOIds,
-        createdByUserId: input.createdByUserId ?? "system",
-      },
-    });
+    // ★ R1-b1: 신규 batch 행 생성 (idempotencyKey가 있을 때만)
+    const batch = input.idempotencyKey
+      ? await tx.purchaseOrderBatch.create({
+          data: {
+            companyId: input.companyId,
+            idempotencyKey: input.idempotencyKey,
+            mealPlanGroupId: input.mealPlanGroupId ?? null,
+            countSource: input.countSource,
+            mode: input.mode,
+            basedOnPOIds: input.basedOnPOIds,
+            createdByUserId: input.createdByUserId ?? "system",
+          },
+        })
+      : null;
 
     // ── 이하 기존 그룹핑·검증·채번·생성 로직 ──
     // 1) 그룹핑
@@ -355,7 +362,7 @@ export async function createPurchaseOrdersBatch(
           supplierId: first.supplierId,
           locationId: first.locationId,
           productionLineId: first.productionLineId ?? null,
-          batchId: batch.id,                       // ★ R1-b1
+          batchId: batch?.id ?? null,              // ★ R1-b1 (idempotencyKey 없으면 null)
           orderNumber,
           status: "DRAFT",
           orderDate: input.orderDate,
@@ -409,7 +416,7 @@ export async function createPurchaseOrdersBatch(
       count: createdPurchaseOrders.length,
       totalAmount: grandTotal,
       isIdempotentReplay: false,
-      batchId: batch.id,      
+      batchId: batch?.id ?? null,
     };
   });
 }

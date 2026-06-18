@@ -481,7 +481,7 @@ export function POWizard() {
 
         {state.step === 4 && <StepSplitPreview mapped={state.mapped} />}
 
-        state.step === 5 && state.mealPlanGroup && (
+        {state.step === 5 && state.mealPlanGroup && (
           <StepConfirmCreate
             mealPlanGroupId={state.mealPlanGroup.id}
             mapped={state.mapped}
@@ -508,7 +508,7 @@ export function POWizard() {
             }
           />
         )}
-      </div>
+        </div>
 
       {/* 네비게이션 */}
       <div className="flex items-center justify-between">
