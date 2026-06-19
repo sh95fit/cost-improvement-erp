@@ -208,18 +208,12 @@ function RowsTable({
                 </td>
                 <td className="px-3 py-2">
                   {editable ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={r.orderQuantity ?? 0}
-                      onChange={(e) =>
-                        onUpdateQuantity(
-                          r.materialRequirementId,
-                          Number(e.target.value),
-                        )
+                    <QuantityCell
+                      currentValue={r.orderQuantity}
+                      rawValue={r.orderQuantityRaw}
+                      onChange={(v) =>
+                        onUpdateQuantity(r.materialRequirementId, v)
                       }
-                      className="w-20 rounded border border-gray-300 px-2 py-1 text-right"
                     />
                   ) : (
                     <span className="text-gray-700">
@@ -229,18 +223,12 @@ function RowsTable({
                 </td>
                 <td className="px-3 py-2">
                   {editable ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={r.unitPrice ?? 0}
-                      onChange={(e) =>
-                        onUpdateUnitPrice(
-                          r.materialRequirementId,
-                          Number(e.target.value),
-                        )
+                    <UnitPriceCell
+                      currentValue={r.unitPrice}
+                      systemValue={r.supplierItem?.currentPrice ?? null}
+                      onChange={(v) =>
+                        onUpdateUnitPrice(r.materialRequirementId, v)
                       }
-                      className="w-24 rounded border border-gray-300 px-2 py-1 text-right"
                     />
                   ) : (
                     <span className="text-gray-700">
@@ -270,3 +258,129 @@ function RowsTable({
     </div>
   );
 }
+
+
+
+// ────────────────────────────────────────────────────────
+// 발주수량 셀 — 시스템 권장값 표시 + 수동 조정 감지 + 되돌리기
+// ────────────────────────────────────────────────────────
+function QuantityCell({
+  currentValue,
+  rawValue,
+  onChange,
+}: {
+  /** 현재 입력값 (사용자 편집 반영) */
+  currentValue: number | null;
+  /** 시스템이 계산한 원본 박스 수량 (소수점 포함, 올림 전) */
+  rawValue: number | null;
+  onChange: (v: number) => void;
+}) {
+  // 시스템 권장값 = raw 수량을 올림한 값
+  const systemRecommended =
+    rawValue !== null ? Math.ceil(rawValue) : null;
+
+  // 사용자가 시스템 권장값에서 벗어났는지 감지 (소수점 비교 안전 위해 0.0001 오차 허용)
+  const isManuallyAdjusted =
+    systemRecommended !== null &&
+    currentValue !== null &&
+    Math.abs(currentValue - systemRecommended) > 0.0001;
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={currentValue ?? 0}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`w-20 rounded border px-2 py-1 text-right ${
+            isManuallyAdjusted
+              ? "border-amber-400 bg-amber-50"
+              : "border-gray-300"
+          }`}
+        />
+        {isManuallyAdjusted && systemRecommended !== null && (
+          <button
+            type="button"
+            onClick={() => onChange(systemRecommended)}
+            className="rounded border border-gray-300 bg-white px-1 py-0.5 text-[10px] text-gray-600 hover:bg-gray-50"
+            title={`시스템 권장값 ${systemRecommended} 박스로 되돌리기`}
+          >
+            ↻
+          </button>
+        )}
+      </div>
+      {systemRecommended !== null && rawValue !== null && (
+        <div className="text-[10px] text-gray-400">
+          시스템: {systemRecommended}
+          {Math.abs(rawValue - systemRecommended) > 0.0001 && (
+            <span className="ml-0.5">(원시 {rawValue.toFixed(2)})</span>
+          )}
+          {isManuallyAdjusted && (
+            <span className="ml-1 text-amber-700">· 수동 조정됨</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────
+// 단가 셀 — 시스템 권장값(currentPrice) 표시 + 수동 조정 감지 + 되돌리기
+// ────────────────────────────────────────────────────────
+function UnitPriceCell({
+  currentValue,
+  systemValue,
+  onChange,
+}: {
+  /** 현재 입력 단가 */
+  currentValue: number | null;
+  /** 시스템 권장 단가 (SupplierItem.currentPrice) */
+  systemValue: number | null;
+  onChange: (v: number) => void;
+}) {
+  const isManuallyAdjusted =
+    systemValue !== null &&
+    currentValue !== null &&
+    currentValue !== systemValue;
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={currentValue ?? 0}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className={`w-24 rounded border px-2 py-1 text-right ${
+            isManuallyAdjusted
+              ? "border-purple-400 bg-purple-50"
+              : "border-gray-300"
+          }`}
+        />
+        {isManuallyAdjusted && systemValue !== null && (
+          <button
+            type="button"
+            onClick={() => onChange(systemValue)}
+            className="rounded border border-gray-300 bg-white px-1 py-0.5 text-[10px] text-gray-600 hover:bg-gray-50"
+            title={`시스템 단가 ${systemValue.toLocaleString()}원으로 되돌리기`}
+          >
+            ↻
+          </button>
+        )}
+      </div>
+      {systemValue !== null && (
+        <div className="text-[10px] text-gray-400">
+          시스템: {systemValue.toLocaleString()}원
+          {isManuallyAdjusted && (
+            <span className="ml-1 text-purple-700">· 수동 조정됨</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
