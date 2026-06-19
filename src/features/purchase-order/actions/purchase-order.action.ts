@@ -371,8 +371,10 @@ export async function createPurchaseOrdersBatchAction(
       LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
       SUPPLIER_NOT_FOUND: "공급업체를 찾을 수 없습니다",
       SUPPLIER_ITEM_NOT_FOUND: "공급업체 품목 정보가 올바르지 않습니다",
-      REPLACE_BLOCKED_BY_NON_DRAFT_PO:
-        "발주등록 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요",
+      REPLACE_BLOCKED_BY_LOCKED_PO:
+        "발주확정(APPROVED) 이상 상태의 PO가 포함되어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요",
+      REPLACE_MISSING_BASED_ON_POS:
+        "덮어쓰기 대상 발주서가 지정되지 않았습니다",
       // ★ R1-b3
       DELTA_BLOCKED_BY_APPROVED_PO:
         "발주확정 이상 상태의 PO가 포함되어 변경할 수 없습니다. 부족분은 신규 발주로, 오배송·과다는 재고 실사로 처리하세요",

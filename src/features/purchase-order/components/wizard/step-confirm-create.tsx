@@ -82,13 +82,6 @@ export function StepConfirmCreate({
       );
       return;
     }
-    // ★ R1-b3: NEW + DELTA 허용. REPLACE 는 R1-b4 에서 본격 구현.
-    if (mode === "REPLACE") {
-      toast.error(
-        `덮어쓰기 발주(REPLACE)는 R1-b4 에서 도입됩니다. Step 1에서 "신규 발주" 또는 "차분 발주" 를 선택하세요`,
-      );
-      return;
-    }
     setIsSubmitting(true);
 
     try {
@@ -139,11 +132,15 @@ export function StepConfirmCreate({
       }
 
       onClearPersistence();
-      // ★ R1-b3: DELTA 결과면 adjustmentSummary 로 변경 요약 노출
+      // ★ R1-b3/b4: DELTA/REPLACE 결과면 adjustmentSummary 로 변경 요약 노출
       const summary = res.data.adjustmentSummary;
-      if (summary) {
+      if (summary && mode === "DELTA") {
         toast.success(
           `차분 발주 완료 — 증가 ${summary.increased} · 감소 ${summary.decreased} · 신규 ${summary.added} · 단가변경 ${summary.priceChanged} · 변경없음 ${summary.unchanged}`,
+        );
+      } else if (summary && mode === "REPLACE") {
+        toast.success(
+          `덮어쓰기 완료 — 기존 ${summary.affectedPurchaseOrderIds.length}건 취소 · 신규 ${res.data.count}건 생성 (총 ${res.data.totalAmount.toLocaleString()}원)`,
         );
       } else {
         toast.success(
@@ -178,14 +175,16 @@ export function StepConfirmCreate({
           className={`rounded px-2 py-0.5 text-xs font-medium ${
             mode === "NEW"
               ? "bg-blue-100 text-blue-800"
-              : "bg-amber-100 text-amber-800"
+              : mode === "DELTA"
+                ? "bg-amber-100 text-amber-800"
+                : "bg-red-100 text-red-800"
           }`}
         >
           {MODE_LABEL[mode]}
         </span>
         {mode === "REPLACE" && (
-          <span className="text-xs text-amber-700">
-            (덮어쓰기는 R1-b4 도입 예정 — Step 1에서 신규/차분으로 변경하세요)
+          <span className="text-xs text-red-700">
+            ⚠ 기존 작성중·발주등록 PO {basedOnPOIds.length}건이 모두 취소되고 새 발주서로 대체됩니다
           </span>
         )}
         {basedOnPOIds.length > 0 && (
@@ -281,15 +280,17 @@ export function StepConfirmCreate({
       <div className="flex justify-end">
         <Button
           onClick={handleSubmit}
-          disabled={
-            isSubmitting || validMapped.length === 0 || mode === "REPLACE"
+          disabled={isSubmitting || validMapped.length === 0}
+          className={
+            mode === "REPLACE"
+              ? "bg-red-600 hover:bg-red-700 text-white"
+              : "bg-blue-600 hover:bg-blue-700 text-white"
           }
-          className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           {isSubmitting
             ? "생성 중..."
             : mode === "REPLACE"
-              ? "덮어쓰기 모드는 미지원"
+              ? `${basedOnPOIds.length}건 취소 후 ${validMapped.length}개 새로 생성`
               : mode === "DELTA"
                 ? `차분 발주 적용 (${validMapped.length}건 비교)`
                 : `${validMapped.length}개 발주서 생성`}

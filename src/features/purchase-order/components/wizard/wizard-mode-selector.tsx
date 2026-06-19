@@ -36,8 +36,8 @@ export function WizardModeSelector({
 
   // DELTA 는 DRAFT 또는 SUBMITTED 가 1건이라도 있어야 가능
   const deltaEnabled = draftCount + submittedCount > 0;
-  // REPLACE 는 DRAFT 만 있어야 가능 (DRAFT 이외 활성 PO 가 섞이면 불가 — R1-b4 정책)
-  const replaceEnabled = draftCount > 0 && submittedCount === 0 && lockedCount === 0;
+  // ★ R1-b4: REPLACE 는 DRAFT/SUBMITTED 가 1건이라도 있고, APPROVED 이상이 섞이지 않아야 가능
+  const replaceEnabled = draftCount + submittedCount > 0 && lockedCount === 0;
 
   const options: ModeOption[] = [
     {
@@ -59,12 +59,12 @@ export function WizardModeSelector({
       value: "REPLACE",
       label: "덮어쓰기 발주",
       description: replaceEnabled
-        ? `기존 작성중 PO를 모두 취소하고 새 발주서로 대체합니다. (대상 ${draftCount}건)`
-        : submittedCount > 0 || lockedCount > 0
-          ? "발주등록 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하세요."
-          : "작성중 PO가 없어 사용할 수 없습니다.",
+        ? `기존 작성중·발주등록 PO를 모두 취소하고 새 발주서로 대체합니다. (대상 ${draftCount + submittedCount}건)`
+        : lockedCount > 0
+          ? "발주확정 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
+          : "작성중·발주등록 PO가 없어 사용할 수 없습니다.",
       enabled: replaceEnabled,
-      comingSoonLabel: "R1-b4 도입 예정",
+      // ★ R1-b4 완료 — comingSoonLabel 제거
     },
   ];
 

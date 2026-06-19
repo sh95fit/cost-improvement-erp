@@ -20,7 +20,8 @@ export const PO_BATCH_ERRORS = {
   SUPPLIER_NOT_FOUND: "SUPPLIER_NOT_FOUND",
   SUPPLIER_ITEM_NOT_FOUND: "SUPPLIER_ITEM_NOT_FOUND",
   IDEMPOTENT_REPLAY: "IDEMPOTENT_REPLAY",
-  REPLACE_BLOCKED_BY_NON_DRAFT_PO: "REPLACE_BLOCKED_BY_NON_DRAFT_PO",
+  REPLACE_BLOCKED_BY_LOCKED_PO: "REPLACE_BLOCKED_BY_LOCKED_PO",
+  REPLACE_MISSING_BASED_ON_POS: "REPLACE_MISSING_BASED_ON_POS",
   // ★ R1-b3
   DELTA_BLOCKED_BY_APPROVED_PO: "DELTA_BLOCKED_BY_APPROVED_PO",
   DELTA_MISSING_BASED_ON_POS: "DELTA_MISSING_BASED_ON_POS",
@@ -331,14 +332,20 @@ export async function createPurchaseOrdersBatch(
         })
       : null;
 
-    // ★ R1-b3: 모드별 분기
+    // ★ R1-b3 / R1-b4: 모드별 분기
     if (input.mode === "DELTA") {
       if (input.basedOnPOIds.length === 0) {
         throw new Error("DELTA_MISSING_BASED_ON_POS");
       }
       return await executeDeltaMode(tx, input, batch?.id ?? null);
     }
-    // REPLACE 는 R1-b4 에서 본격 구현. R1-b3 시점에는 NEW 와 동일하게 fallback.
+    if (input.mode === "REPLACE") {
+      if (input.basedOnPOIds.length === 0) {
+        throw new Error("REPLACE_MISSING_BASED_ON_POS");
+      }
+      return await executeReplaceMode(tx, input, batch?.id ?? null);
+    }
+    // NEW: 이하 기존 그룹핑·검증·채번·생성 로직 (변경 없음)
 
     // ── 이하 기존 그룹핑·검증·채번·생성 로직 ──
     // 1) 그룹핑
@@ -788,5 +795,200 @@ function batchItemFromCandidate(c: NewItemForDelta): BatchPOItem {
     quantity: c.quantity,
     unitPrice: c.unitPrice,
     systemQuantity: c.netRequiredG ?? undefined,
+  };
+}
+
+// ============================================================
+// ★ R1-b4: REPLACE 모드 실행
+// ============================================================
+/**
+ * basedOnPOIds 의 기존 DRAFT/SUBMITTED PO 들을 모두 CANCELLED 로 전이시키고,
+ * 위저드 신규 산정값으로 새 PO 들을 생성한다.
+ *
+ * 정책 (PROGRESS.md D11 / R1-b 결정):
+ * - DRAFT 또는 SUBMITTED 만 허용. APPROVED 이상 1건이라도 포함되면 차단.
+ * - 취소된 PO 의 items 는 그대로 유지 (감사 추적용). status 만 CANCELLED.
+ * - SUBMITTED PO 의 SupplierItemPriceHistory / SupplierItem.currentPrice 는 보존
+ *   (stack-price-history 함수를 호출하지 않으면 자동으로 보존됨 — 별도 작업 불필요).
+ * - 새 PO 들은 DRAFT 로 생성. 단가 적층은 추후 사용자가 SUBMITTED 전이 시킬 때 처리.
+ * - 신규 생성은 NEW 모드와 동일한 그룹핑·채번·검증 로직 재사용.
+ *
+ * @throws Error("REPLACE_BLOCKED_BY_LOCKED_PO") DRAFT/SUBMITTED 외 상태 PO 포함 시
+ */
+async function executeReplaceMode(
+  tx: Prisma.TransactionClient,
+  input: CreatePurchaseOrdersBatchInput,
+  batchId: string | null,
+): Promise<CreatePurchaseOrdersBatchResult> {
+  // 1) 기존 PO 조회 + 잠금 상태 차단
+  const existingPOs = await tx.purchaseOrder.findMany({
+    where: {
+      id: { in: input.basedOnPOIds },
+      companyId: input.companyId,
+    },
+    select: { id: true, status: true, orderNumber: true },
+  });
+
+  const locked = existingPOs.filter(
+    (po) => po.status !== "DRAFT" && po.status !== "SUBMITTED",
+  );
+  if (locked.length > 0) {
+    throw new Error("REPLACE_BLOCKED_BY_LOCKED_PO");
+  }
+
+  const actorUserId = input.createdByUserId ?? "system";
+  const now = new Date();
+  const cancelReason = batchId
+    ? `REGENERATED_FROM_WIZARD_REPLACE: ${batchId}`
+    : "REGENERATED_FROM_WIZARD_REPLACE";
+
+  // 2) 기존 DRAFT/SUBMITTED PO 들을 CANCELLED 로 전이
+  //    SUBMITTED PO 의 PriceHistory / currentPrice 는 별도 작업 없이 자동 보존.
+  const cancelledPOIds: string[] = [];
+  const cancelledOrderNumbers: string[] = [];
+  for (const po of existingPOs) {
+    await tx.purchaseOrder.update({
+      where: { id: po.id },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: now,
+        cancelledByUserId: actorUserId,
+        cancelReason,
+      },
+    });
+    cancelledPOIds.push(po.id);
+    cancelledOrderNumbers.push(po.orderNumber);
+
+    // 감사 적층 — POAdjustmentAction enum 에 CANCEL 이 없으므로 REMOVE + fieldName="po_status"
+    // 컨벤션으로 표현. 추후 enum 정리 시 일괄 마이그레이션 후보.
+    await tx.pOAdjustmentLog.create({
+      data: {
+        purchaseOrderId: po.id,
+        purchaseOrderItemId: null,
+        action: POAdjustmentAction.REMOVE,
+        fieldName: "po_status",
+        beforeValue: JSON.stringify({ status: po.status }),
+        afterValue: JSON.stringify({ status: "CANCELLED" }),
+        reason: cancelReason,
+        sourceBatchId: batchId,
+        actorUserId,
+      },
+    });
+  }
+
+  // 3) NEW 모드와 동일한 그룹핑·검증·채번·생성
+  const groups = new Map<string, BatchPOItem[]>();
+  for (const item of input.items) {
+    const key = makeGroupKey(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+
+  const groupHeaders = Array.from(groups.values()).map((arr) => ({
+    locationId: arr[0].locationId,
+    productionLineId: arr[0].productionLineId ?? null,
+  }));
+  await assertLocationsAndLines(tx, input.companyId, groupHeaders);
+  await assertSuppliersAndItems(tx, input.companyId, input.items);
+
+  const usedOrderNumbers = new Set<string>();
+  const createdPurchaseOrders: CreatePurchaseOrdersBatchResult["createdPurchaseOrders"] =
+    [];
+  let grandTotal = 0;
+
+  // 새 PO 의 note 에 취소된 원본 PO 번호 기록 (PROGRESS.md 합의)
+  const replaceNoteSuffix =
+    cancelledOrderNumbers.length > 0
+      ? `\n[REPLACE] 취소된 원본 PO: ${cancelledOrderNumbers.join(", ")}`
+      : "";
+
+  for (const [, items] of groups) {
+    const first = items[0];
+    const totalAmount = items.reduce(
+      (sum, it) => sum + it.quantity * it.unitPrice,
+      0,
+    );
+    grandTotal += totalAmount;
+
+    const orderNumber = await generateNextOrderNumber(
+      tx,
+      input.companyId,
+      input.orderDate,
+      usedOrderNumbers,
+    );
+
+    const noteForThisPO =
+      (input.note ?? "").trim() + replaceNoteSuffix;
+
+    const po = await tx.purchaseOrder.create({
+      data: {
+        companyId: input.companyId,
+        supplierId: first.supplierId,
+        locationId: first.locationId,
+        productionLineId: first.productionLineId ?? null,
+        batchId,
+        orderNumber,
+        status: "DRAFT",
+        orderDate: input.orderDate,
+        deliveryDate: input.deliveryDate,
+        note: noteForThisPO || null,
+        isManual: false,
+        mealPlanGroupId: input.mealPlanGroupId ?? null,
+        createdByUserId: input.createdByUserId,
+        totalAmount,
+        items: {
+          create: items.map((it) => ({
+            supplierItemId: it.supplierItemId,
+            itemType: it.itemType,
+            materialMasterId: it.materialMasterId ?? null,
+            subsidiaryMasterId: it.subsidiaryMasterId ?? null,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            totalPrice: it.quantity * it.unitPrice,
+            systemQuantity: it.systemQuantity,
+            adjustedQuantity: it.adjustedQuantity,
+            adjustmentReason: it.adjustmentReason,
+            sourceType: "WIZARD_AUTO",
+            materialRequirementId: it.materialRequirementId,
+          })),
+        },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        supplierId: true,
+        locationId: true,
+        productionLineId: true,
+        totalAmount: true,
+        _count: { select: { items: true } },
+      },
+    });
+
+    createdPurchaseOrders.push({
+      id: po.id,
+      orderNumber: po.orderNumber,
+      supplierId: po.supplierId,
+      locationId: po.locationId,
+      productionLineId: po.productionLineId,
+      itemCount: po._count.items,
+      totalAmount: po.totalAmount ?? 0,
+    });
+  }
+
+  return {
+    createdPurchaseOrders,
+    count: createdPurchaseOrders.length,
+    totalAmount: grandTotal,
+    isIdempotentReplay: false,
+    batchId,
+    adjustmentSummary: {
+      increased: 0,
+      decreased: 0,
+      added: createdPurchaseOrders.length,
+      priceChanged: 0,
+      unchanged: 0,
+      totalDeltaAmount: grandTotal,
+      affectedPurchaseOrderIds: cancelledPOIds,
+    },
   };
 }
