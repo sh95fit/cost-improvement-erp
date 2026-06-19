@@ -732,4 +732,208 @@ describe("createPurchaseOrdersBatch", () => {
       ]);
     });
   });
+
+    // ════════════════════════════════════════════════════════
+  // ★ R1-b4: REPLACE 모드 통합 테스트
+  // ════════════════════════════════════════════════════════
+  describe("REPLACE mode (R1-b4)", () => {
+    const IDEMPOTENCY_KEY = "wiz-session-replace-xyz98765";
+
+    function makeReplaceInput(
+      items: any[],
+      basedOnPOIds: string[],
+    ): CreatePurchaseOrdersBatchInput {
+      return {
+        companyId: COMPANY_ID,
+        orderDate: ORDER_DATE,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        countSource: "ESTIMATED",
+        mode: "REPLACE",
+        basedOnPOIds,
+        items,
+      };
+    }
+
+    /** 기존 PO N건을 status 별로 mock (executeReplaceMode 의 1단계 조회용) */
+    function mockExistingPOsForReplace(
+      pos: Array<{
+        id: string;
+        status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELLED";
+        orderNumber?: string;
+      }>,
+    ) {
+      mockTx.purchaseOrder.findMany.mockResolvedValue(
+        pos.map((p) => ({
+          id: p.id,
+          status: p.status,
+          orderNumber: p.orderNumber ?? `PO-OLD-${p.id}`,
+        })),
+      );
+    }
+
+    // ── 입력 검증 ──
+    it("basedOnPOIds 가 비어있으면 REPLACE_MISSING_BASED_ON_POS", async () => {
+      await expect(
+        createPurchaseOrdersBatch(makeReplaceInput([makeItem()], [])),
+      ).rejects.toThrow("REPLACE_MISSING_BASED_ON_POS");
+    });
+
+    // ── 차단 가드 ──
+    it("APPROVED 상태 PO 포함 시 REPLACE_BLOCKED_BY_LOCKED_PO", async () => {
+      mockExistingPOsForReplace([
+        { id: "po_draft_1", status: "DRAFT" },
+        { id: "po_locked", status: "APPROVED" },
+      ]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeReplaceInput([makeItem()], ["po_draft_1", "po_locked"]),
+        ),
+      ).rejects.toThrow("REPLACE_BLOCKED_BY_LOCKED_PO");
+    });
+
+    it("RECEIVED 상태 PO 포함 시도 REPLACE_BLOCKED_BY_LOCKED_PO", async () => {
+      mockExistingPOsForReplace([{ id: "po_received", status: "RECEIVED" }]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeReplaceInput([makeItem()], ["po_received"]),
+        ),
+      ).rejects.toThrow("REPLACE_BLOCKED_BY_LOCKED_PO");
+    });
+
+    // ── 정상 흐름: DRAFT 만 ──
+    it("DRAFT PO 1건 → CANCELLED 전이 + 신규 PO 생성 + REMOVE 로그", async () => {
+      mockExistingPOsForReplace([
+        { id: "po_draft_1", status: "DRAFT", orderNumber: "PO-20260601-001" },
+      ]);
+
+      const r = await createPurchaseOrdersBatch(
+        makeReplaceInput([makeItem({ quantity: 2, unitPrice: 50000 })], [
+          "po_draft_1",
+        ]),
+      );
+
+      // 1) 기존 PO 가 CANCELLED 로 전이됐는지
+      expect(mockTx.purchaseOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "po_draft_1" },
+          data: expect.objectContaining({
+            status: "CANCELLED",
+            cancelReason: expect.stringContaining(
+              "REGENERATED_FROM_WIZARD_REPLACE",
+            ),
+          }),
+        }),
+      );
+
+      // 2) POAdjustmentLog 가 REMOVE + fieldName="po_status" 로 적층됐는지
+      const removeLogs = mockTx.pOAdjustmentLog.create.mock.calls.filter(
+        ([arg]: any) => arg.data.action === "REMOVE",
+      );
+      expect(removeLogs).toHaveLength(1);
+      expect(removeLogs[0][0].data.fieldName).toBe("po_status");
+      expect(removeLogs[0][0].data.beforeValue).toContain("DRAFT");
+      expect(removeLogs[0][0].data.afterValue).toContain("CANCELLED");
+
+      // 3) 신규 PO 1건이 생성됐는지
+      expect(mockTx.purchaseOrder.create).toHaveBeenCalledTimes(1);
+      expect(r.createdPurchaseOrders).toHaveLength(1);
+      expect(r.count).toBe(1);
+      expect(r.totalAmount).toBe(100000);
+
+      // 4) adjustmentSummary 에 취소된 PO id 가 들어있는지
+      expect(r.adjustmentSummary).toBeDefined();
+      expect(r.adjustmentSummary!.affectedPurchaseOrderIds).toEqual([
+        "po_draft_1",
+      ]);
+    });
+
+    // ── 정상 흐름: SUBMITTED 도 허용 ──
+    it("SUBMITTED PO 도 CANCELLED 로 전이 가능 (R1-b4 핵심 정책)", async () => {
+      mockExistingPOsForReplace([
+        { id: "po_sub_1", status: "SUBMITTED", orderNumber: "PO-20260601-002" },
+      ]);
+
+      const r = await createPurchaseOrdersBatch(
+        makeReplaceInput([makeItem()], ["po_sub_1"]),
+      );
+
+      // SUBMITTED 도 CANCELLED 로 전이
+      expect(mockTx.purchaseOrder.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "po_sub_1" },
+          data: expect.objectContaining({ status: "CANCELLED" }),
+        }),
+      );
+      // beforeValue 에 "SUBMITTED" 가 기록됐는지
+      const removeLog = mockTx.pOAdjustmentLog.create.mock.calls.find(
+        ([arg]: any) => arg.data.action === "REMOVE",
+      );
+      expect(removeLog![0].data.beforeValue).toContain("SUBMITTED");
+      expect(r.adjustmentSummary!.affectedPurchaseOrderIds).toEqual([
+        "po_sub_1",
+      ]);
+    });
+
+    // ── DRAFT + SUBMITTED 혼합 ──
+    it("DRAFT + SUBMITTED 혼합 → 둘 다 취소 + 새 PO 생성", async () => {
+      mockExistingPOsForReplace([
+        { id: "po_draft_1", status: "DRAFT", orderNumber: "PO-20260601-001" },
+        { id: "po_sub_1", status: "SUBMITTED", orderNumber: "PO-20260601-002" },
+      ]);
+
+      const r = await createPurchaseOrdersBatch(
+        makeReplaceInput([makeItem()], ["po_draft_1", "po_sub_1"]),
+      );
+
+      // 2건 모두 update 호출 (각각 CANCELLED 로)
+      const cancelUpdates = mockTx.purchaseOrder.update.mock.calls.filter(
+        ([arg]: any) => arg.data.status === "CANCELLED",
+      );
+      expect(cancelUpdates).toHaveLength(2);
+
+      // REMOVE 로그도 2건
+      const removeLogs = mockTx.pOAdjustmentLog.create.mock.calls.filter(
+        ([arg]: any) => arg.data.action === "REMOVE",
+      );
+      expect(removeLogs).toHaveLength(2);
+
+      // 영향받은 PO id 두 개 모두 기록
+      expect(r.adjustmentSummary!.affectedPurchaseOrderIds.sort()).toEqual([
+        "po_draft_1",
+        "po_sub_1",
+      ]);
+    });
+
+    // ── note 에 원본 PO 번호 기록 ──
+    it("새 PO 의 note 에 취소된 원본 PO 번호가 기록됨", async () => {
+      mockExistingPOsForReplace([
+        { id: "po_draft_1", status: "DRAFT", orderNumber: "PO-20260601-001" },
+        { id: "po_draft_2", status: "DRAFT", orderNumber: "PO-20260601-002" },
+      ]);
+
+      await createPurchaseOrdersBatch({
+        ...makeReplaceInput([makeItem()], ["po_draft_1", "po_draft_2"]),
+        note: "식수 재산정",
+      });
+
+      const newPOCall = mockTx.purchaseOrder.create.mock.calls[0][0];
+      expect(newPOCall.data.note).toContain("식수 재산정");
+      expect(newPOCall.data.note).toContain("[REPLACE]");
+      expect(newPOCall.data.note).toContain("PO-20260601-001");
+      expect(newPOCall.data.note).toContain("PO-20260601-002");
+    });
+
+    // ── 신규 PO 는 DRAFT 상태 ──
+    it("새 PO 는 DRAFT 상태로 생성됨 (SUBMITTED 로 바로 가지 않음)", async () => {
+      mockExistingPOsForReplace([{ id: "po_draft_1", status: "DRAFT" }]);
+
+      await createPurchaseOrdersBatch(
+        makeReplaceInput([makeItem()], ["po_draft_1"]),
+      );
+
+      const newPOCall = mockTx.purchaseOrder.create.mock.calls[0][0];
+      expect(newPOCall.data.status).toBe("DRAFT");
+      expect(newPOCall.data.isManual).toBe(false);
+    });
+  });
 });
