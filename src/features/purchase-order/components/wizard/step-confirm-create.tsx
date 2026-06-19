@@ -9,6 +9,8 @@ import { createPurchaseOrdersBatchAction } from "@/features/purchase-order/actio
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
 import { ExistingPONotice } from "./existing-po-notice";
 import { MODE_LABEL } from "./wizard-mode-selector";
+import { DeltaPreviewCard } from "./delta-preview-card";
+import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
 
 interface Props {
   mealPlanGroupId: string;
@@ -27,6 +29,10 @@ interface Props {
   onChangeOrderDate: (d: Date) => void;
   onChangeDeliveryDate: (d: Date | null) => void;
   onChangeNote: (s: string) => void;
+  // ★ R1-b3
+  deltaPreview: PreviewDeltaPlanResult | null;
+  deltaPreviewLoading: boolean;
+  deltaPreviewError: string | null;
   onClearPersistence: () => void;
 }
 
@@ -44,7 +50,11 @@ export function StepConfirmCreate({
   onChangeOrderDate,
   onChangeDeliveryDate,
   onChangeNote,
-  onClearPersistence,
+  // ★ R1-b3
+  deltaPreview,
+  deltaPreviewLoading,
+  deltaPreviewError,
+  onClearPersistence,  
 }: Props) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -192,6 +202,17 @@ export function StepConfirmCreate({
 
       {/* ★ R1-b1: 동일 식단그룹의 기존 활성 PO 사전 안내 */}
       <ExistingPONotice mealPlanGroupId={mealPlanGroupId} context="step5" />
+
+      {/* ★ R1-b3: DELTA 모드 차분 프리뷰 */}
+      {mode === "DELTA" && (
+        <DeltaPreviewCard
+          preview={deltaPreview}
+          isLoading={deltaPreviewLoading}
+          error={deltaPreviewError}
+          context="step5"
+        />
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="orderDate">주문일 *</Label>

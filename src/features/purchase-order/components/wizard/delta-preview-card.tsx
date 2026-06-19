@@ -1,0 +1,331 @@
+"use client";
+
+import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
+
+interface Props {
+  /** preview 결과 — null 이면 미실행/계산중, undefined 면 비DELTA 모드 (렌더 안 함) */
+  preview: PreviewDeltaPlanResult | null;
+  isLoading: boolean;
+  error: string | null;
+  /** 표시 위치 (디자인 미세 조정용) */
+  context: "step2" | "step5";
+}
+
+export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) {
+  // 로딩
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        차분 발주 미리보기를 계산하는 중...
+      </div>
+    );
+  }
+
+  // 에러
+  if (error) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <p className="font-medium">차분 프리뷰 실패</p>
+        <p className="mt-1">{error}</p>
+      </div>
+    );
+  }
+
+  if (!preview) return null;
+
+  const { summary, itemChanges, newGroups, blocked } = preview;
+  const hasAnyChange =
+    summary.increased +
+      summary.decreased +
+      summary.priceChanged +
+      summary.added >
+    0;
+
+  // UPDATE/ADD/UNCHANGED 행을 PO 별로 그룹화
+  const changesByPO = new Map<
+    string,
+    { orderNumber: string | null; rows: typeof itemChanges }
+  >();
+  for (const ch of itemChanges) {
+    const key = ch.purchaseOrderId ?? "_NEW_";
+    let entry = changesByPO.get(key);
+    if (!entry) {
+      entry = { orderNumber: ch.purchaseOrderNumber, rows: [] };
+      changesByPO.set(key, entry);
+    }
+    entry.rows.push(ch);
+  }
+
+  return (
+    <section className="rounded-lg border border-amber-200 bg-amber-50/40">
+      <header className="flex items-center justify-between border-b border-amber-200 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-amber-900">
+            🔀 차분 발주 미리보기
+          </span>
+          {context === "step2" && (
+            <span className="text-xs text-amber-700">
+              (Step 3 편집 시 자동 갱신됩니다)
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-amber-800">
+          총 변동액{" "}
+          <strong
+            className={
+              summary.totalDeltaAmount > 0
+                ? "text-blue-700"
+                : summary.totalDeltaAmount < 0
+                  ? "text-orange-700"
+                  : "text-gray-700"
+            }
+          >
+            {summary.totalDeltaAmount >= 0 ? "+" : ""}
+            {summary.totalDeltaAmount.toLocaleString()} 원
+          </strong>
+        </span>
+      </header>
+
+      {blocked.hasApprovedOrLocked && (
+        <div className="border-b border-amber-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+          ⚠ 발주확정(APPROVED) 이상 상태의 PO {blocked.lockedPOIds.length}건이
+          포함되어 있어 실행이 차단됩니다. 부족분은 신규 발주로, 오배송·과다는
+          재고 실사로 처리하세요.
+        </div>
+      )}
+
+      {/* 요약 카운트 */}
+      <div className="grid grid-cols-5 gap-2 border-b border-amber-200 px-4 py-3">
+        <SummaryPill label="증가" count={summary.increased} tone="up" />
+        <SummaryPill label="감소" count={summary.decreased} tone="down" />
+        <SummaryPill label="신규" count={summary.added} tone="add" />
+        <SummaryPill
+          label="단가 변경"
+          count={summary.priceChanged}
+          tone="price"
+        />
+        <SummaryPill
+          label="변경 없음"
+          count={summary.unchanged}
+          tone="unchanged"
+        />
+      </div>
+
+      {!hasAnyChange && summary.unchanged === 0 && newGroups.length === 0 && (
+        <div className="px-4 py-6 text-center text-sm text-gray-500">
+          차분 항목이 없습니다.
+        </div>
+      )}
+
+      {/* 기존 PO 별 변경 행 */}
+      {changesByPO.size > 0 && (
+        <div className="border-b border-amber-200">
+          {Array.from(changesByPO.entries()).map(([poId, entry]) => {
+            if (poId === "_NEW_") return null;
+            return (
+              <div key={poId} className="border-b border-amber-100 last:border-b-0">
+                <div className="bg-amber-100/50 px-4 py-1.5 text-xs font-medium text-amber-900">
+                  기존 발주서 {entry.orderNumber ?? poId.slice(0, 8)} —{" "}
+                  {entry.rows.length}건
+                </div>
+                <ChangeRowsTable rows={entry.rows} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 신규 그룹 (새 PO 로 생성될 항목) */}
+      {newGroups.length > 0 && (
+        <div>
+          <div className="bg-emerald-100/50 px-4 py-1.5 text-xs font-medium text-emerald-900">
+            ＋ 신규 발주서 생성 — {newGroups.length}건
+          </div>
+          {newGroups.map((g, i) => (
+            <div
+              key={i}
+              className="border-b border-emerald-100 last:border-b-0 px-4 py-3"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-gray-900">
+                  {g.supplierName} · {g.locationName}
+                  {g.productionLineName && ` · ${g.productionLineName}`}
+                </span>
+                <span className="font-semibold text-emerald-700">
+                  +{g.groupAmount.toLocaleString()} 원
+                </span>
+              </div>
+              <ul className="mt-2 space-y-0.5 text-xs text-gray-700">
+                {g.items.map((it) => (
+                  <li
+                    key={it.materialMasterId}
+                    className="flex justify-between"
+                  >
+                    <span>
+                      {it.materialName}{" "}
+                      <span className="text-gray-400">({it.materialCode})</span>
+                    </span>
+                    <span className="font-mono">
+                      {it.quantity} × {it.unitPrice.toLocaleString()} ={" "}
+                      {it.amount.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────
+function SummaryPill({
+  label,
+  count,
+  tone,
+}: {
+  label: string;
+  count: number;
+  tone: "up" | "down" | "add" | "price" | "unchanged";
+}) {
+  const toneClass = {
+    up: "bg-blue-100 text-blue-800",
+    down: "bg-orange-100 text-orange-800",
+    add: "bg-emerald-100 text-emerald-800",
+    price: "bg-purple-100 text-purple-800",
+    unchanged: "bg-gray-100 text-gray-600",
+  }[tone];
+  const icon = {
+    up: "↑",
+    down: "↓",
+    add: "＋",
+    price: "₩",
+    unchanged: "＝",
+  }[tone];
+  return (
+    <div className={`rounded-md px-2 py-1.5 text-center ${toneClass}`}>
+      <div className="text-[10px] font-medium">
+        {icon} {label}
+      </div>
+      <div className="text-base font-bold">{count}</div>
+    </div>
+  );
+}
+
+function ChangeRowsTable({
+  rows,
+}: {
+  rows: import("@/features/purchase-order/actions/purchase-order.action").DeltaPreviewItemChange[];
+}) {
+  return (
+    <table className="w-full text-xs">
+      <thead className="bg-white/40 text-left text-gray-600">
+        <tr>
+          <th className="px-3 py-1.5 w-24">유형</th>
+          <th className="px-3 py-1.5">자재</th>
+          <th className="px-3 py-1.5 text-right">수량 변화</th>
+          <th className="px-3 py-1.5 text-right">단가 변화</th>
+          <th className="px-3 py-1.5 text-right">금액 차이</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr
+            key={`${r.purchaseOrderId}-${r.materialMasterId}-${i}`}
+            className={`border-t border-amber-100 ${
+              r.kind === "UNCHANGED" ? "text-gray-400" : "text-gray-800"
+            }`}
+          >
+            <td className="px-3 py-1.5">
+              <KindBadge kind={r.kind} />
+            </td>
+            <td className="px-3 py-1.5">
+              <div className="font-medium">{r.materialName}</div>
+              <div className="text-[10px] text-gray-400">{r.materialCode}</div>
+            </td>
+            <td className="px-3 py-1.5 text-right font-mono">
+              {r.kind === "ADD" ? (
+                <span className="text-emerald-700">
+                  ＋ {r.afterQuantity}
+                </span>
+              ) : r.deltaQuantity !== 0 ? (
+                <>
+                  <span className="text-gray-500">{r.beforeQuantity}</span>
+                  {" → "}
+                  <strong
+                    className={
+                      r.deltaQuantity > 0 ? "text-blue-700" : "text-orange-700"
+                    }
+                  >
+                    {r.afterQuantity}
+                  </strong>
+                  <span className="ml-1 text-[10px] opacity-70">
+                    ({r.deltaQuantity > 0 ? "+" : ""}
+                    {r.deltaQuantity})
+                  </span>
+                </>
+              ) : (
+                <span className="text-gray-400">{r.afterQuantity}</span>
+              )}
+            </td>
+            <td className="px-3 py-1.5 text-right font-mono">
+              {r.unitPriceChanged && r.beforeUnitPrice !== null ? (
+                <>
+                  <span className="text-gray-500">
+                    {r.beforeUnitPrice.toLocaleString()}
+                  </span>
+                  {" → "}
+                  <strong className="text-purple-700">
+                    {r.afterUnitPrice.toLocaleString()}
+                  </strong>
+                </>
+              ) : (
+                <span className="text-gray-400">
+                  {r.afterUnitPrice.toLocaleString()}
+                </span>
+              )}
+            </td>
+            <td className="px-3 py-1.5 text-right font-mono font-medium">
+              {r.amountDelta === 0 ? (
+                <span className="text-gray-400">—</span>
+              ) : (
+                <span
+                  className={
+                    r.amountDelta > 0 ? "text-blue-700" : "text-orange-700"
+                  }
+                >
+                  {r.amountDelta > 0 ? "+" : ""}
+                  {r.amountDelta.toLocaleString()}
+                </span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function KindBadge({
+  kind,
+}: {
+  kind: import("@/features/purchase-order/actions/purchase-order.action").DeltaPreviewItemChange["kind"];
+}) {
+  const map = {
+    UPDATE_QUANTITY: { label: "수량 변경", cls: "bg-blue-100 text-blue-800" },
+    UPDATE_UNIT_PRICE: {
+      label: "단가 변경",
+      cls: "bg-purple-100 text-purple-800",
+    },
+    UPDATE_BOTH: { label: "수량＋단가", cls: "bg-indigo-100 text-indigo-800" },
+    ADD: { label: "신규 추가", cls: "bg-emerald-100 text-emerald-800" },
+    UNCHANGED: { label: "변경 없음", cls: "bg-gray-100 text-gray-600" },
+  }[kind];
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${map.cls}`}>
+      {map.label}
+    </span>
+  );
+}

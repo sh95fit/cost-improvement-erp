@@ -49,6 +49,10 @@ export interface WizardState {
   orderDate: Date;
   deliveryDate: Date | null;
   note: string;
+  // ★ R1-b3: DELTA 프리뷰 (mode === "DELTA" 일 때만 의미)
+  deltaPreview: import("@/features/purchase-order/actions/purchase-order.action").PreviewDeltaPlanResult | null;
+  deltaPreviewLoading: boolean;
+  deltaPreviewError: string | null;  
 }
 
 type Action =
@@ -83,6 +87,16 @@ type Action =
       type: "SET_MODE";
       payload: { mode: "NEW" | "DELTA" | "REPLACE"; basedOnPOIds: string[] };
     }
+
+  // ★ R1-b3
+  | { type: "DELTA_PREVIEW_START" }
+  | {
+      type: "DELTA_PREVIEW_SUCCESS";
+      payload: import("@/features/purchase-order/actions/purchase-order.action").PreviewDeltaPlanResult;
+    }
+  | { type: "DELTA_PREVIEW_ERROR"; payload: string }
+  | { type: "DELTA_PREVIEW_RESET" }
+
   | { type: "RESET" };
 
   const initialState: WizardState = {
@@ -103,6 +117,9 @@ type Action =
     orderDate: new Date(),
     deliveryDate: null,
     note: "",
+    deltaPreview: null,
+    deltaPreviewLoading: false,
+    deltaPreviewError: null,
   };
 
 // ════════════════════════════════════════
@@ -191,6 +208,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         mappedPartialStock: [],
         mappedFullStock: [],
         unmapped: [],
+        deltaPreview: null,
+        deltaPreviewLoading: false,
+        deltaPreviewError: null,        
       };
     case "SET_COUNT_SOURCE":
       return {
@@ -204,6 +224,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         mappedPartialStock: [],
         mappedFullStock: [],
         unmapped: [],
+        deltaPreview: null,
+        deltaPreviewLoading: false,
+        deltaPreviewError: null,        
       };
     case "LOAD_START":
       return { ...state, isLoading: true, loadError: null };
@@ -309,7 +332,35 @@ function reducer(state: WizardState, action: Action): WizardState {
         ...state,
         mode: action.payload.mode,
         basedOnPOIds: action.payload.basedOnPOIds,
+        // ★ R1-b3: 모드 변경 시 preview 리셋
+        deltaPreview: null,
+        deltaPreviewLoading: false,
+        deltaPreviewError: null,
       };
+
+    case "DELTA_PREVIEW_START":
+      return { ...state, deltaPreviewLoading: true, deltaPreviewError: null };
+    case "DELTA_PREVIEW_SUCCESS":
+      return {
+        ...state,
+        deltaPreviewLoading: false,
+        deltaPreview: action.payload,
+        deltaPreviewError: null,
+      };
+    case "DELTA_PREVIEW_ERROR":
+      return {
+        ...state,
+        deltaPreviewLoading: false,
+        deltaPreviewError: action.payload,
+      };
+    case "DELTA_PREVIEW_RESET":
+      return {
+        ...state,
+        deltaPreview: null,
+        deltaPreviewLoading: false,
+        deltaPreviewError: null,
+      };
+
     case "RESET":
       return initialState;
     default:
@@ -342,6 +393,94 @@ export function POWizard() {
     );
     dispatch({ type: "SET_IDEMPOTENCY_KEY", payload: token });
   }, [state.mealPlanGroup, state.countSource, state.idempotencyKey]);
+
+  // ★ R1-b3: DELTA 모드 — candidates 변경 감지 후 프리뷰 자동 호출
+  // - mode !== DELTA: 호출 안 함
+  // - basedOnPOIds 비어있음: 호출 안 함
+  // - Step 2 이상 진입했을 때만 의미 있음
+  useEffect(() => {
+    if (state.mode !== "DELTA") return;
+    if (state.basedOnPOIds.length === 0) return;
+    if (!state.mealPlanGroup) return;
+    if (state.step < 2) return;
+    // Step 2 로드 결과가 아직 없으면 호출 안 함 (candidates 가 비어있을 수 있음)
+    if (!state.loadResult) return;
+
+    // candidates 구성: mapped + mappedPartialStock (확정된 supplierItem 있는 행만)
+    const candidates = [...state.mapped, ...state.mappedPartialStock]
+      .filter(
+        (r) =>
+          r.supplierItem !== null &&
+          r.orderQuantity !== null &&
+          r.orderQuantity > 0,
+      )
+      .map((r) => ({
+        materialMasterId: r.materialMasterId,
+        locationId: r.locationId,
+        productionLineId: r.productionLineId || null,
+        supplierId: r.supplierItem!.supplierId,
+        supplierItemId: r.supplierItem!.id,
+        quantity: r.orderQuantity!,
+        unitPrice: r.unitPrice ?? 0,
+        netRequiredG: r.netRequiredG ?? null,
+      }));
+
+    if (candidates.length === 0) {
+      dispatch({ type: "DELTA_PREVIEW_RESET" });
+      return;
+    }
+
+    let cancelled = false;
+    const mealPlanGroupId = state.mealPlanGroup.id;
+    const basedOnPOIds = state.basedOnPOIds;
+
+    void (async () => {
+      dispatch({ type: "DELTA_PREVIEW_START" });
+      try {
+        const { previewDeltaPlanAction } = await import(
+          "@/features/purchase-order/actions/purchase-order.action"
+        );
+        const res = await previewDeltaPlanAction({
+          mealPlanGroupId,
+          basedOnPOIds,
+          candidates,
+        });
+        if (cancelled) return;
+        if (!res.success) {
+          dispatch({ type: "DELTA_PREVIEW_ERROR", payload: res.error.message });
+          return;
+        }
+        dispatch({ type: "DELTA_PREVIEW_SUCCESS", payload: res.data });
+      } catch (err) {
+        if (cancelled) return;
+        dispatch({
+          type: "DELTA_PREVIEW_ERROR",
+          payload: err instanceof Error ? err.message : "프리뷰 호출 실패",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // candidates 직렬화 키 — materialRequirementId × qty × price × supplierItem.id
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.mode,
+    state.basedOnPOIds.join(","),
+    state.mealPlanGroup?.id,
+    state.step,
+    state.loadResult,
+    // 편집 변경 감지용 직렬화 키
+    [...state.mapped, ...state.mappedPartialStock]
+      .filter((r) => r.supplierItem)
+      .map(
+        (r) =>
+          `${r.materialRequirementId}|${r.supplierItem!.id}|${r.orderQuantity}|${r.unitPrice}`,
+      )
+      .sort()
+      .join(";"),
+  ]);
 
   // localStorage persistence (편집 상태만 저장 — loadResult/mapped는 다시 로드)
   const persistedState = {
@@ -455,6 +594,11 @@ export function POWizard() {
             onLoadError={(e) =>
               dispatch({ type: "LOAD_ERROR", payload: e })
             }
+            /* ★ R1-b3 */
+            mode={state.mode}
+            deltaPreview={state.deltaPreview}
+            deltaPreviewLoading={state.deltaPreviewLoading}
+            deltaPreviewError={state.deltaPreviewError}
           />
         )}
 
@@ -512,6 +656,10 @@ export function POWizard() {
             onClearPersistence={() =>
               clearPersisted(state.mealPlanGroup?.id ?? null)
             }
+            /* ★ R1-b3 */
+            deltaPreview={state.deltaPreview}
+            deltaPreviewLoading={state.deltaPreviewLoading}
+            deltaPreviewError={state.deltaPreviewError}            
           />
         )}
         </div>

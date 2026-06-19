@@ -6,6 +6,8 @@ import { loadPOWizardDataAction } from "@/features/purchase-order/actions/purcha
 import { Button } from "@/components/ui/button";
 import type { BuildPOItemsResult } from "@/features/purchase-order/lib/build-po-items-from-mr";
 import type { MealPlanGroupOption } from "./po-wizard";
+import { DeltaPreviewCard } from "./delta-preview-card";
+import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
 
 interface Props {
   mealPlanGroupId: string;
@@ -17,6 +19,11 @@ interface Props {
   onLoadStart: () => void;
   onLoadSuccess: (r: BuildPOItemsResult) => void;
   onLoadError: (msg: string) => void;
+  // ★ R1-b3
+  mode: "NEW" | "DELTA" | "REPLACE";
+  deltaPreview: PreviewDeltaPlanResult | null;
+  deltaPreviewLoading: boolean;
+  deltaPreviewError: string | null;  
 }
 
 export function StepLoadSummary({
@@ -29,6 +36,11 @@ export function StepLoadSummary({
   onLoadStart,
   onLoadSuccess,
   onLoadError,
+  // ★ R1-b3
+  mode,
+  deltaPreview,
+  deltaPreviewLoading,
+  deltaPreviewError,
 }: Props) {
   // 자동 로드: Step 2 진입 시 1회 (mealPlanGroupId×countSource 조합이 변경될 때마다)
   const lastLoadedKeyRef = useRef<string | null>(null);
@@ -180,6 +192,16 @@ export function StepLoadSummary({
               {loadResult.summary.estimatedTotalAmount.toLocaleString()} 원
             </p>
           </div>
+
+          {/* ★ R1-b3: DELTA 모드 차분 프리뷰 */}
+          {mode === "DELTA" && (
+            <DeltaPreviewCard
+              preview={deltaPreview}
+              isLoading={deltaPreviewLoading}
+              error={deltaPreviewError}
+              context="step2"
+            />
+          )}
 
           {loadResult.summary.totalCount === 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
