@@ -22,6 +22,10 @@ import {
 } from "../services/purchase-order-batch.service"; // ★ 4-B'-5a 추가
 import { buildPOItemsFromMR } from "../lib/build-po-items-from-mr"; // ★ 4-B'-5a 추가
 import type { PurchaseOrder, POStatus, POBatchMode } from "@prisma/client";
+import type {
+  ExistingPOItemForDelta,
+  NewItemForDelta,
+} from "@/features/purchase-order/services/po-delta.service";
 
 // ════════════════════════════════════════
 // 공통 도메인 에러 메시지
@@ -464,3 +468,458 @@ export async function getExistingPOsForMealPlanGroupAction(
     return handleActionError(error, "기존 발주서 조회에 실패했습니다");
   }
 }
+
+// ============================================================
+// ★ R1-b3: DELTA 프리뷰 — DB 부수효과 없음
+// ============================================================
+//
+// Step 2 (자동 산출 직후) 및 Step 5 (확정 직전) 에서 호출.
+// 동일 식단그룹의 기존 PO 와 위저드 후보를 받아 차분 계산 결과만 반환한다.
+// 호출 시 DB 변경 일절 없음 — 트랜잭션·로그 적층 모두 executeDeltaMode 의 책임.
+//
+// 입력 candidate items 의 출처:
+//   Step 2 → loadPOWizardDataAction 의 mapped + mappedPartialStock
+//   Step 5 → 사용자 편집이 반영된 state.mapped + state.mappedPartialStock
+
+import type { POAdjustmentAction as POAdjActionEnum } from "@prisma/client";
+
+export interface DeltaPreviewItemChange {
+  /** 행 유형 */
+  kind: "UPDATE_QUANTITY" | "UPDATE_UNIT_PRICE" | "UPDATE_BOTH" | "ADD" | "UNCHANGED";
+  /** 영향 PO id (UPDATE/ADD 의 기존 PO 부착) — newGroup 이면 null */
+  purchaseOrderId: string | null;
+  /** PO 번호 — newGroup 이면 null */
+  purchaseOrderNumber: string | null;
+  /** 표시용 자재명 */
+  materialMasterId: string;
+  materialName: string;
+  materialCode: string;
+  /** 자재별 공장/라인 */
+  locationId: string;
+  locationName: string;
+  productionLineId: string | null;
+  productionLineName: string | null;
+  /** 공급사 */
+  supplierId: string;
+  supplierName: string;
+  /** 수량 차이 (박스) — UNCHANGED/UPDATE_UNIT_PRICE 면 0 */
+  beforeQuantity: number | null;
+  afterQuantity: number;
+  deltaQuantity: number;
+  /** 단가 (변경 있을 때만 의미) */
+  beforeUnitPrice: number | null;
+  afterUnitPrice: number;
+  unitPriceChanged: boolean;
+  /** 금액 영향 (afterQty × afterPrice − beforeQty × beforePrice). ADD 는 +afterQty × afterPrice */
+  amountDelta: number;
+}
+
+export interface DeltaPreviewNewGroup {
+  /** 새 그룹의 식별 (supplier × location × line) — 표시용 */
+  supplierId: string;
+  supplierName: string;
+  locationId: string;
+  locationName: string;
+  productionLineId: string | null;
+  productionLineName: string | null;
+  items: Array<{
+    materialMasterId: string;
+    materialName: string;
+    materialCode: string;
+    quantity: number;
+    unitPrice: number;
+    amount: number;
+  }>;
+  /** 그룹 총 금액 */
+  groupAmount: number;
+}
+
+export interface PreviewDeltaPlanResult {
+  /** 기존 PO 갱신·추가 행 (UPDATE_*, ADD, UNCHANGED) */
+  itemChanges: DeltaPreviewItemChange[];
+  /** 매칭되는 기존 PO 가 없는 신규 그룹 (새 PO 로 생성될 그룹) */
+  newGroups: DeltaPreviewNewGroup[];
+  /** 요약 카운트 + 합계 차액 */
+  summary: {
+    increased: number;
+    decreased: number;
+    priceChanged: number;
+    added: number;       // additions + newGroups item count 합
+    unchanged: number;
+    totalDeltaAmount: number;
+  };
+  /** APPROVED+ 가 섞여 있어 실제 실행은 차단되는 경우 — preview 만 보여주고 실행은 불가 */
+  blocked: {
+    hasApprovedOrLocked: boolean;
+    lockedPOIds: string[];
+  };
+}
+
+/** previewDeltaPlanAction 입력 — Step 2/5 위저드에서 산출된 candidate */
+export interface PreviewDeltaPlanInput {
+  mealPlanGroupId: string;
+  basedOnPOIds: string[];
+  candidates: Array<{
+    materialMasterId: string;
+    locationId: string;
+    productionLineId: string | null;
+    supplierId: string;
+    supplierItemId: string;
+    quantity: number;
+    unitPrice: number;
+    netRequiredG?: number | null;
+  }>;
+}
+
+export async function previewDeltaPlanAction(
+  input: PreviewDeltaPlanInput,
+): Promise<ActionResult<PreviewDeltaPlanResult>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "purchase-order", "READ");
+
+    if (input.basedOnPOIds.length === 0) {
+      // 기존 PO 없으면 모두 newGroups 으로 처리할 수 있도록 빈 배열로 진행
+      // (단, 통상 호출자가 DELTA 모드에서만 호출하므로 거의 도달 안 함)
+    }
+
+    const { prisma } = await import("@/lib/prisma");
+    const { computeDeltaPlan } = await import(
+      "@/features/purchase-order/services/po-delta.service"
+    );
+
+    // 1) 기존 PO + items + 표시용 관계 일괄 조회
+    const existingPOs =
+      input.basedOnPOIds.length > 0
+        ? await prisma.purchaseOrder.findMany({
+            where: {
+              id: { in: input.basedOnPOIds },
+              companyId: session.companyId,
+            },
+            select: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              supplierId: true,
+              locationId: true,
+              productionLineId: true,
+              supplier: { select: { name: true } },
+              location: { select: { name: true } },
+              productionLine: { select: { name: true } },
+              items: {
+                select: {
+                  id: true,
+                  materialMasterId: true,
+                  supplierItemId: true,
+                  quantity: true,
+                  unitPrice: true,
+                  systemQuantity: true,
+                  materialMaster: { select: { name: true, code: true } },
+                },
+              },
+            },
+          })
+        : [];
+
+    const lockedPOIds = existingPOs
+      .filter((po) => po.status !== "DRAFT" && po.status !== "SUBMITTED")
+      .map((po) => po.id);
+    const hasApprovedOrLocked = lockedPOIds.length > 0;
+
+    // 2) 표시용 마스터 일괄 조회 (자재명·공급사명·공장명·라인명)
+    //    candidates 측의 ID 들과 newGroups 표시용
+    const candMaterialIds = Array.from(
+      new Set(input.candidates.map((c) => c.materialMasterId)),
+    );
+    const candSupplierIds = Array.from(
+      new Set(input.candidates.map((c) => c.supplierId)),
+    );
+    const candLocationIds = Array.from(
+      new Set(input.candidates.map((c) => c.locationId)),
+    );
+    const candLineIds = Array.from(
+      new Set(
+        input.candidates
+          .map((c) => c.productionLineId)
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    const [matMap, supMap, locMap, lineMap] = await Promise.all([
+      prisma.materialMaster
+        .findMany({
+          where: {
+            id: { in: candMaterialIds },
+            companyId: session.companyId,
+          },
+          select: { id: true, name: true, code: true },
+        })
+        .then((rows) => new Map(rows.map((r) => [r.id, r]))),
+      prisma.supplier
+        .findMany({
+          where: { id: { in: candSupplierIds }, companyId: session.companyId },
+          select: { id: true, name: true },
+        })
+        .then((rows) => new Map(rows.map((r) => [r.id, r.name]))),
+      prisma.location
+        .findMany({
+          where: { id: { in: candLocationIds }, companyId: session.companyId },
+          select: { id: true, name: true },
+        })
+        .then((rows) => new Map(rows.map((r) => [r.id, r.name]))),
+      candLineIds.length === 0
+        ? Promise.resolve(new Map<string, string>())
+        : prisma.productionLine
+            .findMany({
+              where: {
+                id: { in: candLineIds },
+                companyId: session.companyId,
+              },
+              select: { id: true, name: true },
+            })
+            .then((rows) => new Map(rows.map((r) => [r.id, r.name]))),
+    ]);
+
+    // 3) computeDeltaPlan 입력 구성 (MATERIAL 행만 — 위저드 본 흐름과 일치)
+    const existingItems: ExistingPOItemForDelta[] = [];
+    for (const po of existingPOs) {
+      if (po.status !== "DRAFT" && po.status !== "SUBMITTED") continue;
+      for (const it of po.items) {
+        if (!it.materialMasterId) continue;
+        existingItems.push({
+          purchaseOrderId: po.id,
+          purchaseOrderStatus: po.status as "DRAFT" | "SUBMITTED",
+          purchaseOrderItemId: it.id,
+          materialMasterId: it.materialMasterId,
+          locationId: po.locationId,
+          productionLineId: po.productionLineId,
+          supplierId: po.supplierId,
+          supplierItemId: it.supplierItemId,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          systemQuantity: it.systemQuantity,
+        });
+      }
+    }
+
+    const newCandidates: NewItemForDelta[] = input.candidates.map((c) => ({
+      materialMasterId: c.materialMasterId,
+      locationId: c.locationId,
+      productionLineId: c.productionLineId,
+      supplierId: c.supplierId,
+      supplierItemId: c.supplierItemId,
+      quantity: c.quantity,
+      unitPrice: c.unitPrice,
+      netRequiredG: c.netRequiredG ?? null,
+    }));
+
+    const plan = computeDeltaPlan({ existingItems, newCandidates });
+
+    // 4) PO id → (orderNumber, supplier·location·line 표시명) 매핑
+    const poDisplayMap = new Map(
+      existingPOs.map((po) => [
+        po.id,
+        {
+          orderNumber: po.orderNumber,
+          supplierName: po.supplier.name,
+          locationName: po.location.name,
+          productionLineName: po.productionLine?.name ?? null,
+        },
+      ]),
+    );
+    // PO id → item id → 자재명 (UPDATE 행에서 사용)
+    const poItemDisplayMap = new Map<
+      string,
+      Map<string, { materialName: string; materialCode: string }>
+    >();
+    for (const po of existingPOs) {
+      const m = new Map<string, { materialName: string; materialCode: string }>();
+      for (const it of po.items) {
+        m.set(it.id, {
+          materialName: it.materialMaster?.name ?? "(자재명 없음)",
+          materialCode: it.materialMaster?.code ?? "-",
+        });
+      }
+      poItemDisplayMap.set(po.id, m);
+    }
+
+    // 5) itemChanges 변환
+    const itemChanges: DeltaPreviewItemChange[] = [];
+
+    for (const u of plan.updates) {
+      const poDisp = poDisplayMap.get(u.purchaseOrderId);
+      const itemDisp = poItemDisplayMap
+        .get(u.purchaseOrderId)
+        ?.get(u.purchaseOrderItemId);
+      const kind: DeltaPreviewItemChange["kind"] =
+        u.quantityReason && u.priceReason
+          ? "UPDATE_BOTH"
+          : u.quantityReason
+            ? "UPDATE_QUANTITY"
+            : "UPDATE_UNIT_PRICE";
+      itemChanges.push({
+        kind,
+        purchaseOrderId: u.purchaseOrderId,
+        purchaseOrderNumber: poDisp?.orderNumber ?? null,
+        materialMasterId: existingItemMaterialId(existingItems, u.purchaseOrderItemId),
+        materialName: itemDisp?.materialName ?? "(자재명 없음)",
+        materialCode: itemDisp?.materialCode ?? "-",
+        locationId: poLocationId(existingPOs, u.purchaseOrderId),
+        locationName: poDisp?.locationName ?? "",
+        productionLineId: poLineId(existingPOs, u.purchaseOrderId),
+        productionLineName: poDisp?.productionLineName ?? null,
+        supplierId: poSupplierId(existingPOs, u.purchaseOrderId),
+        supplierName: poDisp?.supplierName ?? "",
+        beforeQuantity: u.beforeQuantity,
+        afterQuantity: u.afterQuantity,
+        deltaQuantity: u.deltaQuantity,
+        beforeUnitPrice: u.beforeUnitPrice,
+        afterUnitPrice: u.afterUnitPrice,
+        unitPriceChanged: u.unitPriceChanged,
+        amountDelta: Math.round(
+          u.afterQuantity * u.afterUnitPrice -
+            u.beforeQuantity * u.beforeUnitPrice,
+        ),
+      });
+    }
+
+    for (const a of plan.additions) {
+      const poDisp = poDisplayMap.get(a.purchaseOrderId);
+      const mat = matMap.get(a.candidate.materialMasterId);
+      itemChanges.push({
+        kind: "ADD",
+        purchaseOrderId: a.purchaseOrderId,
+        purchaseOrderNumber: poDisp?.orderNumber ?? null,
+        materialMasterId: a.candidate.materialMasterId,
+        materialName: mat?.name ?? "(자재명 없음)",
+        materialCode: mat?.code ?? "-",
+        locationId: a.candidate.locationId,
+        locationName:
+          locMap.get(a.candidate.locationId) ?? poDisp?.locationName ?? "",
+        productionLineId: a.candidate.productionLineId,
+        productionLineName: a.candidate.productionLineId
+          ? lineMap.get(a.candidate.productionLineId) ?? null
+          : null,
+        supplierId: a.candidate.supplierId,
+        supplierName:
+          supMap.get(a.candidate.supplierId) ?? poDisp?.supplierName ?? "",
+        beforeQuantity: null,
+        afterQuantity: a.candidate.quantity,
+        deltaQuantity: a.candidate.quantity,
+        beforeUnitPrice: null,
+        afterUnitPrice: a.candidate.unitPrice,
+        unitPriceChanged: false,
+        amountDelta: Math.round(a.candidate.quantity * a.candidate.unitPrice),
+      });
+    }
+
+    for (const un of plan.unchanged) {
+      const poDisp = poDisplayMap.get(un.purchaseOrderId);
+      const itemDisp = poItemDisplayMap
+        .get(un.purchaseOrderId)
+        ?.get(un.purchaseOrderItemId);
+      itemChanges.push({
+        kind: "UNCHANGED",
+        purchaseOrderId: un.purchaseOrderId,
+        purchaseOrderNumber: poDisp?.orderNumber ?? null,
+        materialMasterId: un.candidate.materialMasterId,
+        materialName: itemDisp?.materialName ?? "(자재명 없음)",
+        materialCode: itemDisp?.materialCode ?? "-",
+        locationId: un.candidate.locationId,
+        locationName: poDisp?.locationName ?? "",
+        productionLineId: un.candidate.productionLineId,
+        productionLineName: poDisp?.productionLineName ?? null,
+        supplierId: un.candidate.supplierId,
+        supplierName: poDisp?.supplierName ?? "",
+        beforeQuantity: un.candidate.quantity,
+        afterQuantity: un.candidate.quantity,
+        deltaQuantity: 0,
+        beforeUnitPrice: un.candidate.unitPrice,
+        afterUnitPrice: un.candidate.unitPrice,
+        unitPriceChanged: false,
+        amountDelta: 0,
+      });
+    }
+
+    // 6) newGroups → 그룹키별로 묶어서 표시용 변환
+    const newGroupsMap = new Map<
+      string,
+      DeltaPreviewNewGroup
+    >();
+    for (const ng of plan.newGroups) {
+      const key = `${ng.candidate.supplierId}|${ng.candidate.locationId}|${ng.candidate.productionLineId ?? "_"}`;
+      let entry = newGroupsMap.get(key);
+      if (!entry) {
+        entry = {
+          supplierId: ng.candidate.supplierId,
+          supplierName: supMap.get(ng.candidate.supplierId) ?? "",
+          locationId: ng.candidate.locationId,
+          locationName: locMap.get(ng.candidate.locationId) ?? "",
+          productionLineId: ng.candidate.productionLineId,
+          productionLineName: ng.candidate.productionLineId
+            ? lineMap.get(ng.candidate.productionLineId) ?? null
+            : null,
+          items: [],
+          groupAmount: 0,
+        };
+        newGroupsMap.set(key, entry);
+      }
+      const mat = matMap.get(ng.candidate.materialMasterId);
+      const amount = Math.round(ng.candidate.quantity * ng.candidate.unitPrice);
+      entry.items.push({
+        materialMasterId: ng.candidate.materialMasterId,
+        materialName: mat?.name ?? "(자재명 없음)",
+        materialCode: mat?.code ?? "-",
+        quantity: ng.candidate.quantity,
+        unitPrice: ng.candidate.unitPrice,
+        amount,
+      });
+      entry.groupAmount += amount;
+    }
+
+    return actionOk({
+      itemChanges,
+      newGroups: Array.from(newGroupsMap.values()),
+      summary: {
+        increased: plan.summary.increased,
+        decreased: plan.summary.decreased,
+        priceChanged: plan.summary.priceChanged,
+        added: plan.summary.added,
+        unchanged: plan.summary.unchanged,
+        totalDeltaAmount: plan.summary.totalDeltaAmount,
+      },
+      blocked: { hasApprovedOrLocked, lockedPOIds },
+    });
+  } catch (error) {
+    return handleActionError(error, "차분 프리뷰 산출에 실패했습니다");
+  }
+}
+
+// ── 내부 헬퍼 (UPDATE 행에서 기존 PO/Item 의 부속 정보 조회) ──
+function existingItemMaterialId(
+  existingItems: Array<{ purchaseOrderItemId: string; materialMasterId: string }>,
+  itemId: string,
+): string {
+  return existingItems.find((i) => i.purchaseOrderItemId === itemId)
+    ?.materialMasterId ?? "";
+}
+function poLocationId(
+  existingPOs: Array<{ id: string; locationId: string }>,
+  poId: string,
+): string {
+  return existingPOs.find((p) => p.id === poId)?.locationId ?? "";
+}
+function poLineId(
+  existingPOs: Array<{ id: string; productionLineId: string | null }>,
+  poId: string,
+): string | null {
+  return existingPOs.find((p) => p.id === poId)?.productionLineId ?? null;
+}
+function poSupplierId(
+  existingPOs: Array<{ id: string; supplierId: string }>,
+  poId: string,
+): string {
+  return existingPOs.find((p) => p.id === poId)?.supplierId ?? "";
+}
+// POAdjustmentAction 은 직접 사용 안 하지만, kind enum 의 의도(액션 매핑) 표현용
+type _UnusedPOAdj = POAdjActionEnum;
