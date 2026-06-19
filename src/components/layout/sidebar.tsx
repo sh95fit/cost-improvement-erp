@@ -38,7 +38,7 @@ const navigation = [
   { name: "상품 라인업", href: "/lineups", icon: Layers }, 
   { name: "자재 소요량", href: "/material-requirements", icon: Sigma },
   { name: "레시피 관리", href: "/recipes", icon: UtensilsCrossed },
-  { name: "발주 관리", href: "/purchasing", icon: ShoppingCart },
+  { name: "발주 관리", href: "/purchase-orders", icon: ShoppingCart },
   { name: "입고 관리", href: "/receiving", icon: ClipboardCheck },
   { name: "출고 관리", href: "/shipping", icon: Truck },
   { name: "소비 관리", href: "/consumption", icon: Warehouse },
