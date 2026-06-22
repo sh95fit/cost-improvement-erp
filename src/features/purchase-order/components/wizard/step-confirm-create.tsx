@@ -18,7 +18,8 @@ interface Props {
   /** ★ R1-a (D10) 분류 — 일부 재고 활용 행도 발주에 포함 */
   mappedPartialStock: POItemCandidate[];
   orderDate: Date;
-  deliveryDate: Date | null;
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  outboundDate: Date | null;
   note: string;
   // ★ R1-b1
   /** 위저드 세션 멱등성 키 — 그룹/countSource 정해지기 전에는 null */
@@ -27,7 +28,8 @@ interface Props {
   mode: "NEW" | "DELTA" | "REPLACE";
   basedOnPOIds: string[];
   onChangeOrderDate: (d: Date) => void;
-  onChangeDeliveryDate: (d: Date | null) => void;
+  // ★ Phase 1.6 (D15-1)
+  onChangeOutboundDate: (d: Date | null) => void;
   onChangeNote: (s: string) => void;
   // ★ R1-b3
   deltaPreview: PreviewDeltaPlanResult | null;
@@ -41,14 +43,14 @@ export function StepConfirmCreate({
   mapped,
   mappedPartialStock,
   orderDate,
-  deliveryDate,
+  outboundDate,
   note,
   idempotencyKey,
   countSource,
   mode,
   basedOnPOIds,
   onChangeOrderDate,
-  onChangeDeliveryDate,
+  onChangeOutboundDate,
   onChangeNote,
   // ★ R1-b3
   deltaPreview,
@@ -106,7 +108,8 @@ export function StepConfirmCreate({
       const res = await createPurchaseOrdersBatchAction({
         mealPlanGroupId,
         orderDate,
-        deliveryDate: deliveryDate ?? undefined,
+        // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+        outboundDate: outboundDate ?? undefined,
         note: note.trim() || undefined,
         // ★ R1-b1
         idempotencyKey,
@@ -162,9 +165,9 @@ export function StepConfirmCreate({
       <div>
         <h2 className="text-lg font-semibold">Step 5 — 발주 생성</h2>
         <p className="mt-1 text-sm text-gray-600">
-          주문일·납기일·메모를 입력하고 발주서를 일괄 생성합니다. 모든 PO는
+          주문일·출고일·메모를 입력하고 발주서를 일괄 생성합니다. 모든 PO는
           DRAFT 상태로 생성되며, 단가 적층은 DRAFT → SUBMITTED 전이 시점에
-          반영됩니다.
+          반영됩니다. 예상 입고일은 출고일 + 품목별 리드타임 최대값으로 자동 계산됩니다.
         </p>
       </div>
 
@@ -212,6 +215,7 @@ export function StepConfirmCreate({
         />
       )}
 
+      {/* ★ Phase 1.6 (D15-1, D15-2): 출고일 + 예상 입고일 미리보기 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="orderDate">주문일 *</Label>
@@ -226,18 +230,46 @@ export function StepConfirmCreate({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="deliveryDate">납기일 (선택)</Label>
+          <Label htmlFor="outboundDate">출고일 (선택)</Label>
           <input
-            id="deliveryDate"
+            id="outboundDate"
             type="date"
-            value={deliveryDate ? deliveryDate.toISOString().slice(0, 10) : ""}
+            value={outboundDate ? outboundDate.toISOString().slice(0, 10) : ""}
             onChange={(e) =>
-              onChangeDeliveryDate(
+              onChangeOutboundDate(
                 e.target.value ? new Date(e.target.value) : null,
               )
             }
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
+          {/* ★ Phase 1.6 (D15-2): 예상 입고일 클라이언트 미리보기 */}
+          {outboundDate &&
+            (() => {
+              // mapped + mappedPartialStock 중 supplierItem.leadTimeDays 가 있는 행들의 최대값
+              // 주의: POItemCandidate.supplierItem 에 leadTimeDays 필드가 있어야 함.
+              //       없으면 기본 1일 사용 (서버와 동일 정책).
+              const leadTimes = validMapped
+                .map((r) => {
+                  const lt = (r.supplierItem as { leadTimeDays?: number } | null)
+                    ?.leadTimeDays;
+                  return typeof lt === "number" && lt > 0 ? lt : null;
+                })
+                .filter((n): n is number => n !== null);
+              const maxLead = leadTimes.length > 0 ? Math.max(...leadTimes) : 1;
+              const eta = new Date(outboundDate);
+              eta.setDate(eta.getDate() + maxLead);
+              return (
+                <p className="text-xs text-blue-700">
+                  예상 입고일:{" "}
+                  <span className="font-medium">
+                    {eta.toLocaleDateString("ko-KR")}
+                  </span>
+                  <span className="ml-1 text-gray-500">
+                    (출고일 + {maxLead}일, 품목 리드타임 최대값)
+                  </span>
+                </p>
+              );
+            })()}
         </div>
       </div>
 

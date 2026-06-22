@@ -179,13 +179,16 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
 
       {/* 테이블 */}
       <div className="rounded-md border">
-        <Table>
+      <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[160px]">발주번호</TableHead>
               <TableHead className="w-[100px] text-center">상태</TableHead>
               <TableHead>공급업체</TableHead>
               <TableHead className="w-[110px]">발주일</TableHead>
+              {/* ★ Phase 1.6 (D15-1) */}
+              <TableHead className="w-[110px]">출고일</TableHead>
+              {/* ★ Phase 1.6 (D15-2) */}
               <TableHead className="w-[110px]">입고예정일</TableHead>
               <TableHead className="w-[80px] text-center">품목수</TableHead>
               <TableHead className="text-right">합계</TableHead>
@@ -196,13 +199,13 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
                   등록된 발주서가 없습니다
                 </TableCell>
               </TableRow>
@@ -231,8 +234,13 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
                     </span>
                   </TableCell>
                   <TableCell className="text-sm">{formatDate(item.orderDate)}</TableCell>
+                  {/* ★ Phase 1.6 (D15-1) */}
                   <TableCell className="text-sm">
                     {formatDate(item.outboundDate)}
+                  </TableCell>
+                  {/* ★ Phase 1.6 (D15-2) */}
+                  <TableCell className="text-sm">
+                    {formatDate(item.expectedReceiveDate)}
                   </TableCell>
                   <TableCell className="text-center text-sm">
                     {item._count.items}

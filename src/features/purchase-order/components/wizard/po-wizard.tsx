@@ -47,7 +47,8 @@ export interface WizardState {
   mappedFullStock: POItemCandidate[];
   unmapped: POItemCandidate[];
   orderDate: Date;
-  deliveryDate: Date | null;
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  outboundDate: Date | null;
   note: string;
   // ★ R1-b3: DELTA 프리뷰 (mode === "DELTA" 일 때만 의미)
   deltaPreview: import("@/features/purchase-order/actions/purchase-order.action").PreviewDeltaPlanResult | null;
@@ -87,7 +88,8 @@ type Action =
       };
     }    
   | { type: "SET_ORDER_DATE"; payload: Date }
-  | { type: "SET_DELIVERY_DATE"; payload: Date | null }
+  // ★ Phase 1.6 (D15-1): SET_DELIVERY_DATE → SET_OUTBOUND_DATE
+  | { type: "SET_OUTBOUND_DATE"; payload: Date | null }
   | { type: "SET_NOTE"; payload: string }
   // ★ R1-b1
   | { type: "SET_IDEMPOTENCY_KEY"; payload: string }
@@ -123,7 +125,8 @@ type Action =
     mappedFullStock: [],
     unmapped: [],
     orderDate: new Date(),
-    deliveryDate: null,
+    // ★ Phase 1.6 (D15-1)
+    outboundDate: null,
     note: "",
     deltaPreview: null,
     deltaPreviewLoading: false,
@@ -385,8 +388,9 @@ function reducer(state: WizardState, action: Action): WizardState {
 
     case "SET_ORDER_DATE":
       return { ...state, orderDate: action.payload };
-    case "SET_DELIVERY_DATE":
-      return { ...state, deliveryDate: action.payload };
+    // ★ Phase 1.6 (D15-1)
+    case "SET_OUTBOUND_DATE":
+      return { ...state, outboundDate: action.payload };
     case "SET_NOTE":
       return { ...state, note: action.payload };
     // ★ R1-b1
@@ -564,7 +568,9 @@ export function POWizard() {
         ]),
     ),
     orderDate: state.orderDate.toISOString(),
-    deliveryDate: state.deliveryDate?.toISOString() ?? null,
+    // ★ Phase 1.6 (D15-1): localStorage 키도 outboundDate 로 변경
+    //   (구 데이터 deliveryDate 는 use-wizard-persistence.ts 의 hydration 에서 무시되어 자연 소멸)
+    outboundDate: state.outboundDate?.toISOString() ?? null,
     note: state.note,
   };
 
@@ -708,7 +714,8 @@ export function POWizard() {
             mapped={state.mapped}
             mappedPartialStock={state.mappedPartialStock}
             orderDate={state.orderDate}
-            deliveryDate={state.deliveryDate}
+            /* ★ Phase 1.6 (D15-1) */
+            outboundDate={state.outboundDate}
             note={state.note}
             /* R1-b1: 멱등성 + 모드 정보 전달 */
             idempotencyKey={state.idempotencyKey}
@@ -718,8 +725,9 @@ export function POWizard() {
             onChangeOrderDate={(d) =>
               dispatch({ type: "SET_ORDER_DATE", payload: d })
             }
-            onChangeDeliveryDate={(d) =>
-              dispatch({ type: "SET_DELIVERY_DATE", payload: d })
+            /* ★ Phase 1.6 (D15-1) */
+            onChangeOutboundDate={(d) =>
+              dispatch({ type: "SET_OUTBOUND_DATE", payload: d })
             }
             onChangeNote={(s) =>
               dispatch({ type: "SET_NOTE", payload: s })

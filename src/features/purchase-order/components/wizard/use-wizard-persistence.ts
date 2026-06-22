@@ -19,7 +19,9 @@ export interface PersistedState {
   >;
   // Step 5 입력
   orderDate: string; // ISO
-  deliveryDate: string | null;
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  //   (구 localStorage 데이터의 deliveryDate 키는 JSON.parse 시 무시되어 자연 소멸)
+  outboundDate: string | null;
   note: string;
 }
 
