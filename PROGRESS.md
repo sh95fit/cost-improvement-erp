@@ -482,7 +482,26 @@ enum POAdjustmentAction {
 - DELTA 시 단가 변경 처리 — 현재 설계상 단가 미변경(수량만 합산). 단가도 재산출하려면 별도 정책 필요 (P9' 와 충돌 가능).
 - 차분 발주 후보 분류 표시 — 기존 PO 대비 변동 없는 행을 위저드 Step 2/3 에서 별도 카테고리(`UNCHANGED`) 또는 회색 처리로 표시할지 검토.
 
-#### D12. REPLACE 모드 정책 (R1-b4)
+#### D12. Step 4 분할 미리보기 멀티뷰 (3종)
+
+| 뷰 | 그룹키 | 의미 |
+|---|---|---|
+| **계층 뷰** (기본) | `supplierId × locationId × productionLineId` | 실제 PO 분할 단위 |
+| **공급업체 뷰** | `supplierId` | "이 업체에 총 얼마짜리 발주가 나가나" |
+| **라인업 뷰** | `lineupId` | "이 상품 1식 원가 = ?" 의 출발점 — 원가 추적 핵심 차원 |
+
+**라인업 뷰 구현 정책**:
+- 한 자재가 여러 라인업에서 사용 → 라인업별 `weightG × estimatedCount` 비율로 가중 분배.
+- MR 자체에 lineup 차원 없음 → `buildPOItemsFromMR()` 결과에 `lineupBreakdown` 필드 추가 필요 (백엔드 변경).
+- **Fix-R1 에서는 계층뷰·공급업체뷰만 구현, 라인업뷰는 Fix-R2 로 분리.**
+
+#### D13. Step 5 표현 3종 개선
+
+1. **"납기일" → "출고일"** 라벨 변경 (Fix-R1 시점에 라벨만 변경, 컬럼 실 변경은 Phase 1.6).
+2. **품목별 예상 입고일 리스트업**: 출고일 입력 즉시 매핑된 자재마다 `outboundDate − leadTimeDays` 표시 (Fix-R2 에서 구현, Phase 1.6 의존).
+3. **"N개 발주서 생성" → "N개 품목 → M개 발주서 생성"** 정확한 문구로 변경.
+
+#### D13. REPLACE 모드 정책 (R1-b4)
 
 ##### 차단 기준
 - 차단: 대상 PO 중 하나라도 `status IN (APPROVED, RECEIVED)` 인 경우.
@@ -511,26 +530,6 @@ enum POAdjustmentAction {
 
 ##### 미해결 사항 — Phase 4-C 진입 시 재논의
 - Q. 상태 전이 다이얼로그 권한 키 분리 — `purchase-order:APPROVE` 도입 여부. 본 R1-b4 단계에서는 보류, Phase 4-C 착수 시 PROGRESS.md "권한 키" 라인을 정식 갱신할지 함께 결정.
-
-
-#### D12. Step 4 분할 미리보기 멀티뷰 (3종)
-
-| 뷰 | 그룹키 | 의미 |
-|---|---|---|
-| **계층 뷰** (기본) | `supplierId × locationId × productionLineId` | 실제 PO 분할 단위 |
-| **공급업체 뷰** | `supplierId` | "이 업체에 총 얼마짜리 발주가 나가나" |
-| **라인업 뷰** | `lineupId` | "이 상품 1식 원가 = ?" 의 출발점 — 원가 추적 핵심 차원 |
-
-**라인업 뷰 구현 정책**:
-- 한 자재가 여러 라인업에서 사용 → 라인업별 `weightG × estimatedCount` 비율로 가중 분배.
-- MR 자체에 lineup 차원 없음 → `buildPOItemsFromMR()` 결과에 `lineupBreakdown` 필드 추가 필요 (백엔드 변경).
-- **Fix-R1 에서는 계층뷰·공급업체뷰만 구현, 라인업뷰는 Fix-R2 로 분리.**
-
-#### D13. Step 5 표현 3종 개선
-
-1. **"납기일" → "출고일"** 라벨 변경 (Fix-R1 시점에 라벨만 변경, 컬럼 실 변경은 Phase 1.6).
-2. **품목별 예상 입고일 리스트업**: 출고일 입력 즉시 매핑된 자재마다 `outboundDate − leadTimeDays` 표시 (Fix-R2 에서 구현, Phase 1.6 의존).
-3. **"N개 발주서 생성" → "N개 품목 → M개 발주서 생성"** 정확한 문구로 변경.
 
 ## D14 — MaterialMaster / SubsidiaryMaster 동명 자재 방지 (M-Fix)
 
