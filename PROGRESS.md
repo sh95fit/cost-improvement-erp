@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-19 (R1-b1·b2·b3 완료 — 멱등성 키, 모드 선택 UI, DELTA 모드 백엔드·UI·프리뷰·수동 조정 가시화)
+> 마지막 갱신: 2026-06-19 (R1-b4 완료 — REPLACE 모드 백엔드·UI 구현 + 통합 테스트 8건 추가)
 
 ---
 
@@ -92,7 +92,7 @@
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase R1-b3 (DELTA 모드 완료 — 백엔드 · 프리뷰 · UI · 수동 조정 가시화)
+- **현재 기준 완료 지점**: Sprint 3 Phase R1-b4 (REPLACE 모드 완료 — DRAFT·SUBMITTED 일괄 CANCELLED + 신규 PO 원자적 생성)
 - **최근 완료**:
   - R1-a (commit `5afb0113`) — 위저드 4분류 (mapped / partial / full / unmapped)
   - R1-a-fix-2 — `stockOffsetAmount` raw 기준 + `Math.round` 정수 안정화
@@ -104,11 +104,13 @@
     - 수동 조정 가시화: Step 3 매핑 테이블에 시스템 권장값 표시 + 수동 편집 시 색상·되돌리기 버튼
     - 테스트: +14 (`po-delta.service`) +13 (`purchase-order-batch.service` DELTA) = 27건
   - **사이드바 hotfix** (commit `b3c787c`) — 발주 관리 메뉴 href를 `/purchasing` → `/purchase-orders` 로 교정
-- **다음 진행 항목**: **R1-b4** (REPLACE 모드 — DRAFT 한정 일괄 CANCELLED + 신규 PO 원자적 생성) → R1-c (Step 3 SupplierItemPicker portal + 단위환산 인라인) → Phase 1.6 (D9 outboundDate 마이그레이션) → Phase 4-C
+  - **R1-b4** (commit `6dbbfb3`) — REPLACE 모드 완전 구현: 차단 기준은 `status NOT IN (DRAFT, SUBMITTED)` (APPROVED 이상 차단, CANCELLED 제외). `executeReplaceMode` 신규 함수 — 기존 DRAFT/SUBMITTED PO 를 CANCELLED 로 일괄 전이(`POAdjustmentLog` 에 `REMOVE`+`fieldName="po_status"` 기록) + 신규 DRAFT PO 원자적 생성. 오류 키: `REPLACE_BLOCKED_BY_LOCKED_PO`, `REPLACE_MISSING_BASED_ON_POS`. 단가 이력은 보존(롤백 없음) — DRAFT→SUBMITTED 전이 시 자동 재적층.
+  - **R1-b4-Test** (commit `f385f43`) — REPLACE 모드 통합 테스트 8건 추가 (`purchase-order-batch.service.test.ts`).  
+- **다음 진행 항목**: **R1-c** (Step 3 SupplierItemPicker portal + 단위환산 인라인) → Phase 1.6 (D9 outboundDate 마이그레이션) → Fix-R2 (Step 5 품목별 예상 입고일·Step 4 라인업 뷰) → Phase 4-C (상세보기 + 상태 전이 다이얼로그, Fix-R2 완료 후 착수)
 - **현재 블로커**: 없음
-- **누적 테스트**: 395 PASS / 2 skipped / 0 fail
+- **누적 테스트**: 404 PASS / 2 skipped / 0 fail
 - **TypeScript errors**: 0
-- **백엔드 위저드 파이프라인**: 완성 (NEW + DELTA 모드 양쪽 동작 — REPLACE 만 R1-b4 에서 추가 예정)
+- **백엔드 위저드 파이프라인**: 완성 (NEW + DELTA + REPLACE 3개 모드 모두 동작)
 
 ---
 
@@ -144,6 +146,7 @@
 | **R1-b2** | 위저드 모드 선택 UI (NEW / DELTA / REPLACE 라디오) + PO 상태별 활성화 로직 | ✅ | `6e1afb5`, `a32e255` |
 | **R1-b3** | DELTA 모드 본격 구현 — `po-delta.service` + `executeDeltaMode` + `POAdjustmentLog` 적층 + Preview Action + DeltaPreviewCard (Step 2/5) + Step 3 수동 조정 가시화 | ✅ | `a32e255`, `a952a95`, `ee1f47b`, `32544bb`, `f65c582` |
 | **R1-b3-Fix** | 사이드바 발주 관리 href 교정 (`/purchasing` → `/purchase-orders`) | ✅ | `b3c787c` |
+| **R1-b4** | REPLACE 모드 (DRAFT·SUBMITTED 일괄 CANCELLED + 신규 DRAFT PO 원자적 생성, `POAdjustmentLog` REMOVE 적층, `REPLACE_BLOCKED_BY_LOCKED_PO`/`REPLACE_MISSING_BASED_ON_POS` 오류 키) + 통합 테스트 8건 | ✅ | `6dbbfb3`, `f385f43` |
 | **R1-c** | Step 3 SupplierItemPicker portal + 검색 + ✓ 표시 + 단위환산 인라인 모달 | ⬜ | - |
 | **1.6** | **D9 적용**: PurchaseOrder.deliveryDate → outboundDate 마이그레이션 + 서비스·액션·UI 일괄 갱신 | ⬜ | - |
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 (Step 5 품목별 예상 입고일 / Step 3 단위환산 인라인 등록 / Step 4 라인업 뷰 — 백엔드 lineupBreakdown 추가) | ⬜ | - |
@@ -478,6 +481,37 @@ enum POAdjustmentAction {
 - 라인업 단위 PO 트래킹 — 현재는 라인(ProductionLine) 단위 PO. Phase 1.6 또는 별도 phase 에서 검토.
 - DELTA 시 단가 변경 처리 — 현재 설계상 단가 미변경(수량만 합산). 단가도 재산출하려면 별도 정책 필요 (P9' 와 충돌 가능).
 - 차분 발주 후보 분류 표시 — 기존 PO 대비 변동 없는 행을 위저드 Step 2/3 에서 별도 카테고리(`UNCHANGED`) 또는 회색 처리로 표시할지 검토.
+
+#### D12. REPLACE 모드 정책 (R1-b4)
+
+##### 차단 기준
+- 차단: 대상 PO 중 하나라도 `status IN (APPROVED, RECEIVED)` 인 경우.
+- 허용: 대상 PO 가 모두 `status IN (DRAFT, SUBMITTED)` 인 경우. (CANCELLED 는 대상에서 자동 제외)
+- 사유: SUBMITTED 도 아직 "발주확정" 전이므로 수량·단가 변경에 의한 재발주가 정당. APPROVED 부터는 입고 흐름이 시작될 수 있어 차단.
+
+##### 동작
+- 기존 PO 의 상태를 `CANCELLED` 로 일괄 전이, `cancelReason` 에 `[REPLACE] 위저드에서 덮어쓰기로 인한 취소` 자동 기입.
+- 동일 트랜잭션 안에서 신규 PO 들을 DRAFT 상태로 생성 (NEW 모드 분기의 그룹핑·번호생성·검증 로직 재사용).
+- 신규 PO 의 `note` 에 `[REPLACE] 취소된 원본 PO: <원본 발주번호들>` 자동 기입.
+- `POAdjustmentLog` 에 PO 1건당 1행: `action="REMOVE"`, `fieldName="po_status"`, `beforeValue=<원래 상태>`, `afterValue="CANCELLED"`, `reason="REPLACE 모드 — 위저드 재실행"`, `sourceBatchId=<배치 ID>`.
+
+##### 단가 이력 정책 (P9·P9' 와의 정합성)
+- REPLACE 로 SUBMITTED PO 를 CANCELLED 로 전이해도 `SupplierItemPriceHistory` 및 `SupplierItem.currentPrice` 는 **롤백하지 않는다** (보존).
+- 사유: 이미 적층된 이력은 "그 시점에 그 가격이 유효했다"는 사실의 기록이므로 사후 취소와 무관. FIFO 원가관리는 `InventoryLot` 단위로 독립 동작하므로 충돌 없음.
+- 신규 DRAFT PO 가 SUBMITTED 로 전이되는 시점에 변경된 항목이 있다면 `stackPriceHistoryForPO` 가 다시 적층 — 이력 누락 없음.
+
+##### 오류 키
+- `REPLACE_BLOCKED_BY_LOCKED_PO` — 대상 PO 중 APPROVED/RECEIVED 가 1건이라도 포함된 경우.
+- `REPLACE_MISSING_BASED_ON_POS` — REPLACE 모드인데 `basedOnPOIds` 가 비어있는 경우.
+- 이전 가안의 `REPLACE_BLOCKED_BY_NON_DRAFT_PO` 명칭은 채택 직전 폐기 (SUBMITTED 도 허용으로 정책 변경).
+
+##### UI 영향
+- `wizard-mode-selector.tsx`: `replaceEnabled = draftCount + submittedCount > 0 && lockedCount === 0` 로 활성화 조건 완화 (SUBMITTED 단독으로도 REPLACE 가능).
+- `step-confirm-create.tsx`: REPLACE 차단 토스트 제거, REPLACE 배지 빨강, 성공 토스트에 취소된 원본 PO 수 + 신규 PO 수 표시.
+
+##### 미해결 사항 — Phase 4-C 진입 시 재논의
+- Q. 상태 전이 다이얼로그 권한 키 분리 — `purchase-order:APPROVE` 도입 여부. 본 R1-b4 단계에서는 보류, Phase 4-C 착수 시 PROGRESS.md "권한 키" 라인을 정식 갱신할지 함께 결정.
+
 
 #### D12. Step 4 분할 미리보기 멀티뷰 (3종)
 
