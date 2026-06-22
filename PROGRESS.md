@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-19 (R1-b4 완료 — REPLACE 모드 백엔드·UI 구현 + 통합 테스트 8건 추가)
+> 마지막 갱신: 2026-06-22 (R1-c 완료 — SupplierItemPicker portal + 단위환산 인라인 모달 + D14 권한 정책 기록)
 
 ---
 
@@ -92,7 +92,7 @@
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase R1-b4 (REPLACE 모드 완료 — DRAFT·SUBMITTED 일괄 CANCELLED + 신규 PO 원자적 생성)
+- **현재 기준 완료 지점**: Sprint 3 Phase R1-c (SupplierItemPicker portal + 단위환산 인라인 모달 완료)
 - **최근 완료**:
   - R1-a (commit `5afb0113`) — 위저드 4분류 (mapped / partial / full / unmapped)
   - R1-a-fix-2 — `stockOffsetAmount` raw 기준 + `Math.round` 정수 안정화
@@ -106,7 +106,8 @@
   - **사이드바 hotfix** (commit `b3c787c`) — 발주 관리 메뉴 href를 `/purchasing` → `/purchase-orders` 로 교정
   - **R1-b4** (commit `6dbbfb3`) — REPLACE 모드 완전 구현: 차단 기준은 `status NOT IN (DRAFT, SUBMITTED)` (APPROVED 이상 차단, CANCELLED 제외). `executeReplaceMode` 신규 함수 — 기존 DRAFT/SUBMITTED PO 를 CANCELLED 로 일괄 전이(`POAdjustmentLog` 에 `REMOVE`+`fieldName="po_status"` 기록) + 신규 DRAFT PO 원자적 생성. 오류 키: `REPLACE_BLOCKED_BY_LOCKED_PO`, `REPLACE_MISSING_BASED_ON_POS`. 단가 이력은 보존(롤백 없음) — DRAFT→SUBMITTED 전이 시 자동 재적층.
   - **R1-b4-Test** (commit `f385f43`) — REPLACE 모드 통합 테스트 8건 추가 (`purchase-order-batch.service.test.ts`).  
-- **다음 진행 항목**: **R1-c** (Step 3 SupplierItemPicker portal + 단위환산 인라인) → Phase 1.6 (D9 outboundDate 마이그레이션) → Fix-R2 (Step 5 품목별 예상 입고일·Step 4 라인업 뷰) → Phase 4-C (상세보기 + 상태 전이 다이얼로그, Fix-R2 완료 후 착수)
+  - **R1-c** (commit `07b7181`) — Step 3 SupplierItemPicker portal(뷰포트 상하단 자동 플립 + 검색 + ✓ 표시) + 단위환산 인라인 다이얼로그(WEIGHT/toUnit=g 고정, 등록 즉시 해당 자재 모든 행 클라이언트 재계산). 기존 `supplier-item-picker.tsx` 는 보존(향후 4-D 수동 발주에서 재사용 여지).
+- **다음 진행 항목**: **Phase 1.6** (D9 outboundDate 마이그레이션) → Fix-R2 (Step 5 품목별 예상 입고일·Step 4 라인업 뷰) → Phase 4-C (상세보기 + 상태 전이 다이얼로그, Fix-R2 완료 후 착수)
 - **현재 블로커**: 없음
 - **누적 테스트**: 404 PASS / 2 skipped / 0 fail
 - **TypeScript errors**: 0
@@ -147,7 +148,7 @@
 | **R1-b3** | DELTA 모드 본격 구현 — `po-delta.service` + `executeDeltaMode` + `POAdjustmentLog` 적층 + Preview Action + DeltaPreviewCard (Step 2/5) + Step 3 수동 조정 가시화 | ✅ | `a32e255`, `a952a95`, `ee1f47b`, `32544bb`, `f65c582` |
 | **R1-b3-Fix** | 사이드바 발주 관리 href 교정 (`/purchasing` → `/purchase-orders`) | ✅ | `b3c787c` |
 | **R1-b4** | REPLACE 모드 (DRAFT·SUBMITTED 일괄 CANCELLED + 신규 DRAFT PO 원자적 생성, `POAdjustmentLog` REMOVE 적층, `REPLACE_BLOCKED_BY_LOCKED_PO`/`REPLACE_MISSING_BASED_ON_POS` 오류 키) + 통합 테스트 8건 | ✅ | `6dbbfb3`, `f385f43` |
-| **R1-c** | Step 3 SupplierItemPicker portal + 검색 + ✓ 표시 + 단위환산 인라인 모달 | ⬜ | - |
+| **R1-c** | Step 3 SupplierItemPicker portal(뷰포트 플립 + 검색 + ✓ 표시) + 단위환산 인라인 모달(WEIGHT/toUnit=g 고정) | ✅ | `07b7181` |
 | **1.6** | **D9 적용**: PurchaseOrder.deliveryDate → outboundDate 마이그레이션 + 서비스·액션·UI 일괄 갱신 | ⬜ | - |
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 (Step 5 품목별 예상 입고일 / Step 3 단위환산 인라인 등록 / Step 4 라인업 뷰 — 백엔드 lineupBreakdown 추가) | ⬜ | - |
 | 4-C | 상세보기 + 상태 전이 다이얼로그 (Fix-R2 완료 후 착수) | ⬜ | - |
@@ -629,6 +630,30 @@ DB·서비스 차원에서 사전 방지 필요.
 - supplier-item-list.tsx도 동일 패턴으로 일원화 (Sprint 3 종료 후 별도 마이크로 작업)
 - `DependencyActionDialog`를 `src/components/shared/`로 이동해 feature 경계 정리
 - 비활성 자재가 즐겨찾기/기본 공급품목으로 지정된 경우 일괄 정리 배치
+
+#### D14. 위저드 인라인 단위 환산 등록 권한 정책 (R1-c)
+
+**결정**: 위저드 Step 3 의 단위 환산 인라인 등록 다이얼로그는 `createUnitConversionAction` 을 재사용한다. 권한 키는 기존대로 **`material:CREATE`** 를 요구한다 (옵션 A 채택).
+
+**대안 검토 및 폐기**:
+- (옵션 B) `purchase-order:CREATE` 만으로 통과시키는 우회 경로 — 권한 우회 통로가 생기면 감사 추적이 약화되고, 위저드 외부의 단위 환산 등록과 정책이 불일치하게 됨. 폐기.
+
+**운영 가이드**:
+- 위저드 사용 권한 부여 시 `material:CREATE` 를 함께 부여하는 것이 정상 운영 패턴.
+- `material:CREATE` 가 없는 사용자는 다이얼로그에서 등록 시도 시 `FORBIDDEN` 응답을 받고 "공급업체 / 자재 마스터 관리자에게 단위 환산 등록을 요청하세요" 안내를 받음 (Phase 5 PermissionSet seed 시 함께 점검).
+
+**모달 입력 정책**:
+- `materialMasterId`: 다이얼로그가 props 로 받음 (위저드 행 컨텍스트).
+- `subsidiaryMasterId`: 항상 `null` (위저드는 자재 발주에만 사용).
+- `fromUnit`: 사용자 입력 (추천값 = 해당 행의 `fromUnitName`).
+- `toUnit`: `"g"` 고정.
+- `factor`: 양수 (소수 허용).
+- `unitCategory`: `"WEIGHT"` 고정 (위저드 발주 시 자재 중량 환산만 필요).
+- 중복 등록 시 `DUPLICATE_CONVERSION` 토스트 노출 후 다이얼로그 유지.
+
+**등록 후 동작**:
+- 등록 성공 시 위저드는 서버 재요청 없이 `dispatch({ type: "REFRESH_ROW_AFTER_CONVERSION", ... })` 로 동일 `materialMasterId` 의 모든 행(`mapped`/`mappedPartialStock`/`mappedFullStock`/`unmapped`)을 클라이언트에서 재계산한다 (`Math.ceil` 동일 정책 적용).
+- 경고 메시지에서 "단위 환산 정보 미등록" / "단위 환산 계수 …" 항목은 제거된다.
 
 ---
 
