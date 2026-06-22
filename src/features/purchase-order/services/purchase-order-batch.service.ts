@@ -71,7 +71,8 @@ export const createPurchaseOrdersBatchSchema = z.object({
   mealPlanGroupId: z.string().min(1).nullable().optional(),
   createdByUserId: z.string().optional(),
   orderDate: z.coerce.date(),
-  deliveryDate: z.coerce.date().optional(),
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  outboundDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
   // ★ R1-b1: 멱등성 키 + 모드 (옵션 — 미지정 시 멱등 가드 비활성, 항상 신규 생성)
   idempotencyKey: z
@@ -212,6 +213,36 @@ async function assertSuppliersAndItems(
     // 행의 supplierId와 SupplierItem의 supplierId 정합성
     if (owner !== it.supplierId) throw new Error("SUPPLIER_ITEM_NOT_FOUND");
   }
+}
+
+// ============================================================
+// ★ Phase 1.6 (D15-2): expectedReceiveDate 계산 헬퍼 (배치용)
+// ============================================================
+// PO 1건(=그룹) 의 items 의 supplierItem.leadTimeDays MAX 를 outboundDate 에 더해 산출.
+// outboundDate null 이면 null (D15-4). leadTimeDays 가 전부 0/NULL 이면 default 1 (D15-5).
+async function calculateExpectedReceiveDateForBatch(
+  tx: Prisma.TransactionClient,
+  outboundDate: Date | null | undefined,
+  supplierItemIds: string[],
+): Promise<Date | null> {
+  if (!outboundDate) return null;
+
+  let maxLeadTimeDays = 1;
+  if (supplierItemIds.length > 0) {
+    const items = await tx.supplierItem.findMany({
+      where: { id: { in: supplierItemIds } },
+      select: { leadTimeDays: true },
+    });
+    const maxFromItems = items.reduce(
+      (max, it) => Math.max(max, it.leadTimeDays ?? 0),
+      0,
+    );
+    if (maxFromItems > 0) maxLeadTimeDays = maxFromItems;
+  }
+
+  const result = new Date(outboundDate);
+  result.setDate(result.getDate() + maxLeadTimeDays);
+  return result;
 }
 
 // ============================================================
@@ -385,17 +416,26 @@ export async function createPurchaseOrdersBatch(
         usedOrderNumbers,
       );
 
+      // ★ Phase 1.6 (D15-2): 이 PO 의 expectedReceiveDate 계산
+      const groupSupplierItemIds = items.map((it) => it.supplierItemId);
+      const expectedReceiveDate = await calculateExpectedReceiveDateForBatch(
+        tx,
+        input.outboundDate,
+        groupSupplierItemIds,
+      );
+
       const po = await tx.purchaseOrder.create({
         data: {
           companyId: input.companyId,
           supplierId: first.supplierId,
           locationId: first.locationId,
           productionLineId: first.productionLineId ?? null,
-          batchId: batch?.id ?? null,              // ★ R1-b1 (idempotencyKey 없으면 null)
+          batchId: batch?.id ?? null,              // ★ R1-b1
           orderNumber,
           status: "DRAFT",
           orderDate: input.orderDate,
-          deliveryDate: input.deliveryDate,
+          outboundDate: input.outboundDate,        // ★ Phase 1.6
+          expectedReceiveDate,                     // ★ Phase 1.6
           note: input.note,
           isManual: false, // 위저드 = 시스템 발주
           mealPlanGroupId: input.mealPlanGroupId ?? null,
@@ -478,7 +518,8 @@ async function executeDeltaMode(
       locationId: true,
       productionLineId: true,
       orderDate: true,
-      deliveryDate: true,
+      outboundDate: true,           // ★ Phase 1.6 (D15-1)
+      expectedReceiveDate: true,    // ★ Phase 1.6 (D15-2)
       items: {
         select: {
           id: true,
@@ -498,6 +539,13 @@ async function executeDeltaMode(
   );
   if (locked.length > 0) {
     throw new Error("DELTA_BLOCKED_BY_APPROVED_PO");
+  }
+
+  // ★ Phase 1.6 (D15-2): 기존 PO 의 outboundDate 재사용용 Map
+  //    (9번 단계 expectedReceiveDate 재계산 시 추가 DB 조회 회피)
+  const existingPOOutboundDateMap = new Map<string, Date | null>();
+  for (const po of existingPOs) {
+    existingPOOutboundDateMap.set(po.id, po.outboundDate);
   }
 
   // 3) ExistingPOItemForDelta[] 평탄화 (MATERIAL 만 — SUBSIDIARY 는 위저드 대상 외)
@@ -652,16 +700,30 @@ async function executeDeltaMode(
     affectedPOIds.add(a.purchaseOrderId);
   }
 
-  // 9) 기존 PO 들의 totalAmount 재계산
+  // 9) 기존 PO 들의 totalAmount + expectedReceiveDate 재계산
   for (const poId of affectedPOIds) {
     const items = await tx.purchaseOrderItem.findMany({
       where: { purchaseOrderId: poId },
-      select: { quantity: true, unitPrice: true },
+      select: { quantity: true, unitPrice: true, supplierItemId: true },
     });
     const newTotal = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
+
+    // ★ Phase 1.6 (D15-2): items 변경에 따라 expectedReceiveDate 재계산
+    //    기존 PO 의 outboundDate 를 그대로 사용 (DELTA 는 outboundDate 변경 안 함)
+    //    Step 1 에서 미리 만들어 둔 Map 을 재사용하여 추가 DB 조회 회피
+    const outboundDate = existingPOOutboundDateMap.get(poId) ?? null;
+    const newExpectedReceiveDate = await calculateExpectedReceiveDateForBatch(
+      tx,
+      outboundDate,
+      items.map((it) => it.supplierItemId),
+    );
+
     await tx.purchaseOrder.update({
       where: { id: poId },
-      data: { totalAmount: newTotal },
+      data: {
+        totalAmount: newTotal,
+        expectedReceiveDate: newExpectedReceiveDate, // ★ Phase 1.6
+      },
     });
   }
 
@@ -691,6 +753,14 @@ async function executeDeltaMode(
         usedOrderNumbers,
       );
 
+      // ★ Phase 1.6 (D15-2): newGroup PO 의 expectedReceiveDate 계산
+      const newGroupSupplierItemIds = candidates.map((c) => c.supplierItemId);
+      const expectedReceiveDate = await calculateExpectedReceiveDateForBatch(
+        tx,
+        input.outboundDate,
+        newGroupSupplierItemIds,
+      );
+
       const po = await tx.purchaseOrder.create({
         data: {
           companyId: input.companyId,
@@ -701,7 +771,8 @@ async function executeDeltaMode(
           orderNumber,
           status: "DRAFT",
           orderDate: input.orderDate,
-          deliveryDate: input.deliveryDate,
+          outboundDate: input.outboundDate,        // ★ Phase 1.6
+          expectedReceiveDate,                     // ★ Phase 1.6
           note: input.note,
           isManual: false,
           mealPlanGroupId: input.mealPlanGroupId ?? null,
@@ -920,6 +991,14 @@ async function executeReplaceMode(
     const noteForThisPO =
       (input.note ?? "").trim() + replaceNoteSuffix;
 
+    // ★ Phase 1.6 (D15-2): REPLACE 신규 PO 의 expectedReceiveDate 계산
+    const groupSupplierItemIds = items.map((it) => it.supplierItemId);
+    const expectedReceiveDate = await calculateExpectedReceiveDateForBatch(
+      tx,
+      input.outboundDate,
+      groupSupplierItemIds,
+    );
+
     const po = await tx.purchaseOrder.create({
       data: {
         companyId: input.companyId,
@@ -930,7 +1009,8 @@ async function executeReplaceMode(
         orderNumber,
         status: "DRAFT",
         orderDate: input.orderDate,
-        deliveryDate: input.deliveryDate,
+        outboundDate: input.outboundDate,        // ★ Phase 1.6
+        expectedReceiveDate,                     // ★ Phase 1.6
         note: noteForThisPO || null,
         isManual: false,
         mealPlanGroupId: input.mealPlanGroupId ?? null,

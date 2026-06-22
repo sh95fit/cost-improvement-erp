@@ -682,7 +682,12 @@ describe("createPurchaseOrdersBatch", () => {
       expect(mockTx.purchaseOrder.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "po_existing_1" },
-          data: { totalAmount: 100000 },
+          data: expect.objectContaining({
+            totalAmount: 100000,
+            // ★ Phase 1.6 (D15-2): expectedReceiveDate 도 함께 업데이트됨
+            //    (mock items 의 supplierItem.leadTimeDays 가 없으므로 null 예상)
+            expectedReceiveDate: null,
+          }),
         }),
       );
     });

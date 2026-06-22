@@ -655,6 +655,45 @@ DB·서비스 차원에서 사전 방지 필요.
 - 등록 성공 시 위저드는 서버 재요청 없이 `dispatch({ type: "REFRESH_ROW_AFTER_CONVERSION", ... })` 로 동일 `materialMasterId` 의 모든 행(`mapped`/`mappedPartialStock`/`mappedFullStock`/`unmapped`)을 클라이언트에서 재계산한다 (`Math.ceil` 동일 정책 적용).
 - 경고 메시지에서 "단위 환산 정보 미등록" / "단위 환산 계수 …" 항목은 제거된다.
 
+
+### Phase 1.6 — outboundDate 리네임 + expectedReceiveDate 도입 (D15)
+
+#### 배경
+- 기존 `PurchaseOrder.deliveryDate` 의 의미가 모호 (출고일/입고일/납기일?)
+- 운영팀 합의: "출고일"(공급업체가 우리 창고로 출고하는 날) 로 명확화
+
+#### 결정사항 (D15)
+- **D15-1**: `deliveryDate` → `outboundDate` 리네임 (DB 컬럼 `delivery_date` → `outbound_date`)
+- **D15-2**: `expectedReceiveDate` 신규 컬럼 추가
+  - 계산식: `outboundDate + MAX(items.supplierItem.leadTimeDays)`
+  - DB 저장 (Option A) — PO 생성/수정 시 계산해서 컬럼에 저장
+  - `outboundDate` 가 null 이면 `expectedReceiveDate` 도 null
+  - items 의 모든 `leadTimeDays` 가 누락되면 기본값 **1일** 사용
+- **D15-3**: 품목별 입고일 (`itemExpectedReceiveDate`) 은 런타임 derived
+  - 계산식: `outboundDate + item.supplierItem.leadTimeDays` (default 1)
+  - DB 미저장, `getPurchaseOrderById` 응답에서만 제공
+- **D15-4**: DELTA 모드는 `outboundDate` 를 변경하지 않음
+  - items 변경 시 기존 `outboundDate` 기준으로 `expectedReceiveDate` 재계산만 수행
+
+#### 변경 파일
+- `prisma/schema.prisma`: PurchaseOrder 모델 필드 리네임 + 신규 컬럼 + 인덱스 2건 추가
+- `prisma/migrations/20260622080946_phase_1_6_outbound_date_and_expected_receive_date/migration.sql`
+- `src/features/purchase-order/schemas/purchase-order.schema.ts`
+- `src/features/purchase-order/services/purchase-order.service.ts` (+ `calculateExpectedReceiveDate` 헬퍼)
+- `src/features/purchase-order/services/purchase-order-batch.service.ts` (+ `calculateExpectedReceiveDateForBatch`)
+- `src/features/purchase-order/components/purchase-order-list.tsx` (타입만 임시 수정 — UI는 다음 커밋)
+- `src/tests/purchase-order-batch.service.test.ts` (DELTA 재계산 assertion 업데이트)
+
+#### 검증
+- ✅ `npx prisma migrate dev` 성공
+- ✅ `npx tsc --noEmit` 0 errors
+- ✅ `npm run test` — 406 tests / 404 passed / 2 skipped / 0 failed
+
+#### 후속 작업 (Phase 1.6 UI — 다음 커밋)
+- `po-wizard.tsx`: state/action/reducer 리네임
+- `step-confirm-create.tsx`: 라벨 "출고일", "예상 입고일" 미리보기
+- `purchase-order-list.tsx`: 테이블 헤더 "출고일" + 신규 "입고예정일" 컬럼
+
 ---
 
 ### M-Fix · S-Fix 결정사항 (위저드 외 운영 버그)

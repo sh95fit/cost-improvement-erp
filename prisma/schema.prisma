@@ -1381,9 +1381,16 @@ model PurchaseOrder {
   supplierId        String    @map("supplier_id")
   orderNumber       String    @unique @map("order_number")
   status            POStatus  @default(DRAFT)
-  orderDate         DateTime  @map("order_date") @db.Date
-  deliveryDate      DateTime? @map("delivery_date") @db.Date
-  totalAmount       Float?    @map("total_amount")
+  orderDate            DateTime  @map("order_date") @db.Date
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate 의미 명확화
+  // 출고일 = 공급업체가 우리 창고/공장으로 출고하는 날짜
+  outboundDate         DateTime? @map("outbound_date") @db.Date
+  // ★ Phase 1.6 (D15-2): 사용처 입고 예정일 (PO 헤더 단위)
+  // 계산식: outboundDate + MAX(items.supplierItem.leadTimeDays)
+  // outboundDate 가 null 이면 expectedReceiveDate 도 null.
+  // 품목별 입고일은 런타임 derived (DB 미저장, D15-3).
+  expectedReceiveDate  DateTime? @map("expected_receive_date") @db.Date
+  totalAmount          Float?    @map("total_amount")
   note              String?
   isManual          Boolean   @default(false) @map("is_manual")
   mealPlanGroupId   String?   @map("meal_plan_group_id")
@@ -1424,6 +1431,8 @@ model PurchaseOrder {
   @@index([status])
   @@index([locationId])
   @@index([productionLineId])
+  @@index([outboundDate])           // ★ Phase 1.6
+  @@index([expectedReceiveDate])    // ★ Phase 1.6 (입고 예정 리스트 정렬용)
   @@map("purchase_orders")
 }
 

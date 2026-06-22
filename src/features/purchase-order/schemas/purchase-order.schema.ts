@@ -94,7 +94,8 @@ export const createPurchaseOrderSchema = z.object({
   locationId: z.string().min(1, '공장/창고를 선택하세요'),              // ★ 추가
   productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
   orderDate: z.coerce.date(),
-  deliveryDate: z.coerce.date().optional(),
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  outboundDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
   isManual: z.boolean().default(false),
   mealPlanGroupId: z.string().optional(),
@@ -115,7 +116,8 @@ export const updatePurchaseOrderSchema = z.object({
   locationId: z.string().min(1).optional(),                             // ★ 추가
   productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
   orderDate: z.coerce.date().optional(),
-  deliveryDate: z.coerce.date().nullable().optional(),
+  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
+  outboundDate: z.coerce.date().nullable().optional(),
   note: z.string().max(1000).nullable().optional(),
   items: z
     .array(

@@ -43,7 +43,9 @@ export type PurchaseOrderRow = {
   orderNumber: string;
   status: POStatus;
   orderDate: Date;
-  deliveryDate: Date | null;
+  // ★ Phase 1.6 (D15-1, D15-2): deliveryDate → outboundDate + expectedReceiveDate
+  outboundDate: Date | null;
+  expectedReceiveDate: Date | null;
   totalAmount: number | null;
   isManual: boolean;
   supplier: { id: string; name: string; code: string };
@@ -230,7 +232,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
                   </TableCell>
                   <TableCell className="text-sm">{formatDate(item.orderDate)}</TableCell>
                   <TableCell className="text-sm">
-                    {formatDate(item.deliveryDate)}
+                    {formatDate(item.outboundDate)}
                   </TableCell>
                   <TableCell className="text-center text-sm">
                     {item._count.items}
