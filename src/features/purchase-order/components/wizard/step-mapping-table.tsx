@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
 import type { SupplierItemWithSupplier } from "@/features/supplier/actions/supplier.action";
-import { SupplierItemPicker } from "./supplier-item-picker";
+import { SupplierItemPickerPortal } from "./supplier-item-picker-portal";
+import {
+  UnitConversionInlineDialog,
+  type ConversionRegisteredPayload,
+} from "./unit-conversion-inline-dialog";
 
 interface Props {
   mapped: POItemCandidate[];
@@ -15,6 +20,8 @@ interface Props {
     materialRequirementId: string,
     supplierItem: SupplierItemWithSupplier,
   ) => void;
+  /** R1-c: 단위 환산 인라인 등록 성공 시 해당 행 재계산 트리거 */
+  onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
 }
 
 export function StepMappingTable({
@@ -25,6 +32,7 @@ export function StepMappingTable({
   onUpdateQuantity,
   onUpdateUnitPrice,
   onResolveUnmapped,
+  onRegisterConversion,
 }: Props) {
   // Fix-R1-a (D10·D11): 매핑된 모든 행(전량/일부/전체)을 하나의 섹션에 통합. 뱃지로 구분.
   const allMapped = [...mapped, ...mappedPartialStock, ...mappedFullStock];
@@ -55,6 +63,7 @@ export function StepMappingTable({
             onUpdateQuantity={onUpdateQuantity}
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
+            onRegisterConversion={onRegisterConversion}
           />
         </section>
       )}
@@ -93,6 +102,7 @@ export function StepMappingTable({
             onUpdateQuantity={onUpdateQuantity}
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
+            onRegisterConversion={onRegisterConversion}
           />
         )}
       </section>
@@ -103,12 +113,16 @@ export function StepMappingTable({
 // ────────────────────────────────────────────────────────
 // 내부: 행 테이블
 // ────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────
+// 내부: 행 테이블
+// ────────────────────────────────────────────────────────
 function RowsTable({
   rows,
   mode,
   onUpdateQuantity,
   onUpdateUnitPrice,
   onResolveUnmapped,
+  onRegisterConversion,
 }: {
   rows: POItemCandidate[];
   mode: "mapped" | "unmapped";
@@ -118,147 +132,189 @@ function RowsTable({
     id: string,
     si: SupplierItemWithSupplier,
   ) => void;
+  onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
 }) {
+  // R1-c: 단위 환산 인라인 다이얼로그 상태 (이 RowsTable 인스턴스 로컬)
+  const [conversionDialog, setConversionDialog] = useState<{
+    materialMasterId: string;
+    materialName: string;
+    suggestedFromUnit: string;
+  } | null>(null);
+
   // mapped 모드면 모든 행이 편집 가능. MAPPED_FULL_STOCK는 orderQuantity=0이라
   // 사용자가 직접 늘리지 않는 한 발주서에 포함되지 않음.
   const editable = mode === "mapped";
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead className="bg-white/60 text-left text-gray-600">
-          <tr>
-            <th className="px-3 py-2">자재</th>
-            <th className="px-3 py-2">필요량(g)</th>
-            <th className="px-3 py-2">재고(g)</th>
-            <th className="px-3 py-2">순필요</th>
-            <th className="px-3 py-2 w-[200px]">공급업체 · 품목</th>
-            <th className="px-3 py-2 w-20">발주수량</th>
-            <th className="px-3 py-2 w-24">단가</th>
-            <th className="px-3 py-2 w-24 text-right">합계</th>
-            <th className="px-3 py-2">알림</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const rowTotal =
-              (r.orderQuantity ?? 0) * (r.unitPrice ?? 0);
-            return (
-              <tr
-                key={r.materialRequirementId}
-                className="border-t border-gray-100 align-middle"
-              >
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-gray-900">
-                      {r.materialName}
-                    </span>
-                    {r.status === "MAPPED_PARTIAL_STOCK" && (
-                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                        일부 활용
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-white/60 text-left text-gray-600">
+            <tr>
+              <th className="px-3 py-2">자재</th>
+              <th className="px-3 py-2">필요량(g)</th>
+              <th className="px-3 py-2">재고(g)</th>
+              <th className="px-3 py-2">순필요</th>
+              <th className="px-3 py-2 w-[200px]">공급업체 · 품목</th>
+              <th className="px-3 py-2 w-20">발주수량</th>
+              <th className="px-3 py-2 w-24">단가</th>
+              <th className="px-3 py-2 w-24 text-right">합계</th>
+              <th className="px-3 py-2">알림</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const rowTotal =
+                (r.orderQuantity ?? 0) * (r.unitPrice ?? 0);
+              return (
+                <tr
+                  key={r.materialRequirementId}
+                  className="border-t border-gray-100 align-middle"
+                >
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-gray-900">
+                        {r.materialName}
                       </span>
-                    )}
-                    {r.status === "MAPPED_FULL_STOCK" && (
-                      <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-700">
-                        전체 활용
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-gray-500">{r.materialCode}</div>
-                </td>
-                <td className="px-3 py-2 text-gray-700">
-                  {r.requiredQtyG.toLocaleString()}
-                </td>
-                <td className="px-3 py-2 text-gray-500">
-                  {r.stockQtyG.toLocaleString()}
-                </td>
-                <td className="px-3 py-2 text-gray-700">
-                  {r.netRequiredG.toLocaleString()}
-                  {r.fromUnitName && r.netRequiredInFromUnit != null && (
-                    <div className="text-[10px] text-gray-400">
-                      = {r.netRequiredInFromUnit.toFixed(2)} {r.fromUnitName}
+                      {r.status === "MAPPED_PARTIAL_STOCK" && (
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                          일부 활용
+                        </span>
+                      )}
+                      {r.status === "MAPPED_FULL_STOCK" && (
+                        <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-700">
+                          전체 활용
+                        </span>
+                      )}
                     </div>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {mode === "unmapped" ? (
-                    <SupplierItemPicker
-                      materialMasterId={r.materialMasterId}
-                      value={r.supplierItem?.id ?? null}
-                      onSelect={(si) =>
-                        onResolveUnmapped(r.materialRequirementId, si)
-                      }
-                    />
-                  ) : r.supplierItem ? (
-                    <div>
-                      <div className="font-medium">
-                        {r.supplierItem.supplierName}
-                      </div>
-                      <div className="text-gray-600">
-                        {r.supplierItem.productName}
-                      </div>
+                    <div className="text-gray-500">{r.materialCode}</div>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">
+                    {r.requiredQtyG.toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-gray-500">
+                    {r.stockQtyG.toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">
+                    {r.netRequiredG.toLocaleString()}
+                    {r.fromUnitName && r.netRequiredInFromUnit != null && (
                       <div className="text-[10px] text-gray-400">
-                        {r.supplierItem.supplyUnitQty}{" "}
-                        {r.supplierItem.supplyUnitName}/{r.supplierItem.supplyUnitName}
+                        = {r.netRequiredInFromUnit.toFixed(2)} {r.fromUnitName}
                       </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {editable ? (
-                    <QuantityCell
-                      currentValue={r.orderQuantity}
-                      rawValue={r.orderQuantityRaw}
-                      onChange={(v) =>
-                        onUpdateQuantity(r.materialRequirementId, v)
-                      }
-                    />
-                  ) : (
-                    <span className="text-gray-700">
-                      {r.orderQuantity ?? "—"}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {editable ? (
-                    <UnitPriceCell
-                      currentValue={r.unitPrice}
-                      systemValue={r.supplierItem?.currentPrice ?? null}
-                      onChange={(v) =>
-                        onUpdateUnitPrice(r.materialRequirementId, v)
-                      }
-                    />
-                  ) : (
-                    <span className="text-gray-700">
-                      {r.unitPrice != null
-                        ? r.unitPrice.toLocaleString()
-                        : "—"}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right font-medium">
-                  {rowTotal > 0 ? rowTotal.toLocaleString() : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  {r.warnings.length > 0 && (
-                    <ul className="space-y-0.5 text-[10px] text-amber-700">
-                      {r.warnings.map((w, i) => (
-                        <li key={i}>⚠ {w}</li>
-                      ))}
-                    </ul>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {mode === "unmapped" ? (
+                      <SupplierItemPickerPortal
+                        materialMasterId={r.materialMasterId}
+                        value={r.supplierItem?.id ?? null}
+                        onSelect={(si) =>
+                          onResolveUnmapped(r.materialRequirementId, si)
+                        }
+                      />
+                    ) : r.supplierItem ? (
+                      <div>
+                        <div className="font-medium">
+                          {r.supplierItem.supplierName}
+                        </div>
+                        <div className="text-gray-600">
+                          {r.supplierItem.productName}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          {r.supplierItem.supplyUnitQty}{" "}
+                          {r.supplierItem.supplyUnitName}/{r.supplierItem.supplyUnitName}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {editable ? (
+                      <QuantityCell
+                        currentValue={r.orderQuantity}
+                        rawValue={r.orderQuantityRaw}
+                        onChange={(v) =>
+                          onUpdateQuantity(r.materialRequirementId, v)
+                        }
+                      />
+                    ) : (
+                      <span className="text-gray-700">
+                        {r.orderQuantity ?? "—"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {editable ? (
+                      <UnitPriceCell
+                        currentValue={r.unitPrice}
+                        systemValue={r.supplierItem?.currentPrice ?? null}
+                        onChange={(v) =>
+                          onUpdateUnitPrice(r.materialRequirementId, v)
+                        }
+                      />
+                    ) : (
+                      <span className="text-gray-700">
+                        {r.unitPrice != null
+                          ? r.unitPrice.toLocaleString()
+                          : "—"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium">
+                    {rowTotal > 0 ? rowTotal.toLocaleString() : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {r.warnings.length > 0 && (
+                      <ul className="space-y-0.5 text-[10px] text-amber-700">
+                        {r.warnings.map((w, i) => (
+                          <li key={i}>⚠ {w}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {/* R1-c: 단위 환산 미등록 경고가 있으면 인라인 등록 버튼 노출 */}
+                    {r.warnings.some(
+                      (w) =>
+                        w.includes("단위 환산 정보 미등록") ||
+                        w.includes("단위 환산 계수"),
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConversionDialog({
+                            materialMasterId: r.materialMasterId,
+                            materialName: r.materialName,
+                            suggestedFromUnit: r.fromUnitName ?? "",
+                          })
+                        }
+                        className="mt-1 rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        ↗ 단위 환산 등록
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {/* R1-c: 인라인 단위 환산 다이얼로그 */}
+      {conversionDialog && (
+        <UnitConversionInlineDialog
+          open
+          materialMasterId={conversionDialog.materialMasterId}
+          materialName={conversionDialog.materialName}
+          suggestedFromUnit={conversionDialog.suggestedFromUnit}
+          onClose={() => setConversionDialog(null)}
+          onSuccess={(payload) => {
+            onRegisterConversion(payload);
+          }}
+        />
+      )}
+    </>
   );
 }
-
 
 
 // ────────────────────────────────────────────────────────

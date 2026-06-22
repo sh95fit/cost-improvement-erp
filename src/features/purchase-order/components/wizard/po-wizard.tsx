@@ -78,6 +78,14 @@ type Action =
         supplierItem: SupplierItemWithSupplier;
       };
     }
+  | {
+      type: "REFRESH_ROW_AFTER_CONVERSION";
+      payload: {
+        materialMasterId: string;
+        fromUnit: string;
+        factor: number;
+      };
+    }    
   | { type: "SET_ORDER_DATE"; payload: Date }
   | { type: "SET_DELIVERY_DATE"; payload: Date | null }
   | { type: "SET_NOTE"; payload: string }
@@ -315,6 +323,63 @@ function reducer(state: WizardState, action: Action): WizardState {
           (r) => r.materialRequirementId !== materialRequirementId,
         ),
         mapped: [...state.mapped, resolved],
+      };
+    }
+    case "REFRESH_ROW_AFTER_CONVERSION": {
+      const { materialMasterId, fromUnit, factor } = action.payload;
+
+      // 동일 materialMasterId 를 가진 모든 행을 재계산
+      // (g → fromUnit 환산 가능해진 후, 발주 수량과 경고 메시지 갱신)
+      // 클라이언트에서 직접 재계산하므로 서버 재호출 불필요
+      const recalcRow = (r: POItemCandidate): POItemCandidate => {
+        if (r.materialMasterId !== materialMasterId) return r;
+
+        const netRequiredG = r.netRequiredG;
+        // factor 가 양수임은 다이얼로그에서 보장됨
+        const netRequiredInFromUnit = netRequiredG / factor;
+
+        // 공급업체 미매핑 케이스: 환산전 단위까지만 갱신, orderQuantity 는 null 유지
+        if (!r.supplierItem) {
+          return {
+            ...r,
+            fromUnitName: fromUnit,
+            netRequiredInFromUnit,
+            warnings: r.warnings.filter(
+              (w) =>
+                !w.includes("단위 환산 정보 미등록") &&
+                !w.includes("단위 환산 계수"),
+            ),
+          };
+        }
+
+        // 공급업체 매핑 케이스: 발주 수량 ceil 재계산
+        const supplyFactor =
+          r.supplierItem.supplyUnitQty > 0
+            ? r.supplierItem.supplyUnitQty
+            : 1;
+        const orderQuantityRaw = netRequiredInFromUnit / supplyFactor;
+        const orderQuantity = Math.ceil(orderQuantityRaw - 1e-9);
+
+        return {
+          ...r,
+          fromUnitName: fromUnit,
+          netRequiredInFromUnit,
+          orderQuantityRaw,
+          orderQuantity,
+          warnings: r.warnings.filter(
+            (w) =>
+              !w.includes("단위 환산 정보 미등록") &&
+              !w.includes("단위 환산 계수"),
+          ),
+        };
+      };
+
+      return {
+        ...state,
+        mapped: state.mapped.map(recalcRow),
+        mappedPartialStock: state.mappedPartialStock.map(recalcRow),
+        mappedFullStock: state.mappedFullStock.map(recalcRow),
+        unmapped: state.unmapped.map(recalcRow),
       };
     }
 
@@ -620,12 +685,18 @@ export function POWizard() {
                 payload: { materialRequirementId: id, value: v },
               })
             }
-            onResolveUnmapped={(id, si) =>
+            onResolveUnmapped={(materialRequirementId, supplierItem) =>
               dispatch({
                 type: "RESOLVE_UNMAPPED",
-                payload: { materialRequirementId: id, supplierItem: si },
+                payload: { materialRequirementId, supplierItem },
               })
             }
+            onRegisterConversion={(payload) =>
+              dispatch({
+                type: "REFRESH_ROW_AFTER_CONVERSION",
+                payload,
+              })
+            }  
           />
         )}
 
