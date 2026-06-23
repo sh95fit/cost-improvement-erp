@@ -132,22 +132,67 @@ export async function buildPOItemsFromMR(
   });
   const materialMap = new Map(materials.map((m) => [m.id, m]));
 
-  // 2) UnitConversion 일괄 조회
-  const unitConversions = await prisma.unitConversion.findMany({
-    where: {
-      companyId: input.companyId,
-      materialMasterId: { in: materialIds },
-      toUnit: 'g',
-    },
-  });
-  const conversionMap = new Map<string, { fromUnit: string; factor: number }>();
+  // 2) UnitConversion 일괄 조회 (D17 — 공급단위 기준 환산)
+  //    조회 키: (materialMasterId, fromUnit=supplyUnit.name, toUnit='g')
+  //    각 자재의 fromUnit 후보는 defaultSupplierItem.supplyUnit.name 으로 결정.
+  //    우선순위: 자재별 환산 → 글로벌 환산(materialMasterId=null AND subsidiaryMasterId=null)
+  const supplyUnitByMaterialId = new Map<string, string>();
+  for (const m of materials) {
+    if (m.defaultSupplierItem?.supplyUnit?.name) {
+      supplyUnitByMaterialId.set(m.id, m.defaultSupplierItem.supplyUnit.name);
+    }
+  }
+  const distinctFromUnits = Array.from(new Set(supplyUnitByMaterialId.values()));
+
+  const unitConversions =
+    distinctFromUnits.length === 0
+      ? []
+      : await prisma.unitConversion.findMany({
+          where: {
+            companyId: input.companyId,
+            toUnit: 'g',
+            fromUnit: { in: distinctFromUnits },
+            OR: [
+              { materialMasterId: { in: materialIds } },
+              { materialMasterId: null, subsidiaryMasterId: null }, // 글로벌
+            ],
+          },
+        });
+
+  // key: `${materialId}:${fromUnit}` (자재별) / `${fromUnit}` (글로벌)
+  const materialConvMap = new Map<string, { fromUnit: string; factor: number }>();
+  const globalConvMap = new Map<string, { fromUnit: string; factor: number }>();
   for (const uc of unitConversions) {
     if (uc.materialMasterId) {
-      conversionMap.set(uc.materialMasterId, {
+      materialConvMap.set(`${uc.materialMasterId}:${uc.fromUnit}`, {
+        fromUnit: uc.fromUnit,
+        factor: uc.factor,
+      });
+    } else if (uc.subsidiaryMasterId === null) {
+      globalConvMap.set(uc.fromUnit, {
         fromUnit: uc.fromUnit,
         factor: uc.factor,
       });
     }
+  }
+
+  /**
+   * 자재의 공급단위에 맞는 UnitConversion 1건을 선택한다.
+   * 우선순위: 자재별 → 글로벌 → null
+   * supplyUnit === 'g' 인 경우 환산 불필요 → null 반환
+   * (calculateOrderQuantity 내부에서 factor=1 로 자동 처리)
+   */
+  function resolveConversion(
+    materialId: string,
+  ): { fromUnit: string; factor: number } | null {
+    const supplyUnit = supplyUnitByMaterialId.get(materialId);
+    if (!supplyUnit) return null;
+    if (supplyUnit === 'g') return null;
+    return (
+      materialConvMap.get(`${materialId}:${supplyUnit}`) ??
+      globalConvMap.get(supplyUnit) ??
+      null
+    );
   }
 
   // 3) 공장별 재고 일괄 조회
@@ -205,13 +250,13 @@ export async function buildPOItemsFromMR(
       continue;
     }
 
-    const conv = conversionMap.get(mr.materialMasterId) ?? null;
+    const conv = resolveConversion(mr.materialMasterId);
     const stockG = stockMap.get(`${mr.locationId}:${mr.materialMasterId}`) ?? 0;
     const dsi = material.defaultSupplierItem;
     const supplierItemInput = dsi
       ? {
           supplyUnitName: dsi.supplyUnit.name,
-          conversionFactor: dsi.supplyUnitQty,
+          supplyUnitQty: dsi.supplyUnitQty,
         }
       : null;
 
