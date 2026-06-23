@@ -65,14 +65,9 @@ export function UnitConversionInlineDialog({
       return;
     }
 
-    // ★ Phase 1.7 (D16-4): WEIGHT 카테고리만 허용
-    //   (toUnit='g' 고정 정책과 정합 — R1-c 결정 유지)
-    if (fromUnitCategory && fromUnitCategory !== "WEIGHT") {
-      toast.error(
-        `'g' 으로의 환산은 중량(WEIGHT) 카테고리 단위만 가능합니다 (선택: ${fromUnitCategory})`,
-      );
-      return;
-    }
+    // ★ Phase 1.7 (D16-4'): 카테고리 제약 없음
+    //   현장 시나리오: 포장단위(PACKAGE)→g, ml(VOLUME)→g 도 자재별 비중으로 자유 환산
+    //   (toUnit='g' 고정은 유지 — 자재 환산 체인이 g 기준)
 
     const factorNum = Number(factor);
     if (!Number.isFinite(factorNum) || factorNum <= 0) {
@@ -88,7 +83,15 @@ export function UnitConversionInlineDialog({
         fromUnit,
         toUnit: "g",
         factor: factorNum,
-        unitCategory: "WEIGHT",
+        // ★ Phase 1.7 (D16-4'): fromUnit 마스터의 카테고리를 그대로 사용
+        //   카테고리 제약 없이 자유 환산 — 자재별 비중·포장 단위 환산 지원
+        //   미선택(타입 안전 fallback) 시 WEIGHT 기본값 (실질적으로는 도달 안 함)
+        unitCategory: (fromUnitCategory ?? "WEIGHT") as
+          | "WEIGHT"
+          | "VOLUME"
+          | "COUNT"
+          | "LENGTH"
+          | "PACKAGE",
       });
 
       if (!res.success) {
@@ -174,30 +177,22 @@ export function UnitConversionInlineDialog({
             </div>
           </div>
 
-          {/* ★ Phase 1.7 (D16-2): 단위 카테고리 자동 표시 */}
+          {/* ★ Phase 1.7 (D16-2, D16-4'): 단위 카테고리 자동 표시 (정보용, 제약 없음) */}
           {fromUnit && fromUnitCategory && (
             <p className="text-[11px] text-gray-500">
               단위 분류:{" "}
-              <span
-                className={`font-medium ${
-                  fromUnitCategory === "WEIGHT"
-                    ? "text-gray-700"
-                    : "text-red-600"
-                }`}
-              >
+              <span className="font-medium text-gray-700">
                 {fromUnitCategory}
               </span>
-              {fromUnitCategory !== "WEIGHT" && (
-                <span className="ml-1 text-red-600">
-                  ⚠ 중량(WEIGHT) 카테고리 단위만 허용됩니다
-                </span>
-              )}
+              <span className="ml-1 text-gray-400">
+                (선택한 단위 마스터에서 자동 도출)
+              </span>
             </p>
           )}
 
           <p className="text-[11px] text-gray-500">
             * 변환 후 단위는 <span className="font-medium">g</span> 로 고정됩니다.
-            <br />* 분류는 <span className="font-medium">WEIGHT(중량)</span> 로 자동 설정됩니다.
+            <br />* 포장단위·부피 단위도 g 으로 자유 환산 가능합니다 (예: 1 포 = 1000 g, 1 ml = 0.92 g).
           </p>
 
           <div className="mt-5 flex justify-end gap-2">
@@ -211,12 +206,7 @@ export function UnitConversionInlineDialog({
             </button>
             <button
               type="submit"
-              disabled={
-                isSubmitting ||
-                !fromUnit ||
-                !factor ||
-                (fromUnitCategory !== null && fromUnitCategory !== "WEIGHT")
-              }
+              disabled={isSubmitting || !fromUnit || !factor}
               className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {isSubmitting ? "등록 중..." : "등록"}
