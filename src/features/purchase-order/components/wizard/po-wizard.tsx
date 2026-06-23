@@ -297,7 +297,8 @@ function reducer(state: WizardState, action: Action): WizardState {
         // D17: 클라이언트 측 환산 정보는 알 수 없으므로 fromUnitName/factor 정보만 가진
         // 만큼만 계산하고, 그 외에는 requiresManualInput 상태로 둔다.
         // (정확한 재계산은 사용자가 환산을 등록한 뒤 REFRESH_ROW_AFTER_CONVERSION 에서 수행)
-        const supplyUnitName = supplierItem.supplyUnit.name;
+        // ★ 시스템 단위 키 = UnitMaster.code (UnitConversion.fromUnit과 일치)
+        const supplyUnitName = supplierItem.supplyUnit.code;
         const supplyUnitQty = supplierItem.supplyUnitQty;
       
         let orderQuantity: number | null = null;
@@ -326,11 +327,12 @@ function reducer(state: WizardState, action: Action): WizardState {
             supplierId: supplierItem.supplierId,
             supplierName: supplierItem.supplier.name,
             productName: supplierItem.productName,
-            supplyUnitName,
-            supplyUnitQty,
+            supplyUnitName: supplierItem.supplyUnit.name,   // 표시명
+            supplyUnitCode: supplierItem.supplyUnit.code,   // 키
+            supplyUnitQty: supplierItem.supplyUnitQty,
             currentPrice: supplierItem.currentPrice,
           },
-          fromUnitName: supplyUnitName === "g" ? null : supplyUnitName,
+          fromUnitName: supplierItem.supplyUnit.code,   // 환산 키와 일치
           netRequiredInFromUnit,
           orderQuantity,
           orderQuantityRaw,

@@ -145,7 +145,7 @@ export function UnitConversionInlineDialog({
                 }}
                 itemType="MATERIAL"
                 valueMode="code"
-                placeholder="단위 선택 (예: kg, g, 포)"
+                placeholder="예: 포, kg, L (단위 코드)"
                 disabled={isSubmitting}
                 excludeValue="g"
                 emptyHint="등록된 자재 단위가 없습니다"

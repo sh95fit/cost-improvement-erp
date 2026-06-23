@@ -36,6 +36,7 @@ export interface POItemCandidate {
     supplierName: string;
     productName: string;
     supplyUnitName: string;
+    supplyUnitCode: string;       
     supplyUnitQty: number;
     currentPrice: number;
   } | null;
@@ -125,7 +126,7 @@ export async function buildPOItemsFromMR(
       defaultSupplierItem: {
         include: {
           supplier: { select: { id: true, name: true } },
-          supplyUnit: { select: { id: true, name: true } },
+          supplyUnit: { select: { id: true, code: true, name: true } },
         },
       },
     },
@@ -138,8 +139,9 @@ export async function buildPOItemsFromMR(
   //    우선순위: 자재별 환산 → 글로벌 환산(materialMasterId=null AND subsidiaryMasterId=null)
   const supplyUnitByMaterialId = new Map<string, string>();
   for (const m of materials) {
-    if (m.defaultSupplierItem?.supplyUnit?.name) {
-      supplyUnitByMaterialId.set(m.id, m.defaultSupplierItem.supplyUnit.name);
+    if (m.defaultSupplierItem?.supplyUnit?.code) {
+      // ★ 시스템 단위 참조 규약: UnitMaster.code (UnitConversion.fromUnit, MaterialMaster.unit 등 모두 code)
+      supplyUnitByMaterialId.set(m.id, m.defaultSupplierItem.supplyUnit.code);
     }
   }
   const distinctFromUnits = Array.from(new Set(supplyUnitByMaterialId.values()));
@@ -254,11 +256,12 @@ export async function buildPOItemsFromMR(
     const stockG = stockMap.get(`${mr.locationId}:${mr.materialMasterId}`) ?? 0;
     const dsi = material.defaultSupplierItem;
     const supplierItemInput = dsi
-      ? {
-          supplyUnitName: dsi.supplyUnit.name,
-          supplyUnitQty: dsi.supplyUnitQty,
-        }
-      : null;
+    ? {
+        // ★ calculateOrderQuantity는 code 기준으로 fromUnit과 비교
+        supplyUnitName: dsi.supplyUnit.code,
+        supplyUnitQty: dsi.supplyUnitQty,
+      }
+    : null;
 
     // 재고 차감 후 (실제 발주)
     const calcNet: CalculateOrderQuantityResult = calculateOrderQuantity({
@@ -287,7 +290,7 @@ export async function buildPOItemsFromMR(
       requiredQtyG: mr.requiredQty,
       stockQtyG: stockG,
       netRequiredG: calcNet.netRequiredG,
-      fromUnitName: conv?.fromUnit ?? null,
+      fromUnitName: conv?.fromUnit ?? dsi?.supplyUnit.code ?? null,
       netRequiredInFromUnit: calcNet.netRequiredInFromUnit,
       supplierItem: dsi
         ? {
@@ -296,6 +299,7 @@ export async function buildPOItemsFromMR(
             supplierName: dsi.supplier.name,
             productName: dsi.productName,
             supplyUnitName: dsi.supplyUnit.name,
+            supplyUnitCode: dsi.supplyUnit.code,
             supplyUnitQty: dsi.supplyUnitQty,
             currentPrice: dsi.currentPrice,
           }
