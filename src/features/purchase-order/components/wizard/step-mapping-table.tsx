@@ -222,7 +222,7 @@ function RowsTable({
                         </div>
                         <div className="text-[10px] text-gray-400">
                           {r.supplierItem.supplyUnitQty}{" "}
-                          {r.supplierItem.supplyUnitName}/{r.supplierItem.supplyUnitName}
+                          {r.fromUnitName ?? "g"}/{r.supplierItem.supplyUnitName}
                         </div>
                       </div>
                     ) : (
@@ -275,8 +275,10 @@ function RowsTable({
                     {/* R1-c: 단위 환산 미등록 경고가 있으면 인라인 등록 버튼 노출 */}
                     {r.warnings.some(
                       (w) =>
-                        w.includes("단위 환산 정보 미등록") ||
-                        w.includes("단위 환산 계수"),
+                        w.includes("단위 환산 등록 필요") ||      // D17: 미등록 / 불일치
+                        w.includes("단위 환산 계수") ||            // D17/D3: factor=0
+                        w.includes("공급단위 계수") ||             // D17: supplyUnitQty=0
+                        w.includes("단위 환산 정보 미등록"),       // 구 D3 (호환)
                     ) && (
                       <button
                         type="button"
