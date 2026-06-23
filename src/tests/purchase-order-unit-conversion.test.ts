@@ -4,20 +4,24 @@ import {
   type CalculateOrderQuantityInput,
 } from '@/features/purchase-order/lib/unit-conversion';
 
+// ★ D17 (2026-06-22): fromUnit === supplyUnitName 강제.
+//   기존 D3 의 2단계 체인(포→g, 박스 20포/박스) 은
+//   공급단위 = 박스 의 직접 환산(박스 → 20000g)으로 표현한다.
 const defaults: CalculateOrderQuantityInput = {
   requiredQtyG: 19000,
   stockQtyG: 0,
-  unitConversion: { fromUnit: '포', factor: 1000 },
-  supplierItem: { supplyUnitName: '박스', supplyUnitQty: 20 },
+  unitConversion: { fromUnit: '박스', factor: 20000 }, // 1박스 = 20,000g
+  supplierItem: { supplyUnitName: '박스', supplyUnitQty: 1 },
 };
 
 describe('calculateOrderQuantity', () => {
   // ---- 정상 시나리오 ----
   describe('정상 케이스', () => {
-    it('가이드 예시: 19,000g / 포(1000) / 박스(20) → 1박스', () => {
+    it('가이드 예시: 19,000g / 박스(20,000g) → 1박스', () => {
       const r = calculateOrderQuantity(defaults);
       expect(r.netRequiredG).toBe(19000);
-      expect(r.netRequiredInFromUnit).toBe(19);
+      // D17: netRequiredInFromUnit = 공급단위(박스) 기준 raw = 0.95
+      expect(r.netRequiredInFromUnit).toBeCloseTo(0.95, 5);
       expect(r.orderQuantityRaw).toBeCloseTo(0.95, 5);
       expect(r.orderQuantity).toBe(1);
       expect(r.requiresManualInput).toBe(false);
@@ -35,15 +39,18 @@ describe('calculateOrderQuantity', () => {
       expect(r.orderQuantity).toBe(2);
     });
 
-    it('kg 단위 (factor 1000) — 5kg 필요 시 5포 → 1박스(20포 기준)', () => {
+    it('kg 단위 직접 환산 — 5kg 필요, 1박스=1kg → 5박스', () => {
+      // D17: fromUnit === supplyUnitName 강제.
+      // 기존 "kg → 5포 → 1박스(20포/박스)" 시나리오 대신,
+      // "1박스=1000g(=1kg)" 직접 환산으로 5박스 케이스 검증.
       const r = calculateOrderQuantity({
         requiredQtyG: 5000,
         stockQtyG: 0,
-        unitConversion: { fromUnit: 'kg', factor: 1000 },
-        supplierItem: { supplyUnitName: '박스', supplyUnitQty: 20 },
+        unitConversion: { fromUnit: '박스', factor: 1000 },
+        supplierItem: { supplyUnitName: '박스', supplyUnitQty: 1 },
       });
       expect(r.netRequiredInFromUnit).toBe(5);
-      expect(r.orderQuantity).toBe(1);
+      expect(r.orderQuantity).toBe(5);
     });
   });
 
@@ -52,7 +59,8 @@ describe('calculateOrderQuantity', () => {
     it('재고가 필요량 일부를 충당 (필요 19000, 재고 4000 → 순 15000g)', () => {
       const r = calculateOrderQuantity({ ...defaults, stockQtyG: 4000 });
       expect(r.netRequiredG).toBe(15000);
-      expect(r.netRequiredInFromUnit).toBe(15);
+      // D17: netRequiredInFromUnit = 공급단위(박스) 기준 raw = 15000/20000 = 0.75
+      expect(r.netRequiredInFromUnit).toBe(0.75);
       expect(r.orderQuantityRaw).toBe(0.75);
       expect(r.orderQuantity).toBe(1);
     });
@@ -78,39 +86,40 @@ describe('calculateOrderQuantity', () => {
 
   // ---- 미매핑/누락 케이스 ----
   describe('미매핑 / 정보 누락', () => {
-    it('공급업체 미매핑 — 환산전 단위까지만 산출, requiresManualInput=true', () => {
+    it('공급업체 미매핑 → requiresManualInput=true (D17: 환산도 진행 불가)', () => {
       const r = calculateOrderQuantity({ ...defaults, supplierItem: null });
-      expect(r.netRequiredInFromUnit).toBe(19);
+      // D17: 공급업체 없으면 netRequiredInFromUnit 도 산출 불가 (공급단위 미정)
+      expect(r.netRequiredInFromUnit).toBeNull();
       expect(r.orderQuantity).toBeNull();
       expect(r.requiresManualInput).toBe(true);
       expect(r.warnings).toContain('공급업체 품목 미지정');
     });
 
-    it('단위 환산 미등록 — g 자체를 단위로 처리, 경고 부착', () => {
+    it('단위 환산 미등록 → requiresManualInput=true (D17: g 폴백 폐기)', () => {
       const r = calculateOrderQuantity({
         ...defaults,
         unitConversion: null,
-        supplierItem: { supplyUnitName: '봉', supplyUnitQty: 1000 },
+        supplierItem: { supplyUnitName: '봉', supplyUnitQty: 1 },
       });
-      expect(r.netRequiredInFromUnit).toBe(19000);
-      expect(r.orderQuantityRaw).toBe(19);
-      expect(r.orderQuantity).toBe(19);
-      expect(r.warnings).toContain('단위 환산 정보 미등록 (g 단위로 처리)');
+      expect(r.requiresManualInput).toBe(true);
+      expect(r.orderQuantity).toBeNull();
+      expect(r.warnings.some((w) => w.includes('단위 환산 등록 필요'))).toBe(true);
     });
 
-    it('공급업체 계수 0 — 1로 간주 + 경고', () => {
+    it('supplyUnitQty 0 → requiresManualInput=true (D17: 1 fallback 폐기)', () => {
       const r = calculateOrderQuantity({
         ...defaults,
         supplierItem: { supplyUnitName: '박스', supplyUnitQty: 0 },
       });
-      expect(r.orderQuantity).toBe(19);
-      expect(r.warnings).toContain('공급업체 계수가 0 또는 미입력 (1로 간주)');
+      expect(r.requiresManualInput).toBe(true);
+      expect(r.orderQuantity).toBeNull();
+      expect(r.warnings).toContain('공급단위 계수(supplyUnitQty)가 0 또는 미입력');
     });
 
     it('UnitConversion 계수 0 → requiresManualInput=true', () => {
       const r = calculateOrderQuantity({
         ...defaults,
-        unitConversion: { fromUnit: '포', factor: 0 },
+        unitConversion: { fromUnit: '박스', factor: 0 },
       });
       expect(r.requiresManualInput).toBe(true);
       expect(r.orderQuantity).toBeNull();
@@ -136,19 +145,19 @@ describe('calculateOrderQuantity', () => {
       expect(r.requiresManualInput).toBe(true);
     });
 
-    it('소수 부동소수점 오차 영향 없음 (10000g / 1000 / 10 = 정확히 1박스)', () => {
+    it('소수 부동소수점 오차 영향 없음 (10000g / 박스 10000g = 정확히 1박스)', () => {
       const r = calculateOrderQuantity({
         requiredQtyG: 10000,
         stockQtyG: 0,
-        unitConversion: { fromUnit: '포', factor: 1000 },
-        supplierItem: { supplyUnitName: '박스', supplyUnitQty: 10 },
+        unitConversion: { fromUnit: '박스', factor: 10000 },
+        supplierItem: { supplyUnitName: '박스', supplyUnitQty: 1 },
       });
-      // 10/10 = 1.0 — EPSILON 보정으로 2가 되면 안 됨
+      // 10000/10000 = 1.0 — EPSILON 보정으로 2가 되면 안 됨
       expect(r.orderQuantity).toBe(1);
     });
   });
 
-  
+  // ---- D17 회귀 테스트 (기존 보존) ----
   describe('D17 — 공급단위 기준 환산 (회귀 테스트)', () => {
     it('포→1000g, supplyUnitQty=3 (3kg/포), 필요량 19000g → 7포', () => {
       const result = calculateOrderQuantity({
@@ -161,7 +170,7 @@ describe('calculateOrderQuantity', () => {
       expect(result.orderQuantityRaw).toBeCloseTo(6.333, 2);
       expect(result.requiresManualInput).toBe(false);
     });
-  
+
     it('UnitConversion 미등록 → requiresManualInput=true (g 폴백 폐기)', () => {
       const result = calculateOrderQuantity({
         requiredQtyG: 19000,
@@ -173,18 +182,18 @@ describe('calculateOrderQuantity', () => {
       expect(result.orderQuantity).toBeNull();
       expect(result.warnings.some((w) => w.includes('단위 환산 등록 필요'))).toBe(true);
     });
-  
+
     it('UnitConversion.fromUnit 이 공급단위와 다르면 사용 불가', () => {
       const result = calculateOrderQuantity({
         requiredQtyG: 19000,
         stockQtyG: 0,
-        unitConversion: { fromUnit: 'kg', factor: 1000 }, // 공급단위는 '포'
+        unitConversion: { fromUnit: 'kg', factor: 1000 },
         supplierItem: { supplyUnitName: '포', supplyUnitQty: 3 },
       });
       expect(result.requiresManualInput).toBe(true);
       expect(result.warnings.some((w) => w.includes("'포→g' 환산 등록 필요"))).toBe(true);
     });
-  
+
     it("공급단위='g' → UnitConversion 불필요 (factor=1 자동)", () => {
       const result = calculateOrderQuantity({
         requiredQtyG: 5000,
@@ -192,11 +201,10 @@ describe('calculateOrderQuantity', () => {
         unitConversion: null,
         supplierItem: { supplyUnitName: 'g', supplyUnitQty: 1000 },
       });
-      // 5000g ÷ (1 × 1000) = 5 → ceil → 5
       expect(result.orderQuantity).toBe(5);
       expect(result.requiresManualInput).toBe(false);
     });
-  
+
     it('supplyUnitQty=0 → requiresManualInput=true', () => {
       const result = calculateOrderQuantity({
         requiredQtyG: 19000,
@@ -206,7 +214,7 @@ describe('calculateOrderQuantity', () => {
       });
       expect(result.requiresManualInput).toBe(true);
     });
-  
+
     it('정수 결과 경계 — 6000g, 1000g/포, 3 → 2포 (정확히 6.0, ceil 후 2)', () => {
       const result = calculateOrderQuantity({
         requiredQtyG: 6000,
@@ -214,9 +222,8 @@ describe('calculateOrderQuantity', () => {
         unitConversion: { fromUnit: '포', factor: 1000 },
         supplierItem: { supplyUnitName: '포', supplyUnitQty: 3 },
       });
-      // 6000 ÷ 3000 = 2.0 (정확히) → ceil(2.0 - EPSILON) = 2
       expect(result.orderQuantity).toBe(2);
       expect(result.orderQuantityRaw).toBeCloseTo(2.0, 6);
     });
-  });  
+  });
 });
