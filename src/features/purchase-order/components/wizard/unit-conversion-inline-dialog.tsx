@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createUnitConversionAction } from "@/features/unit-conversion/actions/unit-conversion.action";
+import { UnitCombobox } from "@/features/unit-master/components/unit-combobox";
 
 export interface ConversionRegisteredPayload {
   materialMasterId: string;
@@ -14,7 +15,7 @@ interface Props {
   open: boolean;
   materialMasterId: string;
   materialName: string;
-  /** 추천 fromUnit (없으면 빈 문자열) */
+  /** 추천 fromUnit (없으면 빈 문자열) — UnitMaster.code 기준 */
   suggestedFromUnit: string;
   onClose: () => void;
   onSuccess: (payload: ConversionRegisteredPayload) => void;
@@ -29,6 +30,8 @@ export function UnitConversionInlineDialog({
   onSuccess,
 }: Props) {
   const [fromUnit, setFromUnit] = useState(suggestedFromUnit);
+  // ★ Phase 1.7 (D16-2): UnitCombobox 가 unit 객체를 함께 전달 → unitCategory 자동 도출
+  const [fromUnitCategory, setFromUnitCategory] = useState<string | null>(null);
   const [factor, setFactor] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,6 +39,7 @@ export function UnitConversionInlineDialog({
   useEffect(() => {
     if (open) {
       setFromUnit(suggestedFromUnit);
+      setFromUnitCategory(null);
       setFactor("");
     }
   }, [open, suggestedFromUnit]);
@@ -54,11 +58,22 @@ export function UnitConversionInlineDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedFromUnit = fromUnit.trim();
-    if (!trimmedFromUnit) {
-      toast.error("변환 전 단위는 필수입니다");
+
+    // ★ Phase 1.7 (D16-1): UnitMaster 미선택 시 차단
+    if (!fromUnit) {
+      toast.error("변환 전 단위를 단위 관리에서 선택하세요");
       return;
     }
+
+    // ★ Phase 1.7 (D16-4): WEIGHT 카테고리만 허용
+    //   (toUnit='g' 고정 정책과 정합 — R1-c 결정 유지)
+    if (fromUnitCategory && fromUnitCategory !== "WEIGHT") {
+      toast.error(
+        `'g' 으로의 환산은 중량(WEIGHT) 카테고리 단위만 가능합니다 (선택: ${fromUnitCategory})`,
+      );
+      return;
+    }
+
     const factorNum = Number(factor);
     if (!Number.isFinite(factorNum) || factorNum <= 0) {
       toast.error("환산 계수는 0보다 큰 숫자여야 합니다");
@@ -70,7 +85,7 @@ export function UnitConversionInlineDialog({
       const res = await createUnitConversionAction({
         materialMasterId,
         subsidiaryMasterId: null,
-        fromUnit: trimmedFromUnit,
+        fromUnit,
         toUnit: "g",
         factor: factorNum,
         unitCategory: "WEIGHT",
@@ -81,10 +96,10 @@ export function UnitConversionInlineDialog({
         return;
       }
 
-      toast.success(`단위 환산 등록 완료: 1 ${trimmedFromUnit} = ${factorNum} g`);
+      toast.success(`단위 환산 등록 완료: 1 ${fromUnit} = ${factorNum} g`);
       onSuccess({
         materialMasterId,
-        fromUnit: trimmedFromUnit,
+        fromUnit,
         factor: factorNum,
       });
       onClose();
@@ -103,7 +118,7 @@ export function UnitConversionInlineDialog({
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
     >
-      <div className="w-[420px] rounded-md bg-white p-5 shadow-xl">
+      <div className="w-[440px] rounded-md bg-white p-5 shadow-xl">
         <h3 className="text-sm font-semibold text-gray-900">단위 환산 등록</h3>
         <p className="mt-1 text-xs text-gray-600">
           자재: <span className="font-medium">{materialName}</span>
@@ -113,20 +128,29 @@ export function UnitConversionInlineDialog({
         </p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+          {/* ★ Phase 1.7 (D16-1, D16-3): UnitCombobox 통합 */}
           <div>
             <label className="block text-xs font-medium text-gray-700">
               변환 전 단위
             </label>
-            <input
-              type="text"
-              value={fromUnit}
-              onChange={(e) => setFromUnit(e.target.value)}
-              placeholder="예: 포, kg, L"
-              maxLength={20}
-              disabled={isSubmitting}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-400"
-              autoFocus
-            />
+            <div className="mt-1">
+              <UnitCombobox
+                value={fromUnit}
+                onChange={(v, unit) => {
+                  setFromUnit(v);
+                  setFromUnitCategory(unit?.unitCategory ?? null);
+                }}
+                itemType="MATERIAL"
+                valueMode="code"
+                placeholder="단위 선택 (예: kg, g, 포)"
+                disabled={isSubmitting}
+                excludeValue="g"
+                emptyHint="등록된 자재 단위가 없습니다"
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-gray-500">
+              * 단위 관리에 등록된 단위만 선택할 수 있습니다.
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -150,6 +174,27 @@ export function UnitConversionInlineDialog({
             </div>
           </div>
 
+          {/* ★ Phase 1.7 (D16-2): 단위 카테고리 자동 표시 */}
+          {fromUnit && fromUnitCategory && (
+            <p className="text-[11px] text-gray-500">
+              단위 분류:{" "}
+              <span
+                className={`font-medium ${
+                  fromUnitCategory === "WEIGHT"
+                    ? "text-gray-700"
+                    : "text-red-600"
+                }`}
+              >
+                {fromUnitCategory}
+              </span>
+              {fromUnitCategory !== "WEIGHT" && (
+                <span className="ml-1 text-red-600">
+                  ⚠ 중량(WEIGHT) 카테고리 단위만 허용됩니다
+                </span>
+              )}
+            </p>
+          )}
+
           <p className="text-[11px] text-gray-500">
             * 변환 후 단위는 <span className="font-medium">g</span> 로 고정됩니다.
             <br />* 분류는 <span className="font-medium">WEIGHT(중량)</span> 로 자동 설정됩니다.
@@ -166,7 +211,12 @@ export function UnitConversionInlineDialog({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting ||
+                !fromUnit ||
+                !factor ||
+                (fromUnitCategory !== null && fromUnitCategory !== "WEIGHT")
+              }
               className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {isSubmitting ? "등록 중..." : "등록"}
