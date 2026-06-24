@@ -11,6 +11,49 @@ import {
 } from "./po-delta.service";
 import { POAdjustmentAction } from "@prisma/client";
 
+// ─────────────────────────────────────
+// ★ D19: 기본 공급업체 품목 갱신 헬퍼
+// ─────────────────────────────────────
+function collectDefaultSupplierUpdates(
+  items: Array<{
+    materialMasterId?: string;
+    supplierItemId: string;
+    setAsDefault?: boolean;
+  }>,
+): Array<{ materialMasterId: string; supplierItemId: string }> {
+  const map = new Map<string, string>();
+  for (const it of items) {
+    if (!it.setAsDefault) continue;
+    if (!it.materialMasterId) continue;
+    // 같은 자재가 여러 행이면 가장 마지막 행의 supplierItem 으로 결정
+    map.set(it.materialMasterId, it.supplierItemId);
+  }
+  return Array.from(map.entries()).map(([materialMasterId, supplierItemId]) => ({
+    materialMasterId,
+    supplierItemId,
+  }));
+}
+
+async function applyDefaultSupplierUpdates(
+  tx: Prisma.TransactionClient,
+  items: Array<{
+    materialMasterId?: string;
+    supplierItemId: string;
+    setAsDefault?: boolean;
+  }>,
+): Promise<void> {
+  const updates = collectDefaultSupplierUpdates(items);
+  if (updates.length === 0) return;
+  await Promise.all(
+    updates.map((u) =>
+      tx.materialMaster.update({
+        where: { id: u.materialMasterId },
+        data: { defaultSupplierItemId: u.supplierItemId },
+      }),
+    ),
+  );
+}
+
 // ── 도메인 에러 키 ──
 export const PO_BATCH_ERRORS = {
   EMPTY_ITEMS: "EMPTY_ITEMS",
@@ -48,6 +91,8 @@ export const batchPOItemSchema = z
     systemQuantity: z.number().nonnegative().optional(),
     adjustedQuantity: z.number().nonnegative().optional(),
     adjustmentReason: z.string().max(500).optional(),
+    // ★ D19: 자재의 기본 공급업체 품목으로 (재)지정 동의 플래그
+    setAsDefault: z.boolean().optional().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.itemType === "MATERIAL" && !data.materialMasterId) {
@@ -118,6 +163,11 @@ export interface CreatePurchaseOrdersBatchResult {
     totalDeltaAmount: number;
     affectedPurchaseOrderIds: string[];
   };
+  /** ★ D19: MaterialMaster.defaultSupplierItemId 변경 행 — Action 레이어 감사 로그용 */
+  defaultSupplierUpdates?: Array<{
+    materialMasterId: string;
+    supplierItemId: string;
+  }>;
 }
 
 // ============================================================
@@ -480,12 +530,16 @@ export async function createPurchaseOrdersBatch(
       });
     }
 
+    // ★ D19 (D-DEFAULT-SUPPLIER): setAsDefault=true 행에 대해 MaterialMaster.defaultSupplierItemId 갱신
+    await applyDefaultSupplierUpdates(tx, input.items);
+
     return {
       createdPurchaseOrders,
       count: createdPurchaseOrders.length,
       totalAmount: grandTotal,
       isIdempotentReplay: false,
       batchId: batch?.id ?? null,
+      defaultSupplierUpdates: collectDefaultSupplierUpdates(input.items),
     };
   });
 }
@@ -841,6 +895,9 @@ async function executeDeltaMode(
     ...createdPurchaseOrders,
   ];
 
+  // ★ D19
+  await applyDefaultSupplierUpdates(tx, input.items);
+
   return {
     createdPurchaseOrders: allPOs,
     count: allPOs.length,
@@ -851,6 +908,7 @@ async function executeDeltaMode(
       ...plan.summary,
       affectedPurchaseOrderIds: Array.from(affectedPOIds),
     },
+    defaultSupplierUpdates: collectDefaultSupplierUpdates(input.items),
   };
 }
 
@@ -866,6 +924,7 @@ function batchItemFromCandidate(c: NewItemForDelta): BatchPOItem {
     quantity: c.quantity,
     unitPrice: c.unitPrice,
     systemQuantity: c.netRequiredG ?? undefined,
+    setAsDefault: false, // ★ D19: DELTA 신규 추가 행은 wizard 경유가 아니므로 false 고정
   };
 }
 
@@ -1055,6 +1114,9 @@ async function executeReplaceMode(
     });
   }
 
+  // ★ D19
+  await applyDefaultSupplierUpdates(tx, input.items);
+
   return {
     createdPurchaseOrders,
     count: createdPurchaseOrders.length,
@@ -1070,5 +1132,6 @@ async function executeReplaceMode(
       totalDeltaAmount: grandTotal,
       affectedPurchaseOrderIds: cancelledPOIds,
     },
+    defaultSupplierUpdates: collectDefaultSupplierUpdates(input.items),
   };
 }

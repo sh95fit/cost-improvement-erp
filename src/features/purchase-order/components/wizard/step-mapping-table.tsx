@@ -22,6 +22,9 @@ interface Props {
   ) => void;
   /** R1-c: 단위 환산 인라인 등록 성공 시 해당 행 재계산 트리거 */
   onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
+  // ★ D19: 기본 공급업체 변경 동의 체크박스 (자재 단위)
+  setAsDefaultMap: Record<string, boolean>;
+  onToggleSetAsDefault: (materialRequirementId: string, value: boolean) => void;
 }
 
 export function StepMappingTable({
@@ -33,6 +36,8 @@ export function StepMappingTable({
   onUpdateUnitPrice,
   onResolveUnmapped,
   onRegisterConversion,
+  setAsDefaultMap,
+  onToggleSetAsDefault,
 }: Props) {
   // Fix-R1-a (D10·D11): 매핑된 모든 행(전량/일부/전체)을 하나의 섹션에 통합. 뱃지로 구분.
   const allMapped = [...mapped, ...mappedPartialStock, ...mappedFullStock];
@@ -64,6 +69,8 @@ export function StepMappingTable({
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
             onRegisterConversion={onRegisterConversion}
+            setAsDefaultMap={setAsDefaultMap}
+            onToggleSetAsDefault={onToggleSetAsDefault}
           />
         </section>
       )}
@@ -103,6 +110,8 @@ export function StepMappingTable({
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
             onRegisterConversion={onRegisterConversion}
+            setAsDefaultMap={setAsDefaultMap}
+            onToggleSetAsDefault={onToggleSetAsDefault}
           />
         )}
       </section>
@@ -123,6 +132,8 @@ function RowsTable({
   onUpdateUnitPrice,
   onResolveUnmapped,
   onRegisterConversion,
+  setAsDefaultMap,
+  onToggleSetAsDefault,
 }: {
   rows: POItemCandidate[];
   mode: "mapped" | "unmapped";
@@ -133,6 +144,8 @@ function RowsTable({
     si: SupplierItemWithSupplier,
   ) => void;
   onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
+  setAsDefaultMap: Record<string, boolean>;
+  onToggleSetAsDefault: (materialRequirementId: string, value: boolean) => void;
 }) {
   // R1-c: 단위 환산 인라인 다이얼로그 상태 (이 RowsTable 인스턴스 로컬)
   const [conversionDialog, setConversionDialog] = useState<{
@@ -205,13 +218,41 @@ function RowsTable({
                   </td>
                   <td className="px-3 py-2">
                     {mode === "unmapped" ? (
-                      <SupplierItemPickerPortal
-                        materialMasterId={r.materialMasterId}
-                        value={r.supplierItem?.id ?? null}
-                        onSelect={(si) =>
-                          onResolveUnmapped(r.materialRequirementId, si)
-                        }
-                      />
+                      <>
+                        <SupplierItemPickerPortal
+                          materialMasterId={r.materialMasterId}
+                          value={r.supplierItem?.id ?? null}
+                          onSelect={(si) =>
+                            onResolveUnmapped(r.materialRequirementId, si)
+                          }
+                        />
+                        {/* ★ D19: 미매핑 → 선택 직후 안내/체크박스 */}
+                        {r.supplierItem &&
+                          r.currentDefaultSupplierItemId === null && (
+                            <div className="mt-1 text-[10px] text-blue-600">
+                              ℹ 자동으로 기본 공급업체 품목 등록
+                            </div>
+                          )}
+                        {r.supplierItem &&
+                          r.currentDefaultSupplierItemId !== null &&
+                          r.currentDefaultSupplierItemId !== r.supplierItem.id && (
+                            <label className="mt-1 flex items-center gap-1 text-[10px] text-amber-700">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  setAsDefaultMap[r.materialRequirementId] ?? false
+                                }
+                                onChange={(e) =>
+                                  onToggleSetAsDefault(
+                                    r.materialRequirementId,
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              기본 공급업체 품목으로 변경
+                            </label>
+                          )}
+                      </>
                     ) : r.supplierItem ? (
                       <div>
                         <div className="font-medium">
@@ -224,6 +265,30 @@ function RowsTable({
                           {r.supplierItem.supplyUnitQty}{" "}
                           {r.fromUnitName ?? "g"}/{r.supplierItem.supplyUnitName}
                         </div>
+                        {/* ★ D19: 기본 공급업체 안내/체크박스 */}
+                        {r.currentDefaultSupplierItemId === null && (
+                          <div className="mt-1 text-[10px] text-blue-600">
+                            ℹ 자동으로 기본 공급업체 품목 등록
+                          </div>
+                        )}
+                        {r.currentDefaultSupplierItemId !== null &&
+                          r.currentDefaultSupplierItemId !== r.supplierItem.id && (
+                            <label className="mt-1 flex items-center gap-1 text-[10px] text-amber-700">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  setAsDefaultMap[r.materialRequirementId] ?? false
+                                }
+                                onChange={(e) =>
+                                  onToggleSetAsDefault(
+                                    r.materialRequirementId,
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              기본 공급업체 품목으로 변경
+                            </label>
+                          )}
                       </div>
                     ) : (
                       <span className="text-gray-400">—</span>

@@ -30,6 +30,8 @@ export interface POItemCandidate {
   netRequiredG: number;
   fromUnitName: string | null;
   netRequiredInFromUnit: number | null;
+  /** D19: 현재 자재의 기본 공급업체 품목 ID (체크박스 노출 분기용). 자재 마스터 못 찾으면 null */
+  currentDefaultSupplierItemId: string | null;  
   supplierItem: {
     id: string;
     supplierId: string;
@@ -144,22 +146,30 @@ export async function buildPOItemsFromMR(
       supplyUnitByMaterialId.set(m.id, m.defaultSupplierItem.supplyUnit.code);
     }
   }
-  const distinctFromUnits = Array.from(new Set(supplyUnitByMaterialId.values()));
 
-  const unitConversions =
-    distinctFromUnits.length === 0
-      ? []
-      : await prisma.unitConversion.findMany({
-          where: {
-            companyId: input.companyId,
-            toUnit: 'g',
-            fromUnit: { in: distinctFromUnits },
-            OR: [
-              { materialMasterId: { in: materialIds } },
-              { materialMasterId: null, subsidiaryMasterId: null }, // 글로벌
-            ],
-          },
-        });
+  // ★ D18 (D-CONV-INDEPENDENT): 자재별 환산은 supplyUnit 후보 유무와 무관하게 전체 조회.
+  //    글로벌 환산은 supplyUnit 후보가 있는 경우에만 fromUnit 필터.
+  const distinctFromUnits = Array.from(new Set(supplyUnitByMaterialId.values()));
+  const unitConversions = await prisma.unitConversion.findMany({
+    where: {
+      companyId: input.companyId,
+      toUnit: 'g',
+      OR: [
+        // 자재별 환산 — fromUnit 제약 없음 (자재 차원 마스터 데이터)
+        { materialMasterId: { in: materialIds } },
+        // 글로벌 환산 — supplyUnit 후보가 있을 때만
+        ...(distinctFromUnits.length > 0
+          ? [
+              {
+                materialMasterId: null,
+                subsidiaryMasterId: null,
+                fromUnit: { in: distinctFromUnits },
+              },
+            ]
+          : []),
+      ],
+    },
+  });
 
   // key: `${materialId}:${fromUnit}` (자재별) / `${fromUnit}` (글로벌)
   const materialConvMap = new Map<string, { fromUnit: string; factor: number }>();
@@ -179,22 +189,32 @@ export async function buildPOItemsFromMR(
   }
 
   /**
-   * 자재의 공급단위에 맞는 UnitConversion 1건을 선택한다.
-   * 우선순위: 자재별 → 글로벌 → null
-   * supplyUnit === 'g' 인 경우 환산 불필요 → null 반환
-   * (calculateOrderQuantity 내부에서 factor=1 로 자동 처리)
+   * ★ D18 (D-CONV-INDEPENDENT): 자재 차원으로 환산을 조회한다.
+   * SupplierItem 존재 여부와 무관하게 다음 순서로 후보를 찾는다.
+   *   1순위: candidateFromUnit 으로 자재별 → 글로벌 정확 매칭
+   *   2순위: 자재별 환산 중 'g' 가 아닌 첫 항목 (SupplierItem 미매핑 행도 환산 적용 가능)
+   *   candidateFromUnit === 'g' 이면 환산 불필요 → null
    */
   function resolveConversion(
     materialId: string,
+    candidateFromUnit: string | null,
   ): { fromUnit: string; factor: number } | null {
-    const supplyUnit = supplyUnitByMaterialId.get(materialId);
-    if (!supplyUnit) return null;
-    if (supplyUnit === 'g') return null;
-    return (
-      materialConvMap.get(`${materialId}:${supplyUnit}`) ??
-      globalConvMap.get(supplyUnit) ??
-      null
-    );
+    if (candidateFromUnit === 'g') return null;
+
+    if (candidateFromUnit) {
+      const exact =
+        materialConvMap.get(`${materialId}:${candidateFromUnit}`) ??
+        globalConvMap.get(candidateFromUnit);
+      if (exact) return exact;
+    }
+
+    // 자재별 환산 중 'g' 가 아닌 첫 항목 (미매핑 행에서도 표시 가능)
+    for (const [key, conv] of materialConvMap.entries()) {
+      if (key.startsWith(`${materialId}:`) && conv.fromUnit !== 'g') {
+        return conv;
+      }
+    }
+    return null;
   }
 
   // 3) 공장별 재고 일괄 조회
@@ -242,6 +262,7 @@ export async function buildPOItemsFromMR(
         netRequiredG: mr.requiredQty,
         fromUnitName: null,
         netRequiredInFromUnit: null,
+        currentDefaultSupplierItemId: null,        
         supplierItem: null,
         orderQuantity: null,
         orderQuantityRaw: null,
@@ -252,7 +273,11 @@ export async function buildPOItemsFromMR(
       continue;
     }
 
-    const conv = resolveConversion(mr.materialMasterId);
+    // ★ D18: SupplierItem.supplyUnit.code 를 후보로 전달 (없으면 null → 자재별 fallback)
+    const conv = resolveConversion(
+      mr.materialMasterId,
+      material.defaultSupplierItem?.supplyUnit?.code ?? null,
+    );
     const stockG = stockMap.get(`${mr.locationId}:${mr.materialMasterId}`) ?? 0;
     const dsi = material.defaultSupplierItem;
     const supplierItemInput = dsi
@@ -279,6 +304,11 @@ export async function buildPOItemsFromMR(
       supplierItem: supplierItemInput,
     });
 
+    // ★ D18: SupplierItem 미매핑이지만 자재 차원 환산이 있으면 환산전 단위 표시
+    const previewNetRequiredInFromUnit =
+      calcNet.netRequiredInFromUnit ??
+      (conv && conv.factor > 0 ? calcNet.netRequiredG / conv.factor : null);
+
     const candidate: POItemCandidate = {
       materialRequirementId: mr.id,
       materialMasterId: mr.materialMasterId,
@@ -291,7 +321,8 @@ export async function buildPOItemsFromMR(
       stockQtyG: stockG,
       netRequiredG: calcNet.netRequiredG,
       fromUnitName: conv?.fromUnit ?? dsi?.supplyUnit.code ?? null,
-      netRequiredInFromUnit: calcNet.netRequiredInFromUnit,
+      netRequiredInFromUnit: previewNetRequiredInFromUnit,
+      currentDefaultSupplierItemId: material.defaultSupplierItem?.id ?? null,      
       supplierItem: dsi
         ? {
             id: dsi.id,

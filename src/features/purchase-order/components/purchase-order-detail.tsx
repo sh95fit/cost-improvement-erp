@@ -85,7 +85,8 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
         <Meta label="라인" value={po.productionLine?.name ?? "-"} />
         <Meta label="총액" value={formatCurrency(Number(po.totalAmount))} />
         <Meta label="출고일" value={formatDate(po.outboundDate)} />
-        <Meta label="예상 입고일" value={formatDate(po.expectedReceiveDate)} />
+        {/* ★ D20 (D-EXPECTED-RECEIVE-SIMPLIFIED): 헤더 예상 입고일 메타 제거.
+            출고일이 헤더 단위 입고일을 겸하며, 품목별 입고일은 아래 품목 테이블에서 노출. */}
         <Meta label="식단 기준일" value={formatDate(po.mealPlanGroup?.planDate)} />
         <Meta label="품목 수" value={`${po.items.length}건`} />
         {po.submittedAt && (
@@ -128,7 +129,18 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {po.items.map((it) => {
+              {/* ★ D20: 품목 단위 입고예정일이 빠른 순으로 정렬 (사용자 가시성) */}
+              {[...po.items]
+                .sort((a, b) => {
+                  const da = a.itemExpectedReceiveDate
+                    ? new Date(a.itemExpectedReceiveDate).getTime()
+                    : Infinity;
+                  const db = b.itemExpectedReceiveDate
+                    ? new Date(b.itemExpectedReceiveDate).getTime()
+                    : Infinity;
+                  return da - db;
+                })
+                .map((it) => {
                 const name =
                   it.materialMaster?.name ??
                   it.subsidiaryMaster?.name ??

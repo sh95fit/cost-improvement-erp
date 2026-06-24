@@ -54,7 +54,9 @@ export interface WizardState {
   // ★ R1-b3: DELTA 프리뷰 (mode === "DELTA" 일 때만 의미)
   deltaPreview: import("@/features/purchase-order/actions/purchase-order.action").PreviewDeltaPlanResult | null;
   deltaPreviewLoading: boolean;
-  deltaPreviewError: string | null;  
+  deltaPreviewError: string | null;
+  /** D19: materialRequirementId → setAsDefault 플래그 (기본 공급업체 변경 동의) */
+  setAsDefaultMap: Record<string, boolean>;
 }
 
 type Action =
@@ -108,6 +110,11 @@ type Action =
   | { type: "DELTA_PREVIEW_ERROR"; payload: string }
   | { type: "DELTA_PREVIEW_RESET" }
 
+  // ★ D19
+  | {
+    type: "SET_AS_DEFAULT";
+    payload: { materialRequirementId: string; value: boolean };
+  }
   | { type: "RESET" };
 
   const initialState: WizardState = {
@@ -132,6 +139,7 @@ type Action =
     deltaPreview: null,
     deltaPreviewLoading: false,
     deltaPreviewError: null,
+    setAsDefaultMap: {},
   };
 
 // ════════════════════════════════════════
@@ -222,7 +230,8 @@ function reducer(state: WizardState, action: Action): WizardState {
         unmapped: [],
         deltaPreview: null,
         deltaPreviewLoading: false,
-        deltaPreviewError: null,        
+        deltaPreviewError: null,
+        setAsDefaultMap: {},
       };
     case "SET_COUNT_SOURCE":
       return {
@@ -238,7 +247,8 @@ function reducer(state: WizardState, action: Action): WizardState {
         unmapped: [],
         deltaPreview: null,
         deltaPreviewLoading: false,
-        deltaPreviewError: null,        
+        deltaPreviewError: null,
+        setAsDefaultMap: {},
       };
     case "LOAD_START":
       return { ...state, isLoading: true, loadError: null };
@@ -368,6 +378,14 @@ function reducer(state: WizardState, action: Action): WizardState {
             unmapped: state.unmapped.map((r) =>
               r.materialRequirementId === materialRequirementId ? resolved : r,
             ),
+            // ★ D19: 매핑 미완(UNMAPPED 유지)이라도 default 플래그 사전 결정
+            //        currentDefaultSupplierItemId === null → 자동 true
+            //        같은 default → false, 다른 default → false (사용자가 체크박스로 결정)
+            setAsDefaultMap: {
+              ...state.setAsDefaultMap,
+              [materialRequirementId]:
+                target.currentDefaultSupplierItemId === null,
+            },
           };
         }
       
@@ -377,6 +395,12 @@ function reducer(state: WizardState, action: Action): WizardState {
             (r) => r.materialRequirementId !== materialRequirementId,
           ),
           mapped: [...state.mapped, resolved],
+          // ★ D19
+          setAsDefaultMap: {
+            ...state.setAsDefaultMap,
+            [materialRequirementId]:
+              target.currentDefaultSupplierItemId === null,
+          },
         };
       }
       case "REFRESH_ROW_AFTER_CONVERSION": {
@@ -464,6 +488,15 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, outboundDate: action.payload };
     case "SET_NOTE":
       return { ...state, note: action.payload };
+    // ★ D19
+    case "SET_AS_DEFAULT":
+      return {
+        ...state,
+        setAsDefaultMap: {
+          ...state.setAsDefaultMap,
+          [action.payload.materialRequirementId]: action.payload.value,
+        },
+      };
     // ★ R1-b1
     case "SET_IDEMPOTENCY_KEY":
       return { ...state, idempotencyKey: action.payload };
@@ -773,7 +806,15 @@ export function POWizard() {
                 type: "REFRESH_ROW_AFTER_CONVERSION",
                 payload,
               })
-            }  
+            }
+            // ★ D19
+            setAsDefaultMap={state.setAsDefaultMap}
+            onToggleSetAsDefault={(materialRequirementId, value) =>
+              dispatch({
+                type: "SET_AS_DEFAULT",
+                payload: { materialRequirementId, value },
+              })
+            }
           />
         )}
 
@@ -809,7 +850,9 @@ export function POWizard() {
             /* ★ R1-b3 */
             deltaPreview={state.deltaPreview}
             deltaPreviewLoading={state.deltaPreviewLoading}
-            deltaPreviewError={state.deltaPreviewError}            
+            deltaPreviewError={state.deltaPreviewError}
+            // ★ D19
+            setAsDefaultMap={state.setAsDefaultMap}
           />
         )}
         </div>

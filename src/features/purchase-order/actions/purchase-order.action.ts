@@ -362,6 +362,22 @@ export async function createPurchaseOrdersBatchAction(
       });
     }
 
+    // ★ D19: MaterialMaster.defaultSupplierItemId 변경 감사 로그
+    if (result.defaultSupplierUpdates && result.defaultSupplierUpdates.length > 0) {
+      for (const upd of result.defaultSupplierUpdates) {
+        await createAuditLog({
+          session,
+          action: "UPDATE",
+          entityType: "MaterialMaster",
+          entityId: upd.materialMasterId,
+          after: {
+            defaultSupplierItemId: upd.supplierItemId,
+            reason: "D19 default 자동/사용자동의 설정 (위저드 배치)",
+          } as unknown as Record<string, unknown>,
+        });
+      }
+    }
+
     return actionOk(result);
   } catch (error) {
     return handleActionError(error, "발주서 일괄 생성에 실패했습니다", {

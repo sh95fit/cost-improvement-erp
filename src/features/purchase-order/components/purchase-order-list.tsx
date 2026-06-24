@@ -193,8 +193,8 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
               <TableHead className="w-[110px]">식단기준일</TableHead>              
               {/* ★ Phase 1.6 (D15-1) */}
               <TableHead className="w-[110px]">출고일</TableHead>
-              {/* ★ Phase 1.6 (D15-2) */}
-              <TableHead className="w-[110px]">입고예정일</TableHead>
+              {/* ★ D20 (D-EXPECTED-RECEIVE-SIMPLIFIED): 헤더 입고예정일 컬럼 제거.
+                  출고일이 헤더 단위 입고 기준일을 겸함 — 품목별은 상세에서 노출. */}
               <TableHead className="w-[80px] text-center">품목수</TableHead>
               <TableHead className="text-right">합계</TableHead>
               <TableHead className="w-[100px]">작성자</TableHead>
@@ -204,13 +204,13 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={12} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={12} className="h-24 text-center text-gray-500">
                   등록된 발주서가 없습니다
                 </TableCell>
               </TableRow>
@@ -260,10 +260,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
                   <TableCell className="text-sm">
                     {formatDate(item.outboundDate)}
                   </TableCell>
-                  {/* ★ Phase 1.6 (D15-2) */}
-                  <TableCell className="text-sm">
-                    {formatDate(item.expectedReceiveDate)}
-                  </TableCell>
+                  {/* ★ D20: expectedReceiveDate 컬럼 제거 — 출고일이 헤더 입고일 역할 겸함 */}
                   <TableCell className="text-center text-sm">
                     {item._count.items}
                   </TableCell>

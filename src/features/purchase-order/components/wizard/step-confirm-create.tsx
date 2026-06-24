@@ -36,6 +36,8 @@ interface Props {
   deltaPreviewLoading: boolean;
   deltaPreviewError: string | null;
   onClearPersistence: () => void;
+  // ★ D19
+  setAsDefaultMap: Record<string, boolean>;
 }
 
 export function StepConfirmCreate({
@@ -56,7 +58,8 @@ export function StepConfirmCreate({
   deltaPreview,
   deltaPreviewLoading,
   deltaPreviewError,
-  onClearPersistence,  
+  onClearPersistence,
+  setAsDefaultMap,
 }: Props) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,6 +78,11 @@ export function StepConfirmCreate({
   async function handleSubmit() {
     if (validMapped.length === 0) {
       toast.warning("생성할 발주 항목이 없습니다");
+      return;
+    }
+    // ★ D21 (D-OUTBOUND-REQUIRED): 출고일은 UI 레벨 필수
+    if (!outboundDate) {
+      toast.warning("출고일을 입력해주세요");
       return;
     }
     // ★ R1-b1: 멱등성 키는 Step 1에서 발급되어야 함 — 누락 시 진행 차단
@@ -103,6 +111,8 @@ export function StepConfirmCreate({
           r.orderQuantity !== r.orderQuantityRaw
             ? r.orderQuantity
             : undefined,
+        // ★ D19
+        setAsDefault: setAsDefaultMap[r.materialRequirementId] ?? false,
       }));
 
       const res = await createPurchaseOrdersBatchAction({
@@ -167,7 +177,8 @@ export function StepConfirmCreate({
         <p className="mt-1 text-sm text-gray-600">
           주문일·출고일·메모를 입력하고 발주서를 일괄 생성합니다. 모든 PO는
           DRAFT 상태로 생성되며, 단가 적층은 DRAFT → SUBMITTED 전이 시점에
-          반영됩니다. 예상 입고일은 출고일 + 품목별 리드타임 최대값으로 자동 계산됩니다.
+          반영됩니다. 출고일이 발주서 단위 입고 기준일을 겸하며, 품목별 입고
+          예정일은 발주 상세 화면의 품목 테이블에서 확인할 수 있습니다.
         </p>
       </div>
 
@@ -230,7 +241,9 @@ export function StepConfirmCreate({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="outboundDate">출고일 (선택)</Label>
+          <Label htmlFor="outboundDate">
+            출고일 <span className="text-red-500">*</span>
+          </Label>
           <input
             id="outboundDate"
             type="date"
@@ -242,34 +255,8 @@ export function StepConfirmCreate({
             }
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
-          {/* ★ Phase 1.6 (D15-2): 예상 입고일 클라이언트 미리보기 */}
-          {outboundDate &&
-            (() => {
-              // mapped + mappedPartialStock 중 supplierItem.leadTimeDays 가 있는 행들의 최대값
-              // 주의: POItemCandidate.supplierItem 에 leadTimeDays 필드가 있어야 함.
-              //       없으면 기본 1일 사용 (서버와 동일 정책).
-              const leadTimes = validMapped
-                .map((r) => {
-                  const lt = (r.supplierItem as { leadTimeDays?: number } | null)
-                    ?.leadTimeDays;
-                  return typeof lt === "number" && lt > 0 ? lt : null;
-                })
-                .filter((n): n is number => n !== null);
-              const maxLead = leadTimes.length > 0 ? Math.max(...leadTimes) : 1;
-              const eta = new Date(outboundDate);
-              eta.setDate(eta.getDate() + maxLead);
-              return (
-                <p className="text-xs text-blue-700">
-                  예상 입고일:{" "}
-                  <span className="font-medium">
-                    {eta.toLocaleDateString("ko-KR")}
-                  </span>
-                  <span className="ml-1 text-gray-500">
-                    (출고일 + {maxLead}일, 품목 리드타임 최대값)
-                  </span>
-                </p>
-              );
-            })()}
+          {/* ★ D20 (D-EXPECTED-RECEIVE-SIMPLIFIED): 헤더 입고예정일 표시 제거.
+              출고일이 헤더 단위 입고일 역할을 겸한다. 품목별 입고예정일은 상세에서 노출. */}
         </div>
       </div>
 
@@ -288,6 +275,34 @@ export function StepConfirmCreate({
           {note.length} / 1000
         </p>
       </div>
+
+      {/* ★ D19: 기본 공급업체 품목 등록/변경 요약 */}
+      {(() => {
+        const defaultActions = validMapped.filter(
+          (r) => setAsDefaultMap[r.materialRequirementId],
+        );
+        if (defaultActions.length === 0) return null;
+        return (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+            <div className="font-medium text-blue-900">
+              📌 기본 공급업체 품목 등록/변경 ({defaultActions.length}건)
+            </div>
+            <ul className="mt-1 list-disc pl-5 text-blue-800">
+              {defaultActions.map((r) => (
+                <li key={r.materialRequirementId}>
+                  {r.materialName} → {r.supplierItem!.supplierName} ·{" "}
+                  {r.supplierItem!.productName}{" "}
+                  <span className="text-xs">
+                    {r.currentDefaultSupplierItemId === null
+                      ? "(신규 지정)"
+                      : "(변경)"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
 
       <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
         <p>
@@ -312,7 +327,7 @@ export function StepConfirmCreate({
       <div className="flex justify-end">
         <Button
           onClick={handleSubmit}
-          disabled={isSubmitting || validMapped.length === 0}
+          disabled={isSubmitting || validMapped.length === 0 || !outboundDate}
           className={
             mode === "REPLACE"
               ? "bg-red-600 hover:bg-red-700 text-white"

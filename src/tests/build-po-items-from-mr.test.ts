@@ -127,8 +127,9 @@ describe('buildPOItemsFromMR', () => {
     expect(item.status).toBe('UNMAPPED');
     expect(item.supplierItem).toBeNull();
     expect(item.orderQuantity).toBeNull();
-    // D17: 공급업체 없으면 netRequiredInFromUnit 산출 불가
-    expect(item.netRequiredInFromUnit).toBeNull();
+    // D18 (D-CONV-INDEPENDENT): 공급업체 미지정이어도 자재 차원 환산이 있으면
+    // netRequiredInFromUnit은 산출된다(미리보기 용도). 주문 수량은 여전히 null.
+    expect(item.netRequiredInFromUnit).toBe(0.1);
     expect(item.warnings).toContain('공급업체 품목 미지정');
   });
 
