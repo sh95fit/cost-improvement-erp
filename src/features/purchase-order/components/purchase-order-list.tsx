@@ -43,12 +43,14 @@ export type PurchaseOrderRow = {
   orderNumber: string;
   status: POStatus;
   orderDate: Date;
-  // ★ Phase 1.6 (D15-1, D15-2): deliveryDate → outboundDate + expectedReceiveDate
   outboundDate: Date | null;
   expectedReceiveDate: Date | null;
   totalAmount: number | null;
   isManual: boolean;
   supplier: { id: string; name: string; code: string };
+  location: { id: string; name: string; code: string } | null;
+  productionLine: { id: string; name: string; code: string } | null;
+  mealPlanGroup: { id: string; planDate: Date } | null;
   createdByUser: { id: string; name: string } | null;
   _count: { items: number };
   createdAt: Date;
@@ -186,6 +188,9 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
               <TableHead className="w-[100px] text-center">상태</TableHead>
               <TableHead>공급업체</TableHead>
               <TableHead className="w-[110px]">발주일</TableHead>
+              <TableHead className="w-[110px]">공장</TableHead>
+              <TableHead className="w-[100px]">라인</TableHead>
+              <TableHead className="w-[110px]">식단기준일</TableHead>              
               {/* ★ Phase 1.6 (D15-1) */}
               <TableHead className="w-[110px]">출고일</TableHead>
               {/* ★ Phase 1.6 (D15-2) */}
@@ -199,13 +204,13 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
                   등록된 발주서가 없습니다
                 </TableCell>
               </TableRow>
@@ -234,6 +239,23 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
                     </span>
                   </TableCell>
                   <TableCell className="text-sm">{formatDate(item.orderDate)}</TableCell>
+                  <TableCell>
+                    {item.location?.name ?? <span className="text-gray-400">-</span>}
+                    {item.location?.code && (
+                      <span className="ml-1 text-xs text-gray-400">({item.location.code})</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.productionLine?.name ?? (
+                      <span className="text-gray-400">미지정</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.mealPlanGroup?.planDate
+                      ? formatDate(item.mealPlanGroup.planDate)
+                      : <span className="text-amber-600">수동 발주</span>
+                    }
+                  </TableCell>
                   {/* ★ Phase 1.6 (D15-1) */}
                   <TableCell className="text-sm">
                     {formatDate(item.outboundDate)}

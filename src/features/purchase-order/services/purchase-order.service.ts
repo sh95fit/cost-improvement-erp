@@ -128,8 +128,9 @@ export async function getPurchaseOrders(
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         createdByUser: { select: { id: true, name: true } },
-        location: { select: { id: true, name: true, code: true } },                    // ★ 추가
-        productionLine: { select: { id: true, name: true, code: true } },              // ★ 추가
+        location: { select: { id: true, name: true, code: true } },
+        productionLine: { select: { id: true, name: true, code: true } },
+        mealPlanGroup: { select: { id: true, planDate: true } },  
         _count: { select: { items: true } },
       },
       orderBy: { [sortBy]: sortOrder },
