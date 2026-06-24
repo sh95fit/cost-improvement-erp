@@ -252,17 +252,41 @@ function reducer(state: WizardState, action: Action): WizardState {
       };
     case "LOAD_START":
       return { ...state, isLoading: true, loadError: null };
-    case "LOAD_SUCCESS":
-      return {
-        ...state,
-        isLoading: false,
-        loadResult: action.payload,
-        mapped: action.payload.mapped,
-        mappedPartialStock: action.payload.mappedPartialStock,
-        mappedFullStock: action.payload.mappedFullStock,
-        unmapped: action.payload.unmapped,
-        loadError: null,
-      };
+      case "LOAD_SUCCESS": {
+        // ★ D19: 자동 매핑된 행 중 자재에 default 가 아직 없는 경우(currentDefaultSupplierItemId === null)
+        //        + supplierItem 이 실제로 결정된 행에 대해 자동으로 setAsDefault=true 로 시드.
+        //        사용자가 체크박스를 보지 않는 자동 케이스(A)에서도 발주 생성 시
+        //        MaterialMaster.defaultSupplierItemId 가 정상적으로 채워지도록 보장한다.
+        //        같은 자재가 여러 행에 걸쳐 있을 경우 마지막 행이 승자가 됨(서버측 collectDefaultSupplierUpdates와 동일 규약).
+        const autoSeedMap: Record<string, boolean> = {};
+        const seedRows = [
+          ...action.payload.mapped,
+          ...action.payload.mappedPartialStock,
+          ...action.payload.mappedFullStock,
+        ];
+        for (const r of seedRows) {
+          if (
+            r.supplierItem !== null &&
+            r.currentDefaultSupplierItemId === null
+          ) {
+            autoSeedMap[r.materialRequirementId] = true;
+          }
+        }
+        return {
+          ...state,
+          isLoading: false,
+          loadResult: action.payload,
+          mapped: action.payload.mapped,
+          mappedPartialStock: action.payload.mappedPartialStock,
+          mappedFullStock: action.payload.mappedFullStock,
+          unmapped: action.payload.unmapped,
+          loadError: null,
+          setAsDefaultMap: {
+            ...state.setAsDefaultMap,
+            ...autoSeedMap,
+          },
+        };
+      }  
     case "LOAD_ERROR":
       return { ...state, isLoading: false, loadError: action.payload };
     case "GO_NEXT":
