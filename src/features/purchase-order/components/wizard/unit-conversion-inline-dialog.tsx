@@ -65,6 +65,17 @@ export function UnitConversionInlineDialog({
       return;
     }
 
+    // ★ D17-10: suggestedFromUnit 이 명시되어 있는데 사용자가 다른 단위로 바꾼 경우 차단
+    //    (UnitCombobox 가 자유 선택을 허용하므로 서버 도달 전에 한 번 더 검증)
+    if (suggestedFromUnit && fromUnit !== suggestedFromUnit) {
+      toast.error(
+        `이 자재의 공급단위는 '${suggestedFromUnit}'입니다. ` +
+          `다른 단위로 환산을 등록할 수 없습니다.\n` +
+          `(공급단위 자체를 바꾸려면 공급업체ㆍ품목 정보에서 supplyUnit을 수정하세요)`,
+      );
+      return;
+    }    
+
     // ★ Phase 1.7 (D16-4'): 카테고리 제약 없음
     //   현장 시나리오: 포장단위(PACKAGE)→g, ml(VOLUME)→g 도 자재별 비중으로 자유 환산
     //   (toUnit='g' 고정은 유지 — 자재 환산 체인이 g 기준)
@@ -74,7 +85,27 @@ export function UnitConversionInlineDialog({
       toast.error("환산 계수는 0보다 큰 숫자여야 합니다");
       return;
     }
-
+    
+    // ★ D17-9: factor 입력 가드 (오타로 인한 발주량 부풀림 방지)
+    // 1) 비현실적으로 큰 값 차단
+    if (factorNum > 100000) {
+      toast.error(
+        `환산 계수 ${factorNum}이(가) 너무 큽니다. 단위를 확인해 주세요. ` +
+          `(예: 1 kg = 1000 g)`,
+      );
+      return;
+    }
+    // 2) toUnit='g' 환산에서 비정수 입력은 명시적 확인 요구
+    //    (대부분의 무게/포장 환산은 정수 — 1000.0001 같은 오타 차단 목적)
+    if (!Number.isInteger(factorNum)) {
+      const ok = window.confirm(
+        `환산 계수 ${factorNum}은(는) 정수가 아닙니다.\n` +
+          `대부분의 단위 환산은 정수입니다 (예: 1 kg = 1000 g, 1 포 = 1000 g).\n` +
+          `오타가 아닌지 다시 확인해 주세요.\n\n계속 진행하시겠습니까?`,
+      );
+      if (!ok) return;
+    }
+    
     setIsSubmitting(true);
     try {
       const res = await createUnitConversionAction({
@@ -95,6 +126,28 @@ export function UnitConversionInlineDialog({
       });
 
       if (!res.success) {
+        // ★ D17-10: 중복 환산은 "이미 등록 완료"로 해석하고 onSuccess 트리거
+        //    (DB에 이미 있는데 화면이 안 읽은 케이스 — REFRESH_ROW_AFTER_CONVERSION 으로 재계산)
+        //    ActionFailure 타입은 { code, message } 만 노출(details 없음) → code 로 판별.
+        //    (서버: handleActionError(new Error("DUPLICATE_CONVERSION"), ...,
+        //      { DUPLICATE_CONVERSION: "이미 등록된 단위 환산입니다" })
+        //     → actionFail("DUPLICATE_CONVERSION", "이미 등록된 단위 환산입니다"))
+        const isDuplicate =
+          res.error.code === "DUPLICATE_CONVERSION" ||
+          res.error.message?.includes("이미 등록");
+        if (isDuplicate) {
+          toast.info(
+            `이미 등록된 환산입니다. 화면을 갱신합니다.\n` +
+              `(1 ${fromUnit} = ${factorNum} g 기준으로 재계산)`,
+          );
+          onSuccess({
+            materialMasterId,
+            fromUnit,
+            factor: factorNum,
+          });
+          onClose();
+          return;
+        }
         toast.error(res.error.message);
         return;
       }

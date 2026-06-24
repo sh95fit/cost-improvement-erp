@@ -8,7 +8,10 @@ export const createUnitConversionSchema = z.object({
   subsidiaryMasterId: z.string().nullable().default(null),
   fromUnit: z.string().min(1, "변환 전 단위는 필수입니다").max(20),
   toUnit: z.string().min(1, "변환 후 단위는 필수입니다").max(20),
-  factor: z.number().positive("환산 계수는 0보다 커야 합니다"),
+  factor: z
+  .number()
+  .positive("환산 계수는 0보다 커야 합니다")
+  .max(1_000_000, "환산 계수가 비현실적으로 큽니다 (최대 1,000,000)"),
   unitCategory: z
     .enum(unitCategoryValues)
     .transform((v) => v as UnitCategory),
@@ -17,7 +20,11 @@ export const createUnitConversionSchema = z.object({
 export const updateUnitConversionSchema = z.object({
   fromUnit: z.string().min(1).max(20).optional(),
   toUnit: z.string().min(1).max(20).optional(),
-  factor: z.number().positive().optional(),
+  factor: z
+  .number()
+  .positive()
+  .max(1_000_000, "환산 계수가 비현실적으로 큽니다 (최대 1,000,000)")
+  .optional(),
   unitCategory: z
     .enum(unitCategoryValues)
     .transform((v) => v as UnitCategory)

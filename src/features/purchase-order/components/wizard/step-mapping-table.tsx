@@ -273,12 +273,12 @@ function RowsTable({
                       </ul>
                     )}
                     {/* R1-c: 단위 환산 미등록 경고가 있으면 인라인 등록 버튼 노출 */}
-                    {r.warnings.some(
+                    {r.supplierItem !== null && r.warnings.some(
                       (w) =>
-                        w.includes("단위 환산 등록 필요") ||      // D17: 미등록 / 불일치
-                        w.includes("단위 환산 계수") ||            // D17/D3: factor=0
-                        w.includes("공급단위 계수") ||             // D17: supplyUnitQty=0
-                        w.includes("단위 환산 정보 미등록"),       // 구 D3 (호환)
+                        w.includes("단위 환산 등록 필요") ||
+                        w.includes("단위 환산 계수") ||
+                        w.includes("공급단위 계수") ||
+                        w.includes("단위 환산 정보 미등록"),
                     ) && (
                       <button
                         type="button"
@@ -286,7 +286,8 @@ function RowsTable({
                           setConversionDialog({
                             materialMasterId: r.materialMasterId,
                             materialName: r.materialName,
-                            suggestedFromUnit: r.fromUnitName ?? "",
+                            // ★ D17-10: 공급단위 code를 명시적으로 전달 (자유 입력 방지)
+                            suggestedFromUnit: r.supplierItem!.supplyUnitCode,
                           })
                         }
                         className="mt-1 rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100"
