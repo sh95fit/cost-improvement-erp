@@ -135,19 +135,26 @@ export function UnitConversionInlineDialog({
         const isDuplicate =
           res.error.code === "DUPLICATE_CONVERSION" ||
           res.error.message?.includes("이미 등록");
-        if (isDuplicate) {
-          toast.info(
-            `이미 등록된 환산입니다. 화면을 갱신합니다.\n` +
-              `(1 ${fromUnit} = ${factorNum} g 기준으로 재계산)`,
-          );
-          onSuccess({
-            materialMasterId,
-            fromUnit,
-            factor: factorNum,
-          });
-          onClose();
-          return;
-        }
+          if (isDuplicate) {
+            // ★ 임시 디버그 — B1 진단용
+            console.log("[B1-DEBUG] DUPLICATE_CONVERSION callback", {
+              materialMasterId,
+              fromUnitDialog: fromUnit,
+              factorDialog: factorNum,
+              suggestedFromUnit,
+            });
+            toast.info(
+              `이미 등록된 환산입니다. 화면을 갱신합니다.\n` +
+                `(1 ${fromUnit} = ${factorNum} g 기준으로 재계산)`,
+            );
+            onSuccess({
+              materialMasterId,
+              fromUnit,
+              factor: factorNum,
+            });
+            onClose();
+            return;
+          }
         toast.error(res.error.message);
         return;
       }

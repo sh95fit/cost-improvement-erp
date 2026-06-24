@@ -148,22 +148,26 @@ type Action =
 const IDEMPOTENCY_STORAGE_PREFIX = "po-wizard-idem:";
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+// ★ D24 (D-IDEMPOTENCY-PER-MODE): 토큰 키에 mode를 포함해 모드 전환 시 자동 새 토큰 발급
 function makeIdempotencyStorageKey(
   mealPlanGroupId: string,
   countSource: string,
+  mode: "NEW" | "DELTA" | "REPLACE",
 ): string {
-  return `${IDEMPOTENCY_STORAGE_PREFIX}${mealPlanGroupId}:${countSource}`;
+  return `${IDEMPOTENCY_STORAGE_PREFIX}${mealPlanGroupId}:${countSource}:${mode}`;
 }
 
 function generateIdempotencyToken(
   mealPlanGroupId: string,
   countSource: string,
+  mode: "NEW" | "DELTA" | "REPLACE",
 ): string {
   const uuid =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `wiz_${mealPlanGroupId}_${countSource}_${uuid}`;
+  // ★ D24: 토큰 자체에도 mode를 포함해 디버깅 시 식별 용이
+  return `wiz_${mealPlanGroupId}_${countSource}_${mode}_${uuid}`;
 }
 
 /**
@@ -174,11 +178,12 @@ function generateIdempotencyToken(
 function getOrCreateIdempotencyToken(
   mealPlanGroupId: string,
   countSource: string,
+  mode: "NEW" | "DELTA" | "REPLACE",
 ): string {
   if (typeof window === "undefined") {
-    return generateIdempotencyToken(mealPlanGroupId, countSource);
+    return generateIdempotencyToken(mealPlanGroupId, countSource, mode);
   }
-  const storageKey = makeIdempotencyStorageKey(mealPlanGroupId, countSource);
+  const storageKey = makeIdempotencyStorageKey(mealPlanGroupId, countSource, mode);
   const raw = window.localStorage.getItem(storageKey);
   if (raw) {
     try {
@@ -194,7 +199,7 @@ function getOrCreateIdempotencyToken(
       // ignore — 손상된 데이터는 새로 발급
     }
   }
-  const token = generateIdempotencyToken(mealPlanGroupId, countSource);
+  const token = generateIdempotencyToken(mealPlanGroupId, countSource, mode);
   window.localStorage.setItem(
     storageKey,
     JSON.stringify({ token, createdAt: Date.now() }),
@@ -205,10 +210,11 @@ function getOrCreateIdempotencyToken(
 function clearIdempotencyToken(
   mealPlanGroupId: string,
   countSource: string,
+  mode: "NEW" | "DELTA" | "REPLACE",
 ): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(
-    makeIdempotencyStorageKey(mealPlanGroupId, countSource),
+    makeIdempotencyStorageKey(mealPlanGroupId, countSource, mode),
   );
 }
 
@@ -529,6 +535,9 @@ function reducer(state: WizardState, action: Action): WizardState {
         ...state,
         mode: action.payload.mode,
         basedOnPOIds: action.payload.basedOnPOIds,
+        // ★ D24 (D-IDEMPOTENCY-PER-MODE): 모드 전환 시 idempotencyKey 무효화
+        //    useEffect가 새 mode로 재발급/복원하도록 강제
+        idempotencyKey: null,
         // ★ R1-b3: 모드 변경 시 preview 리셋
         deltaPreview: null,
         deltaPreviewLoading: false,
@@ -580,16 +589,17 @@ export function POWizard() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // ★ R1-b1: 식단그룹 + countSource가 정해지면 멱등성 토큰 발급/복원
+  // ★ R1-b1 + D24: 식단그룹 + countSource + mode가 정해지면 모드별 멱등성 토큰 발급/복원
   useEffect(() => {
     if (!state.mealPlanGroup) return;
     if (state.idempotencyKey) return;
     const token = getOrCreateIdempotencyToken(
       state.mealPlanGroup.id,
       state.countSource,
+      state.mode,
     );
     dispatch({ type: "SET_IDEMPOTENCY_KEY", payload: token });
-  }, [state.mealPlanGroup, state.countSource, state.idempotencyKey]);
+  }, [state.mealPlanGroup, state.countSource, state.mode, state.idempotencyKey]);
 
   // ★ R1-b3: DELTA 모드 — candidates 변경 감지 후 프리뷰 자동 호출
   // - mode !== DELTA: 호출 안 함

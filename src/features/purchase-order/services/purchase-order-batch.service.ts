@@ -44,10 +44,17 @@ async function applyDefaultSupplierUpdates(
 ): Promise<void> {
   const updates = collectDefaultSupplierUpdates(items);
   if (updates.length === 0) return;
+
+  // ★ D26 (D-DEFAULT-SUPPLIER-SOFT-DELETE-GUARD):
+  //    soft-deleted 자재에는 default 갱신하지 않는다.
+  //    build-po-items-from-mr.ts 가 deletedAt:null 필터를 적용하므로
+  //    정상 흐름에선 도달 불가하지만, 외부 호출/테스트/레거시 데이터에서
+  //    soft-deleted 자재가 흘러들어와도 안전하게 무시되도록 보장.
+  //    update → updateMany: where 조건 미일치 시 0행 갱신으로 조용히 패스.
   await Promise.all(
     updates.map((u) =>
-      tx.materialMaster.update({
-        where: { id: u.materialMasterId },
+      tx.materialMaster.updateMany({
+        where: { id: u.materialMasterId, deletedAt: null },
         data: { defaultSupplierItemId: u.supplierItemId },
       }),
     ),
