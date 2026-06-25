@@ -372,6 +372,7 @@ export async function createPurchaseOrdersBatch(
             select: {
               id: true,
               orderNumber: true,
+              status: true,            // ★ FIX-IDEM-CANCELLED-1: status 함께 조회
               supplierId: true,
               locationId: true,
               productionLineId: true,
@@ -381,29 +382,50 @@ export async function createPurchaseOrdersBatch(
           },
         },
       });
-
+    
       if (existingBatch) {
-        return {
-          createdPurchaseOrders: existingBatch.purchaseOrders.map((po) => ({
-            id: po.id,
-            orderNumber: po.orderNumber,
-            supplierId: po.supplierId,
-            locationId: po.locationId,
-            productionLineId: po.productionLineId,
-            itemCount: po._count.items,
-            totalAmount: po.totalAmount ?? 0,
-          })),
-          count: existingBatch.purchaseOrders.length,
-          totalAmount: existingBatch.purchaseOrders.reduce(
-            (s, po) => s + (po.totalAmount ?? 0),
-            0,
-          ),
-          // ★ R1-b1: 멱등 replay 임을 호출자에게 알림
-          isIdempotentReplay: true,
-          batchId: existingBatch.id,
-        };
+        // ★ FIX-IDEM-CANCELLED-1 (D27):
+        //   매칭된 batch 의 PO 가 "전부 CANCELLED" 이면 replay 가 아니라 신규 생성으로 전환.
+        //   원인: REPLACE 모드 또는 사용자 수동 취소로 batch 내 모든 PO 가 취소된 경우,
+        //         같은 idempotencyKey 가 24h TTL 로 살아 있어 신규 발주를 영구 차단하던 문제.
+        //   처리: batch 행의 idempotencyKey 를 null 로 끊고 fall-through 시켜 새 batch 를 만든다.
+        //         (batch 행 자체는 감사 추적용으로 보존)
+        const activePOs = existingBatch.purchaseOrders.filter(
+          (po) => po.status !== "CANCELLED",
+        );
+        const allCancelled =
+          existingBatch.purchaseOrders.length > 0 && activePOs.length === 0;
+    
+        if (!allCancelled) {
+          // 활성 PO 가 1건이라도 있으면 정상 replay (취소된 PO 는 응답에서 제외)
+          return {
+            createdPurchaseOrders: activePOs.map((po) => ({
+              id: po.id,
+              orderNumber: po.orderNumber,
+              supplierId: po.supplierId,
+              locationId: po.locationId,
+              productionLineId: po.productionLineId,
+              itemCount: po._count.items,
+              totalAmount: po.totalAmount ?? 0,
+            })),
+            count: activePOs.length,
+            totalAmount: activePOs.reduce(
+              (s, po) => s + (po.totalAmount ?? 0),
+              0,
+            ),
+            isIdempotentReplay: true,
+            batchId: existingBatch.id,
+          };
+        }
+    
+        // 전량 취소 → 토큰만 끊어 신규 생성 경로로 진행
+        await tx.purchaseOrderBatch.update({
+          where: { id: existingBatch.id },
+          data: { idempotencyKey: null },
+        });
+        // fall-through to 신규 생성 로직
       }
-    }
+    }    
 
     // ★ R1-b1: 신규 batch 행 생성 (idempotencyKey가 있을 때만)
     const batch = input.idempotencyKey
