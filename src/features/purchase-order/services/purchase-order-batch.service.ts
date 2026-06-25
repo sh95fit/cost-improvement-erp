@@ -372,7 +372,7 @@ export async function createPurchaseOrdersBatch(
             select: {
               id: true,
               orderNumber: true,
-              status: true,            // ★ FIX-IDEM-CANCELLED-1: status 함께 조회
+              status: true,                    // ★ FIX-IDEM-CANCELLED-1 (D27)
               supplierId: true,
               locationId: true,
               productionLineId: true,
@@ -382,22 +382,25 @@ export async function createPurchaseOrdersBatch(
           },
         },
       });
-    
+
       if (existingBatch) {
         // ★ FIX-IDEM-CANCELLED-1 (D27):
-        //   매칭된 batch 의 PO 가 "전부 CANCELLED" 이면 replay 가 아니라 신규 생성으로 전환.
-        //   원인: REPLACE 모드 또는 사용자 수동 취소로 batch 내 모든 PO 가 취소된 경우,
-        //         같은 idempotencyKey 가 24h TTL 로 살아 있어 신규 발주를 영구 차단하던 문제.
-        //   처리: batch 행의 idempotencyKey 를 null 로 끊고 fall-through 시켜 새 batch 를 만든다.
-        //         (batch 행 자체는 감사 추적용으로 보존)
+        //   매칭된 batch 의 PO 가 "전부 CANCELLED" 이면 그 batch 는 사실상 무효이므로
+        //   replay 로 반환하지 말고 신규 생성 경로로 진행. 기존 batch 행/PO 는 감사 추적용 보존.
+        //   원인: REPLACE 모드 또는 수동 취소로 batch 내 모든 PO 가 취소되었는데,
+        //         localStorage 토큰이 24h TTL 로 살아 있어 같은 식단그룹·모드 조합에서
+        //         신규 발주가 영구 차단되던 문제.
+        //   주의: PurchaseOrderBatch.idempotencyKey 는 Prisma 스키마상 non-nullable
+        //         (unique 인덱스). 따라서 토큰을 null 로 끊는 대신, 새 토큰을 발급해
+        //         이번 호출만 신규 batch 를 만들고, 기존 토큰은 client 측에서 폐기한다.
         const activePOs = existingBatch.purchaseOrders.filter(
           (po) => po.status !== "CANCELLED",
         );
         const allCancelled =
           existingBatch.purchaseOrders.length > 0 && activePOs.length === 0;
-    
+
         if (!allCancelled) {
-          // 활성 PO 가 1건이라도 있으면 정상 replay (취소된 PO 는 응답에서 제외)
+          // 활성 PO 가 1건이라도 있으면 정상 replay (응답에서 CANCELLED 는 제외해 표시 정합 유지)
           return {
             createdPurchaseOrders: activePOs.map((po) => ({
               id: po.id,
@@ -417,22 +420,38 @@ export async function createPurchaseOrdersBatch(
             batchId: existingBatch.id,
           };
         }
-    
-        // 전량 취소 → 토큰만 끊어 신규 생성 경로로 진행
-        await tx.purchaseOrderBatch.update({
-          where: { id: existingBatch.id },
-          data: { idempotencyKey: null },
-        });
-        // fall-through to 신규 생성 로직
+        // 전량 취소 → fall-through 하여 아래에서 새 토큰으로 신규 batch 생성
       }
-    }    
+    }
 
-    // ★ R1-b1: 신규 batch 행 생성 (idempotencyKey가 있을 때만)
-    const batch = input.idempotencyKey
+    // ★ R1-b1 / ★ FIX-IDEM-CANCELLED-1 (D27):
+    //   신규 batch 행 생성 (idempotencyKey가 있을 때만).
+    //   D27: 위에서 "전량 취소된 기존 batch" 가 매칭되어 fall-through 한 경우,
+    //        같은 토큰으로 batch 를 만들면 unique 제약 위반.
+    //        → 안전하게 이번 호출용 새 토큰을 발급한다.
+    //          (client localStorage 의 옛 토큰은 Fix 2 가 폐기)
+    let effectiveIdempotencyKey = input.idempotencyKey;
+    if (input.idempotencyKey) {
+      const stillExists = await tx.purchaseOrderBatch.findUnique({
+        where: {
+          companyId_idempotencyKey: {
+            companyId: input.companyId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+        select: { id: true },
+      });
+      if (stillExists) {
+        // D27: 전량 취소된 batch 의 토큰을 회피 — suffix 부여
+        effectiveIdempotencyKey = `${input.idempotencyKey}_r${Date.now().toString(36)}`;
+      }
+    }
+
+    const batch = effectiveIdempotencyKey
       ? await tx.purchaseOrderBatch.create({
           data: {
             companyId: input.companyId,
-            idempotencyKey: input.idempotencyKey,
+            idempotencyKey: effectiveIdempotencyKey,
             mealPlanGroupId: input.mealPlanGroupId ?? null,
             countSource: input.countSource,
             mode: input.mode,
