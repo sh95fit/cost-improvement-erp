@@ -805,11 +805,7 @@ export function POWizard() {
             onLoadError={(e) =>
               dispatch({ type: "LOAD_ERROR", payload: e })
             }
-            /* ★ R1-b3 */
-            mode={state.mode}
-            deltaPreview={state.deltaPreview}
-            deltaPreviewLoading={state.deltaPreviewLoading}
-            deltaPreviewError={state.deltaPreviewError}
+            /* ★ R1-b5-2 (D20): mode / deltaPreview* props 제거 — Step 2 차분 미표시 */
           />
         )}
 
