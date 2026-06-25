@@ -812,7 +812,7 @@ export function POWizard() {
           />
         )}
 
-{state.step === 3 && (
+        {state.step === 3 && (
           <StepMappingTable
             mapped={state.mapped}
             mappedPartialStock={state.mappedPartialStock}
@@ -850,6 +850,9 @@ export function POWizard() {
                 payload: { materialRequirementId, value },
               })
             }
+            /* ★ R1-b5-4: DELTA 인라인 차분 */
+            mode={state.mode}
+            deltaPreview={state.deltaPreview}
           />
         )}
 

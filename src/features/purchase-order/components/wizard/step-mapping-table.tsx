@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
 import type { SupplierItemWithSupplier } from "@/features/supplier/actions/supplier.action";
+// ★ R1-b5-4 추가
+import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
 import { SupplierItemPickerPortal } from "./supplier-item-picker-portal";
 import {
   UnitConversionInlineDialog,
@@ -20,11 +22,12 @@ interface Props {
     materialRequirementId: string,
     supplierItem: SupplierItemWithSupplier,
   ) => void;
-  /** R1-c: 단위 환산 인라인 등록 성공 시 해당 행 재계산 트리거 */
   onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
-  // ★ D19: 기본 공급업체 변경 동의 체크박스 (자재 단위)
   setAsDefaultMap: Record<string, boolean>;
   onToggleSetAsDefault: (materialRequirementId: string, value: boolean) => void;
+  // ★ R1-b5-4 (D20): DELTA 모드 인라인 차분 표시
+  mode: "NEW" | "DELTA" | "REPLACE";
+  deltaPreview: PreviewDeltaPlanResult | null;
 }
 
 export function StepMappingTable({
@@ -38,6 +41,9 @@ export function StepMappingTable({
   onRegisterConversion,
   setAsDefaultMap,
   onToggleSetAsDefault,
+  // ★ R1-b5-4
+  mode,
+  deltaPreview,
 }: Props) {
   // Fix-R1-a (D10·D11): 매핑된 모든 행(전량/일부/전체)을 하나의 섹션에 통합. 뱃지로 구분.
   const allMapped = [...mapped, ...mappedPartialStock, ...mappedFullStock];
@@ -71,6 +77,9 @@ export function StepMappingTable({
             onRegisterConversion={onRegisterConversion}
             setAsDefaultMap={setAsDefaultMap}
             onToggleSetAsDefault={onToggleSetAsDefault}
+            // ★ R1-b5-4
+            wizardMode={mode}
+            deltaPreview={deltaPreview}
           />
         </section>
       )}
@@ -104,14 +113,17 @@ export function StepMappingTable({
           </p>
         ) : (
           <RowsTable
-            rows={allMapped}
-            mode="mapped"
+            rows={unmapped}
+            mode="unmapped"
             onUpdateQuantity={onUpdateQuantity}
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
             onRegisterConversion={onRegisterConversion}
             setAsDefaultMap={setAsDefaultMap}
             onToggleSetAsDefault={onToggleSetAsDefault}
+            // ★ R1-b5-4
+            wizardMode={mode}
+            deltaPreview={deltaPreview}
           />
         )}
       </section>
@@ -134,6 +146,9 @@ function RowsTable({
   onRegisterConversion,
   setAsDefaultMap,
   onToggleSetAsDefault,
+  // ★ R1-b5-4
+  wizardMode,
+  deltaPreview,
 }: {
   rows: POItemCandidate[];
   mode: "mapped" | "unmapped";
@@ -146,6 +161,9 @@ function RowsTable({
   onRegisterConversion: (payload: ConversionRegisteredPayload) => void;
   setAsDefaultMap: Record<string, boolean>;
   onToggleSetAsDefault: (materialRequirementId: string, value: boolean) => void;
+  // ★ R1-b5-4
+  wizardMode: "NEW" | "DELTA" | "REPLACE";
+  deltaPreview: PreviewDeltaPlanResult | null;
 }) {
   // R1-c: 단위 환산 인라인 다이얼로그 상태 (이 RowsTable 인스턴스 로컬)
   const [conversionDialog, setConversionDialog] = useState<{
@@ -158,23 +176,58 @@ function RowsTable({
   // 사용자가 직접 늘리지 않는 한 발주서에 포함되지 않음.
   const editable = mode === "mapped";
 
+  // ★ R1-b5-4: DELTA 모드 인라인 차분 lookup 맵
+  //    - materialMasterId → DeltaPreviewItemChange (UPDATE_*, ADD, UNCHANGED)
+  //    - 같은 자재가 여러 PO 에 걸쳐 있을 경우 첫 매치 사용 (MVP).
+  //      다공장/다라인 매칭은 향후 D24+ 에서 4튜플(material × location × line × supplier) 로 분리 예정.
+  //    - newGroups 내 자재는 별도 맵으로 분리해서 "신규 PO 로 생성" 배지 표시.
+  const showDeltaCol = wizardMode === "DELTA" && deltaPreview !== null;
+
+  const itemChangeMap = new Map<
+    string,
+    PreviewDeltaPlanResult["itemChanges"][number]
+  >();
+  const newGroupItemMap = new Map<
+    string,
+    PreviewDeltaPlanResult["newGroups"][number]["items"][number]
+  >();
+
+  if (showDeltaCol && deltaPreview) {
+    for (const ch of deltaPreview.itemChanges) {
+      if (!itemChangeMap.has(ch.materialMasterId)) {
+        itemChangeMap.set(ch.materialMasterId, ch);
+      }
+    }
+    for (const g of deltaPreview.newGroups) {
+      for (const it of g.items) {
+        if (!newGroupItemMap.has(it.materialMasterId)) {
+          newGroupItemMap.set(it.materialMasterId, it);
+        }
+      }
+    }
+  }  
+
   return (
     <>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-white/60 text-left text-gray-600">
-            <tr>
-              <th className="px-3 py-2">자재</th>
-              <th className="px-3 py-2">필요량(g)</th>
-              <th className="px-3 py-2">재고(g)</th>
-              <th className="px-3 py-2">순필요</th>
-              <th className="px-3 py-2 w-[200px]">공급업체 · 품목</th>
-              <th className="px-3 py-2 w-20">발주수량</th>
-              <th className="px-3 py-2 w-24">단가</th>
-              <th className="px-3 py-2 w-24 text-right">합계</th>
-              <th className="px-3 py-2">알림</th>
-            </tr>
-          </thead>
+        <thead className="bg-white/60 text-left text-gray-600">
+          <tr>
+            <th className="px-3 py-2">자재</th>
+            <th className="px-3 py-2">필요량(g)</th>
+            <th className="px-3 py-2">재고(g)</th>
+            <th className="px-3 py-2">순필요</th>
+            <th className="px-3 py-2 w-[200px]">공급업체 · 품목</th>
+            <th className="px-3 py-2 w-20">발주수량</th>
+            <th className="px-3 py-2 w-24">단가</th>
+            <th className="px-3 py-2 w-24 text-right">합계</th>
+            {/* ★ R1-b5-4: DELTA 모드에서만 차분 컬럼 노출 */}
+            {showDeltaCol && (
+              <th className="px-3 py-2 w-[140px] text-right">기존 대비</th>
+            )}
+            <th className="px-3 py-2">알림</th>
+          </tr>
+        </thead>
           <tbody>
             {rows.map((r) => {
               const rowTotal =
@@ -329,6 +382,18 @@ function RowsTable({
                   <td className="px-3 py-2 text-right font-medium">
                     {rowTotal > 0 ? rowTotal.toLocaleString() : "—"}
                   </td>
+                  {/* ★ R1-b5-4: DELTA 모드 인라인 차분 */}
+                  {showDeltaCol && (
+                    <td className="px-3 py-2 text-right">
+                      <DeltaCell
+                        materialMasterId={r.materialMasterId}
+                        orderQuantity={r.orderQuantity}
+                        unitPrice={r.unitPrice}
+                        itemChange={itemChangeMap.get(r.materialMasterId) ?? null}
+                        newGroupItem={newGroupItemMap.get(r.materialMasterId) ?? null}
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     {r.warnings.length > 0 && (
                       <ul className="space-y-0.5 text-[10px] text-amber-700">
@@ -518,3 +583,102 @@ function UnitPriceCell({
 }
 
 
+// ────────────────────────────────────────────────────────
+// ★ R1-b5-4: DELTA 모드 인라인 차분 셀
+// ────────────────────────────────────────────────────────
+function DeltaCell({
+  materialMasterId,
+  orderQuantity,
+  unitPrice,
+  itemChange,
+  newGroupItem,
+}: {
+  materialMasterId: string;
+  /** 현재 행의 사용자 편집값 (참고 표시용 — 차분 계산은 itemChange 가 이미 들고 있음) */
+  orderQuantity: number | null;
+  unitPrice: number | null;
+  /** 기존 PO 대비 차분 정보 (UPDATE_*, ADD, UNCHANGED) */
+  itemChange:
+    | PreviewDeltaPlanResult["itemChanges"][number]
+    | null;
+  /** 신규 PO 로 생성될 자재 */
+  newGroupItem:
+    | PreviewDeltaPlanResult["newGroups"][number]["items"][number]
+    | null;
+}) {
+  // 1) 차분 정보 자체가 아직 없을 때 (preview 계산중 / 미매칭)
+  if (!itemChange && !newGroupItem) {
+    return <span className="text-[10px] text-gray-300">—</span>;
+  }
+
+  // 2) 신규 PO 로 생성될 자재 → "신규 PO" 배지
+  if (newGroupItem) {
+    return (
+      <div className="flex flex-col items-end gap-0.5">
+        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+          ＋ 신규 PO
+        </span>
+        <span className="text-[10px] text-gray-500 font-mono">
+          +{Math.round(newGroupItem.amount).toLocaleString()}원
+        </span>
+      </div>
+    );
+  }
+
+  // 3) 기존 PO 대비 차분
+  const ch = itemChange!;
+
+  if (ch.kind === "UNCHANGED") {
+    return (
+      <span className="text-[10px] text-gray-400">변경 없음</span>
+    );
+  }
+
+  if (ch.kind === "ADD") {
+    return (
+      <div className="flex flex-col items-end gap-0.5">
+        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+          ＋ 기존 PO 추가
+        </span>
+        <span className="text-[10px] text-gray-500 font-mono">
+          +{Math.round(ch.amountDelta).toLocaleString()}원
+        </span>
+      </div>
+    );
+  }
+
+  // UPDATE_QUANTITY / UPDATE_UNIT_PRICE / UPDATE_BOTH
+  const qtyTone =
+    ch.deltaQuantity > 0
+      ? "text-blue-700"
+      : ch.deltaQuantity < 0
+        ? "text-orange-700"
+        : "text-gray-500";
+  const amountTone =
+    ch.amountDelta > 0
+      ? "text-blue-700"
+      : ch.amountDelta < 0
+        ? "text-orange-700"
+        : "text-gray-500";
+
+  return (
+    <div className="flex flex-col items-end gap-0.5 font-mono">
+      {ch.deltaQuantity !== 0 && (
+        <span className={`text-[11px] ${qtyTone}`}>
+          {ch.deltaQuantity > 0 ? "+" : ""}
+          {Math.round(ch.deltaQuantity)} 박스
+        </span>
+      )}
+      {ch.unitPriceChanged && ch.beforeUnitPrice !== null && (
+        <span className="text-[10px] text-purple-700">
+          단가 {ch.beforeUnitPrice.toLocaleString()} →{" "}
+          {ch.afterUnitPrice.toLocaleString()}
+        </span>
+      )}
+      <span className={`text-[10px] ${amountTone}`}>
+        {ch.amountDelta > 0 ? "+" : ""}
+        {Math.round(ch.amountDelta).toLocaleString()}원
+      </span>
+    </div>
+  );
+}
