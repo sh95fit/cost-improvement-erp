@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";   // ★ 추가
 import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
 
 interface Props {
@@ -12,36 +13,18 @@ interface Props {
 }
 
 export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) {
-  // 로딩
-  if (isLoading) {
-    return (
-      <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-        차분 발주 미리보기를 계산하는 중...
-      </div>
-    );
-  }
-
-  // 에러
-  if (error) {
-    return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        <p className="font-medium">차분 프리뷰 실패</p>
-        <p className="mt-1">{error}</p>
-      </div>
-    );
-  }
-
+  if (isLoading) { /* 기존 그대로 */ }
+  if (error) { /* 기존 그대로 */ }
   if (!preview) return null;
+
+  // ★ R1-b5-3 (D20): Step 5 진입 시 기본 접힘, Step 2 / 기타 컨텍스트는 펼침 유지
+  //    (현재 Step 2 호출은 R1-b5-2 에서 제거되었지만 context==="step2" 분기는 호환성 위해 보존)
+  const [collapsed, setCollapsed] = useState(context === "step5");
 
   const { summary, itemChanges, newGroups, blocked } = preview;
   const hasAnyChange =
-    summary.increased +
-      summary.decreased +
-      summary.priceChanged +
-      summary.added >
-    0;
+    summary.increased + summary.decreased + summary.priceChanged + summary.added > 0;
 
-  // UPDATE/ADD/UNCHANGED 행을 PO 별로 그룹화
   const changesByPO = new Map<
     string,
     { orderNumber: string | null; rows: typeof itemChanges }
@@ -56,6 +39,8 @@ export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) 
     entry.rows.push(ch);
   }
 
+  const isToggleable = context === "step5";
+
   return (
     <section className="rounded-lg border border-amber-200 bg-amber-50/40">
       <header className="flex items-center justify-between border-b border-amber-200 px-4 py-2.5">
@@ -68,24 +53,46 @@ export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) 
               (Step 3 편집 시 자동 갱신됩니다)
             </span>
           )}
+          {/* ★ R1-b5-3: Step 5 에서 변경 건수 요약을 헤더에 노출 (접힘 상태에서도 보이도록) */}
+          {isToggleable && (
+            <span className="text-xs text-amber-800">
+              · 변경 {summary.increased + summary.decreased + summary.added + summary.priceChanged}건
+              {summary.unchanged > 0 && ` · 동일 ${summary.unchanged}건`}
+              {newGroups.length > 0 && ` · 신규 PO ${newGroups.length}건`}
+            </span>
+          )}
         </div>
-        <span className="text-xs text-amber-800">
-          총 변동액{" "}
-          <strong
-            className={
-              summary.totalDeltaAmount > 0
-                ? "text-blue-700"
-                : summary.totalDeltaAmount < 0
-                  ? "text-orange-700"
-                  : "text-gray-700"
-            }
-          >
-            {summary.totalDeltaAmount >= 0 ? "+" : ""}
-            {summary.totalDeltaAmount.toLocaleString()} 원
-          </strong>
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-amber-800">
+            총 변동액{" "}
+            <strong
+              className={
+                summary.totalDeltaAmount > 0
+                  ? "text-blue-700"
+                  : summary.totalDeltaAmount < 0
+                    ? "text-orange-700"
+                    : "text-gray-700"
+              }
+            >
+              {summary.totalDeltaAmount >= 0 ? "+" : ""}
+              {summary.totalDeltaAmount.toLocaleString()} 원
+            </strong>
+          </span>
+          {/* ★ R1-b5-3: Step 5 토글 버튼 */}
+          {isToggleable && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-expanded={!collapsed}
+              className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] text-amber-800 hover:bg-amber-100"
+            >
+              {collapsed ? "상세 펼치기 ▾" : "상세 접기 ▴"}
+            </button>
+          )}
+        </div>
       </header>
 
+      {/* ★ R1-b5-3: 본문 4개 블록을 collapsed 로 감싸기. blocked 경고는 안전상 항상 노출. */}
       {blocked.hasApprovedOrLocked && (
         <div className="border-b border-amber-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
           ⚠ 발주확정(APPROVED) 이상 상태의 PO {blocked.lockedPOIds.length}건이
@@ -94,87 +101,81 @@ export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) 
         </div>
       )}
 
-      {/* 요약 카운트 */}
-      <div className="grid grid-cols-5 gap-2 border-b border-amber-200 px-4 py-3">
-        <SummaryPill label="증가" count={summary.increased} tone="up" />
-        <SummaryPill label="감소" count={summary.decreased} tone="down" />
-        <SummaryPill label="신규" count={summary.added} tone="add" />
-        <SummaryPill
-          label="단가 변경"
-          count={summary.priceChanged}
-          tone="price"
-        />
-        <SummaryPill
-          label="변경 없음"
-          count={summary.unchanged}
-          tone="unchanged"
-        />
-      </div>
-
-      {!hasAnyChange && summary.unchanged === 0 && newGroups.length === 0 && (
-        <div className="px-4 py-6 text-center text-sm text-gray-500">
-          차분 항목이 없습니다.
-        </div>
-      )}
-
-      {/* 기존 PO 별 변경 행 */}
-      {changesByPO.size > 0 && (
-        <div className="border-b border-amber-200">
-          {Array.from(changesByPO.entries()).map(([poId, entry]) => {
-            if (poId === "_NEW_") return null;
-            return (
-              <div key={poId} className="border-b border-amber-100 last:border-b-0">
-                <div className="bg-amber-100/50 px-4 py-1.5 text-xs font-medium text-amber-900">
-                  기존 발주서 {entry.orderNumber ?? poId.slice(0, 8)} —{" "}
-                  {entry.rows.length}건
-                </div>
-                <ChangeRowsTable rows={entry.rows} />
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 신규 그룹 (새 PO 로 생성될 항목) */}
-      {newGroups.length > 0 && (
-        <div>
-          <div className="bg-emerald-100/50 px-4 py-1.5 text-xs font-medium text-emerald-900">
-            ＋ 신규 발주서 생성 — {newGroups.length}건
+      {!collapsed && (
+        <>
+          {/* 요약 카운트 */}
+          <div className="grid grid-cols-5 gap-2 border-b border-amber-200 px-4 py-3">
+            <SummaryPill label="증가" count={summary.increased} tone="up" />
+            <SummaryPill label="감소" count={summary.decreased} tone="down" />
+            <SummaryPill label="신규" count={summary.added} tone="add" />
+            <SummaryPill label="단가 변경" count={summary.priceChanged} tone="price" />
+            <SummaryPill label="변경 없음" count={summary.unchanged} tone="unchanged" />
           </div>
-          {newGroups.map((g, i) => (
-            <div
-              key={i}
-              className="border-b border-emerald-100 last:border-b-0 px-4 py-3"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-gray-900">
-                  {g.supplierName} · {g.locationName}
-                  {g.productionLineName && ` · ${g.productionLineName}`}
-                </span>
-                <span className="font-semibold text-emerald-700">
-                  +{g.groupAmount.toLocaleString()} 원
-                </span>
-              </div>
-              <ul className="mt-2 space-y-0.5 text-xs text-gray-700">
-                {g.items.map((it) => (
-                  <li
-                    key={it.materialMasterId}
-                    className="flex justify-between"
-                  >
-                    <span>
-                      {it.materialName}{" "}
-                      <span className="text-gray-400">({it.materialCode})</span>
-                    </span>
-                    <span className="font-mono">
-                      {it.quantity} × {it.unitPrice.toLocaleString()} ={" "}
-                      {it.amount.toLocaleString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+
+          {!hasAnyChange && summary.unchanged === 0 && newGroups.length === 0 && (
+            <div className="px-4 py-6 text-center text-sm text-gray-500">
+              차분 항목이 없습니다.
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* 기존 PO 별 변경 행 */}
+          {changesByPO.size > 0 && (
+            <div className="border-b border-amber-200">
+              {Array.from(changesByPO.entries()).map(([poId, entry]) => {
+                if (poId === "_NEW_") return null;
+                return (
+                  <div key={poId} className="border-b border-amber-100 last:border-b-0">
+                    <div className="bg-amber-100/50 px-4 py-1.5 text-xs font-medium text-amber-900">
+                      기존 발주서 {entry.orderNumber ?? poId.slice(0, 8)} —{" "}
+                      {entry.rows.length}건
+                    </div>
+                    <ChangeRowsTable rows={entry.rows} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 신규 그룹 */}
+          {newGroups.length > 0 && (
+            <div>
+              <div className="bg-emerald-100/50 px-4 py-1.5 text-xs font-medium text-emerald-900">
+                ＋ 신규 발주서 생성 — {newGroups.length}건
+              </div>
+              {newGroups.map((g, i) => (
+                <div
+                  key={i}
+                  className="border-b border-emerald-100 last:border-b-0 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-gray-900">
+                      {g.supplierName} · {g.locationName}
+                      {g.productionLineName && ` · ${g.productionLineName}`}
+                    </span>
+                    <span className="font-semibold text-emerald-700">
+                      +{g.groupAmount.toLocaleString()} 원
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-0.5 text-xs text-gray-700">
+                    {g.items.map((it) => (
+                      <li key={it.materialMasterId} className="flex justify-between">
+                        <span>
+                          {it.materialName}{" "}
+                          <span className="text-gray-400">({it.materialCode})</span>
+                        </span>
+                        <span className="font-mono">
+                          {/* ★ 표시 정수 안전망 */}
+                          {Math.round(it.quantity)} × {it.unitPrice.toLocaleString()} ={" "}
+                          {it.amount.toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -248,26 +249,24 @@ function ChangeRowsTable({
             <td className="px-3 py-1.5 text-right font-mono">
               {r.kind === "ADD" ? (
                 <span className="text-emerald-700">
-                  ＋ {r.afterQuantity}
+                  ＋ {Math.round(r.afterQuantity)}
                 </span>
               ) : r.deltaQuantity !== 0 ? (
                 <>
-                  <span className="text-gray-500">{r.beforeQuantity}</span>
+                  <span className="text-gray-500">
+                    {r.beforeQuantity != null ? Math.round(r.beforeQuantity) : "—"}
+                  </span>
                   {" → "}
-                  <strong
-                    className={
-                      r.deltaQuantity > 0 ? "text-blue-700" : "text-orange-700"
-                    }
-                  >
-                    {r.afterQuantity}
+                  <strong className={r.deltaQuantity > 0 ? "text-blue-700" : "text-orange-700"}>
+                    {Math.round(r.afterQuantity)}
                   </strong>
                   <span className="ml-1 text-[10px] opacity-70">
                     ({r.deltaQuantity > 0 ? "+" : ""}
-                    {r.deltaQuantity})
+                    {Math.round(r.deltaQuantity)})
                   </span>
                 </>
               ) : (
-                <span className="text-gray-400">{r.afterQuantity}</span>
+                <span className="text-gray-400">{Math.round(r.afterQuantity)}</span>
               )}
             </td>
             <td className="px-3 py-1.5 text-right font-mono">

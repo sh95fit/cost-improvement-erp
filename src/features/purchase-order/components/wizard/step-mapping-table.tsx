@@ -393,21 +393,19 @@ function QuantityCell({
   rawValue,
   onChange,
 }: {
-  /** 현재 입력값 (사용자 편집 반영) */
   currentValue: number | null;
-  /** 시스템이 계산한 원본 박스 수량 (소수점 포함, 올림 전) */
   rawValue: number | null;
   onChange: (v: number) => void;
 }) {
-  // 시스템 권장값 = raw 수량을 올림한 값
   const systemRecommended =
     rawValue !== null ? Math.ceil(rawValue) : null;
 
-  // 사용자가 시스템 권장값에서 벗어났는지 감지 (소수점 비교 안전 위해 0.0001 오차 허용)
+  // ★ 정수 강제: 임계값 0.0001 → 1 미만이면 동일값으로 간주 안 하고 정수 단위로 비교
+  //    (소수가 들어올 일이 없으므로 사실상 != 비교와 동일)
   const isManuallyAdjusted =
     systemRecommended !== null &&
     currentValue !== null &&
-    Math.abs(currentValue - systemRecommended) > 0.0001;
+    currentValue !== systemRecommended;
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -415,9 +413,21 @@ function QuantityCell({
         <input
           type="number"
           min={0}
-          step="0.01"
+          step={1}                                /* ← "0.01" → 1 */
+          inputMode="numeric"                     /* ← 추가: 모바일 숫자 키패드 */
           value={currentValue ?? 0}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(e) => {
+            /* ★ 정수 강제: 입력 단계에서 올림 보정. 빈 문자열은 0 처리.
+                정책: 부족분 방지를 위해 항상 올림(REFRESH_ROW_AFTER_CONVERSION 과 동일) */
+            const raw = e.target.value;
+            if (raw === "") {
+              onChange(0);
+              return;
+            }
+            const n = Number(raw);
+            if (!Number.isFinite(n)) return;
+            onChange(Math.max(0, Math.ceil(n - 1e-9)));
+          }}
           className={`w-20 rounded border px-2 py-1 text-right ${
             isManuallyAdjusted
               ? "border-amber-400 bg-amber-50"

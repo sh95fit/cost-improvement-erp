@@ -302,12 +302,15 @@ function reducer(state: WizardState, action: Action): WizardState {
     case "GO_PREV":
       return { ...state, step: Math.max(1, state.step - 1) as WizardStep };
 
-      case "UPDATE_QUANTITY": {
+    case "UPDATE_QUANTITY": {
         const { materialRequirementId, value } = action.payload;
+        // ★ 정수 강제: UI를 우회한 호출(키보드/단축키/persistence 복원 등)에도 안전하도록
+        //   리듀서 단에서 최종 올림 보정. 음수 차단. UI 와 동일 정책(ceil).
+        const safeValue = Math.max(0, Math.ceil((value ?? 0) - 1e-9));
         const update = (rows: POItemCandidate[]) =>
           rows.map((r) =>
             r.materialRequirementId === materialRequirementId
-              ? { ...r, orderQuantity: value }
+              ? { ...r, orderQuantity: safeValue }
               : r,
           );
         return {
@@ -316,118 +319,103 @@ function reducer(state: WizardState, action: Action): WizardState {
           mappedPartialStock: update(state.mappedPartialStock),
         };
       }
-      case "UPDATE_UNIT_PRICE": {
-        const { materialRequirementId, value } = action.payload;
-        const update = (rows: POItemCandidate[]) =>
-          rows.map((r) =>
-            r.materialRequirementId === materialRequirementId
-              ? { ...r, unitPrice: value }
-              : r,
-          );
-        return {
-          ...state,
-          mapped: update(state.mapped),
-          mappedPartialStock: update(state.mappedPartialStock),
-        };
-      }  
-      case "RESOLVE_UNMAPPED": {
-        const { materialRequirementId, supplierItem } = action.payload;
-        const target = state.unmapped.find(
-          (r) => r.materialRequirementId === materialRequirementId,
+    case "UPDATE_UNIT_PRICE": {
+      const { materialRequirementId, value } = action.payload;
+      const update = (rows: POItemCandidate[]) =>
+        rows.map((r) =>
+          r.materialRequirementId === materialRequirementId
+            ? { ...r, unitPrice: value }
+            : r,
         );
-        if (!target) return state;
-      
-        const supplyUnitCode = supplierItem.supplyUnit.code;
-        const supplyUnitName = supplierItem.supplyUnit.name;
-      
-        // D17 단일 진실 원천으로 재계산
-        // - supplyUnit === 'g' 이면 환산 불필요
-        // - 그 외엔 target.fromUnitName(=이전에 매핑되었던 supplyUnit code)이
-        //   새 supplyUnitCode와 같고 factor를 알면 사용 가능. 아니면 환산 미등록 처리.
-        const canReuseConversion =
-          target.fromUnitName === supplyUnitCode &&
-          target.netRequiredInFromUnit != null &&
-          target.netRequiredG > 0;
-      
-        // factor 역산: netRequiredG / netRequiredInFromUnit (이전 행에서 환산이 유효했을 때만)
-        // 단, 이전 행은 미매핑이라 netRequiredInFromUnit이 null이었을 가능성이 높음
-        // → 대부분 환산 미등록 경로를 타게 됨 (정상)
-        const conv =
-          supplyUnitCode === "g"
-            ? null
-            : canReuseConversion
-            ? {
-                fromUnit: supplyUnitCode,
-                factor: target.netRequiredG / (target.netRequiredInFromUnit as number),
-              }
-            : null;
-      
-        const calc = calculateOrderQuantity({
-          requiredQtyG: target.requiredQtyG,
-          stockQtyG: target.stockQtyG,
-          unitConversion: conv,
-          supplierItem: {
-            supplyUnitName: supplyUnitCode,   // ★ code 기준 매칭
-            supplyUnitQty: supplierItem.supplyUnitQty,
-          },
-        });
-      
-        const baseSupplierItem = {
-          id: supplierItem.id,
-          supplierId: supplierItem.supplierId,
-          supplierName: supplierItem.supplier.name,
-          productName: supplierItem.productName,
-          supplyUnitName,           // 표시용 name
-          supplyUnitCode,           // 비교용 code
+      return {
+        ...state,
+        mapped: update(state.mapped),
+        mappedPartialStock: update(state.mappedPartialStock),
+      };
+    }  
+    case "RESOLVE_UNMAPPED": {
+      const { materialRequirementId, supplierItem } = action.payload;
+      const target = state.unmapped.find(
+        (r) => r.materialRequirementId === materialRequirementId,
+      );
+      if (!target) return state;
+    
+      const supplyUnitCode = supplierItem.supplyUnit.code;
+      const supplyUnitName = supplierItem.supplyUnit.name;
+    
+      // D17 단일 진실 원천으로 재계산
+      // - supplyUnit === 'g' 이면 환산 불필요
+      // - 그 외엔 target.fromUnitName(=이전에 매핑되었던 supplyUnit code)이
+      //   새 supplyUnitCode와 같고 factor를 알면 사용 가능. 아니면 환산 미등록 처리.
+      const canReuseConversion =
+        target.fromUnitName === supplyUnitCode &&
+        target.netRequiredInFromUnit != null &&
+        target.netRequiredG > 0;
+    
+      // factor 역산: netRequiredG / netRequiredInFromUnit (이전 행에서 환산이 유효했을 때만)
+      // 단, 이전 행은 미매핑이라 netRequiredInFromUnit이 null이었을 가능성이 높음
+      // → 대부분 환산 미등록 경로를 타게 됨 (정상)
+      const conv =
+        supplyUnitCode === "g"
+          ? null
+          : canReuseConversion
+          ? {
+              fromUnit: supplyUnitCode,
+              factor: target.netRequiredG / (target.netRequiredInFromUnit as number),
+            }
+          : null;
+    
+      const calc = calculateOrderQuantity({
+        requiredQtyG: target.requiredQtyG,
+        stockQtyG: target.stockQtyG,
+        unitConversion: conv,
+        supplierItem: {
+          supplyUnitName: supplyUnitCode,   // ★ code 기준 매칭
           supplyUnitQty: supplierItem.supplyUnitQty,
-          currentPrice: supplierItem.currentPrice,
-        };
-      
-        // 이전 경고에서 "공급업체"/"매핑" 관련 제거 + D17 warnings 추가
-        const cleanedPrevWarnings = target.warnings.filter(
-          (w) =>
-            !w.includes("매핑") &&
-            !w.includes("공급업체 품목 미지정") &&
-            !w.includes("자재 마스터를 찾을 수 없습니다"),
-        );
-      
-        const resolved: POItemCandidate = {
-          ...target,
-          fromUnitName: conv?.fromUnit ?? (supplyUnitCode === "g" ? "g" : supplyUnitCode),
-          netRequiredInFromUnit: calc.netRequiredInFromUnit,
-          supplierItem: baseSupplierItem,
-          orderQuantity: calc.orderQuantity,
-          orderQuantityRaw: calc.orderQuantityRaw,
-          unitPrice: supplierItem.currentPrice,
-          status: calc.requiresManualInput ? "UNMAPPED" : "MAPPED",
-          warnings: [...cleanedPrevWarnings, ...calc.warnings],
-        };
-      
-        // 결과가 여전히 UNMAPPED(환산 미등록 등)이면 unmapped에 유지
-        if (resolved.status === "UNMAPPED") {
-          return {
-            ...state,
-            unmapped: state.unmapped.map((r) =>
-              r.materialRequirementId === materialRequirementId ? resolved : r,
-            ),
-            // ★ D19: 매핑 미완(UNMAPPED 유지)이라도 default 플래그 사전 결정
-            //        currentDefaultSupplierItemId === null → 자동 true
-            //        같은 default → false, 다른 default → false (사용자가 체크박스로 결정)
-            setAsDefaultMap: {
-              ...state.setAsDefaultMap,
-              [materialRequirementId]:
-                target.currentDefaultSupplierItemId === null,
-            },
-          };
-        }
-      
+        },
+      });
+    
+      const baseSupplierItem = {
+        id: supplierItem.id,
+        supplierId: supplierItem.supplierId,
+        supplierName: supplierItem.supplier.name,
+        productName: supplierItem.productName,
+        supplyUnitName,           // 표시용 name
+        supplyUnitCode,           // 비교용 code
+        supplyUnitQty: supplierItem.supplyUnitQty,
+        currentPrice: supplierItem.currentPrice,
+      };
+    
+      // 이전 경고에서 "공급업체"/"매핑" 관련 제거 + D17 warnings 추가
+      const cleanedPrevWarnings = target.warnings.filter(
+        (w) =>
+          !w.includes("매핑") &&
+          !w.includes("공급업체 품목 미지정") &&
+          !w.includes("자재 마스터를 찾을 수 없습니다"),
+      );
+    
+      const resolved: POItemCandidate = {
+        ...target,
+        fromUnitName: conv?.fromUnit ?? (supplyUnitCode === "g" ? "g" : supplyUnitCode),
+        netRequiredInFromUnit: calc.netRequiredInFromUnit,
+        supplierItem: baseSupplierItem,
+        orderQuantity: calc.orderQuantity,
+        orderQuantityRaw: calc.orderQuantityRaw,
+        unitPrice: supplierItem.currentPrice,
+        status: calc.requiresManualInput ? "UNMAPPED" : "MAPPED",
+        warnings: [...cleanedPrevWarnings, ...calc.warnings],
+      };
+    
+      // 결과가 여전히 UNMAPPED(환산 미등록 등)이면 unmapped에 유지
+      if (resolved.status === "UNMAPPED") {
         return {
           ...state,
-          unmapped: state.unmapped.filter(
-            (r) => r.materialRequirementId !== materialRequirementId,
+          unmapped: state.unmapped.map((r) =>
+            r.materialRequirementId === materialRequirementId ? resolved : r,
           ),
-          mapped: [...state.mapped, resolved],
-          // ★ D19
+          // ★ D19: 매핑 미완(UNMAPPED 유지)이라도 default 플래그 사전 결정
+          //        currentDefaultSupplierItemId === null → 자동 true
+          //        같은 default → false, 다른 default → false (사용자가 체크박스로 결정)
           setAsDefaultMap: {
             ...state.setAsDefaultMap,
             [materialRequirementId]:
@@ -435,83 +423,98 @@ function reducer(state: WizardState, action: Action): WizardState {
           },
         };
       }
-      case "REFRESH_ROW_AFTER_CONVERSION": {
-        const { materialMasterId, fromUnit, factor } = action.payload;
-      
-        const recalcRow = (r: POItemCandidate): POItemCandidate => {
-          if (r.materialMasterId !== materialMasterId) return r;
-      
-          const netRequiredG = r.netRequiredG;
-      
-          // 경고 필터 (D17 + 구 D3 메시지 모두 제거)
-          const cleanedWarnings = r.warnings.filter(
-            (w) =>
-              !w.includes("단위 환산 등록 필요") &&
-              !w.includes("단위 환산 정보 미등록") &&
-              !w.includes("단위 환산 계수") &&
-              !w.includes("공급단위 계수"),
-          );
-      
-          // 공급업체 미매핑: 환산전 단위 표시만 갱신, orderQuantity 는 null 유지
-          if (!r.supplierItem) {
-            return {
-              ...r,
-              fromUnitName: fromUnit,
-              netRequiredInFromUnit: factor > 0 ? netRequiredG / factor : null,
-              warnings: cleanedWarnings,
-            };
-          }
-      
-        // ★ 가드: 등록된 환산의 fromUnit이 supplyUnit.code와 다르면
-        //        잘못된 환산을 적용하지 않고 경고 유지 + UNMAPPED 로 유지한다.
-        //        (다른 자재에서 같은 materialMasterId의 환산을 등록했을 가능성 있음)
-        if (r.supplierItem.supplyUnitCode !== fromUnit) {
-          return {
-            ...r,
-            warnings: [
-              ...cleanedWarnings,
-              `등록된 환산(${fromUnit}→g)이 공급단위 '${r.supplierItem.supplyUnitCode}'와 다릅니다 — '${r.supplierItem.supplyUnitCode}→g' 환산 등록 필요`,
-            ],
-          };
-        }
-
-          // D17: gPerSupplyUnit = factor × supplyUnitQty
-          const supplyUnitQty =
-            r.supplierItem.supplyUnitQty > 0 ? r.supplierItem.supplyUnitQty : 1;
-          const gPerSupplyUnit = factor * supplyUnitQty;
-          const orderQuantityRaw = netRequiredG / gPerSupplyUnit;
-          const orderQuantity = Math.ceil(orderQuantityRaw - 1e-9);
-
+    
+      return {
+        ...state,
+        unmapped: state.unmapped.filter(
+          (r) => r.materialRequirementId !== materialRequirementId,
+        ),
+        mapped: [...state.mapped, resolved],
+        // ★ D19
+        setAsDefaultMap: {
+          ...state.setAsDefaultMap,
+          [materialRequirementId]:
+            target.currentDefaultSupplierItemId === null,
+        },
+      };
+    }
+    case "REFRESH_ROW_AFTER_CONVERSION": {
+      const { materialMasterId, fromUnit, factor } = action.payload;
+    
+      const recalcRow = (r: POItemCandidate): POItemCandidate => {
+        if (r.materialMasterId !== materialMasterId) return r;
+    
+        const netRequiredG = r.netRequiredG;
+    
+        // 경고 필터 (D17 + 구 D3 메시지 모두 제거)
+        const cleanedWarnings = r.warnings.filter(
+          (w) =>
+            !w.includes("단위 환산 등록 필요") &&
+            !w.includes("단위 환산 정보 미등록") &&
+            !w.includes("단위 환산 계수") &&
+            !w.includes("공급단위 계수"),
+        );
+    
+        // 공급업체 미매핑: 환산전 단위 표시만 갱신, orderQuantity 는 null 유지
+        if (!r.supplierItem) {
           return {
             ...r,
             fromUnitName: fromUnit,
-            netRequiredInFromUnit: orderQuantityRaw,
-            orderQuantityRaw,
-            orderQuantity,
-            status: "MAPPED",
+            netRequiredInFromUnit: factor > 0 ? netRequiredG / factor : null,
             warnings: cleanedWarnings,
           };
-        };
-      
-        // unmapped 에서 재계산 후 MAPPED 로 승격된 행은 mapped 로 이동.
-        // (단, supplyUnitCode 와 등록된 fromUnit 이 일치하고 orderQuantity 가 유효해야 함)
-        const recalcedUnmapped = state.unmapped.map(recalcRow);
-        const isPromotable = (r: POItemCandidate) =>
-          r.status === "MAPPED" &&
-          r.supplierItem !== null &&
-          r.supplierItem.supplyUnitCode === fromUnit &&
-          r.orderQuantity !== null;
-        const promoted = recalcedUnmapped.filter(isPromotable);
-        const remainingUnmapped = recalcedUnmapped.filter((r) => !isPromotable(r));
-      
+        }
+    
+      // ★ 가드: 등록된 환산의 fromUnit이 supplyUnit.code와 다르면
+      //        잘못된 환산을 적용하지 않고 경고 유지 + UNMAPPED 로 유지한다.
+      //        (다른 자재에서 같은 materialMasterId의 환산을 등록했을 가능성 있음)
+      if (r.supplierItem.supplyUnitCode !== fromUnit) {
         return {
-          ...state,
-          mapped: [...state.mapped.map(recalcRow), ...promoted],
-          mappedPartialStock: state.mappedPartialStock.map(recalcRow),
-          mappedFullStock: state.mappedFullStock.map(recalcRow),
-          unmapped: remainingUnmapped,
+          ...r,
+          warnings: [
+            ...cleanedWarnings,
+            `등록된 환산(${fromUnit}→g)이 공급단위 '${r.supplierItem.supplyUnitCode}'와 다릅니다 — '${r.supplierItem.supplyUnitCode}→g' 환산 등록 필요`,
+          ],
         };
-      }      
+      }
+
+        // D17: gPerSupplyUnit = factor × supplyUnitQty
+        const supplyUnitQty =
+          r.supplierItem.supplyUnitQty > 0 ? r.supplierItem.supplyUnitQty : 1;
+        const gPerSupplyUnit = factor * supplyUnitQty;
+        const orderQuantityRaw = netRequiredG / gPerSupplyUnit;
+        const orderQuantity = Math.ceil(orderQuantityRaw - 1e-9);
+
+        return {
+          ...r,
+          fromUnitName: fromUnit,
+          netRequiredInFromUnit: orderQuantityRaw,
+          orderQuantityRaw,
+          orderQuantity,
+          status: "MAPPED",
+          warnings: cleanedWarnings,
+        };
+      };
+    
+      // unmapped 에서 재계산 후 MAPPED 로 승격된 행은 mapped 로 이동.
+      // (단, supplyUnitCode 와 등록된 fromUnit 이 일치하고 orderQuantity 가 유효해야 함)
+      const recalcedUnmapped = state.unmapped.map(recalcRow);
+      const isPromotable = (r: POItemCandidate) =>
+        r.status === "MAPPED" &&
+        r.supplierItem !== null &&
+        r.supplierItem.supplyUnitCode === fromUnit &&
+        r.orderQuantity !== null;
+      const promoted = recalcedUnmapped.filter(isPromotable);
+      const remainingUnmapped = recalcedUnmapped.filter((r) => !isPromotable(r));
+    
+      return {
+        ...state,
+        mapped: [...state.mapped.map(recalcRow), ...promoted],
+        mappedPartialStock: state.mappedPartialStock.map(recalcRow),
+        mappedFullStock: state.mappedFullStock.map(recalcRow),
+        unmapped: remainingUnmapped,
+      };
+    }      
 
     case "SET_ORDER_DATE":
       return { ...state, orderDate: action.payload };
