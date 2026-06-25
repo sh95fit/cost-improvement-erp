@@ -113,8 +113,8 @@ export function StepMappingTable({
           </p>
         ) : (
           <RowsTable
-            rows={unmapped}
-            mode="unmapped"
+            rows={allMapped}          
+            mode="mapped"             
             onUpdateQuantity={onUpdateQuantity}
             onUpdateUnitPrice={onUpdateUnitPrice}
             onResolveUnmapped={onResolveUnmapped}
