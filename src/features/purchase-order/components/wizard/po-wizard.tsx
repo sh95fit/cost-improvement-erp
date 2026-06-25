@@ -852,7 +852,12 @@ export function POWizard() {
           />
         )}
 
-        {state.step === 4 && <StepSplitPreview mapped={state.mapped} />}
+        {state.step === 4 && (
+          <StepSplitPreview
+            mapped={state.mapped}
+            mappedPartialStock={state.mappedPartialStock}
+          />
+        )}
 
         {state.step === 5 && state.mealPlanGroup && (
           <StepConfirmCreate

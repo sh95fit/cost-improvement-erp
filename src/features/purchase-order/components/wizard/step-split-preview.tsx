@@ -5,6 +5,11 @@ import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-ite
 
 interface Props {
   mapped: POItemCandidate[];
+  /**
+   * ★ D25-1 (D-PREVIEW-CONSISTENCY): 부분재고 행도 발주 대상이므로
+   *    Step 5 합계(validMapped)와 일치시키기 위해 분할 미리보기에 포함한다.
+   */
+  mappedPartialStock: POItemCandidate[];
 }
 
 interface PreviewGroup {
@@ -18,11 +23,20 @@ interface PreviewGroup {
   totalAmount: number;
 }
 
-export function StepSplitPreview({ mapped }: Props) {
+export function StepSplitPreview({ mapped, mappedPartialStock }: Props) {
+  // ★ D25-1: SSOT — mapped + mappedPartialStock 통합
+  const allRows = useMemo(
+    () => [...mapped, ...mappedPartialStock],
+    [mapped, mappedPartialStock],
+  );
+
   const groups = useMemo<PreviewGroup[]>(() => {
     const map = new Map<string, PreviewGroup>();
-    for (const r of mapped) {
+    for (const r of allRows) {
       if (!r.supplierItem) continue;
+      // ★ D25-1: orderQuantity 가 0/null 인 행은 합계 왜곡 방지를 위해 제외
+      if (r.orderQuantity == null || r.orderQuantity <= 0) continue;
+
       const supplierId = r.supplierItem.supplierId;
       const supplierName = r.supplierItem.supplierName;
       const locationId = r.locationId;
@@ -49,7 +63,7 @@ export function StepSplitPreview({ mapped }: Props) {
     return Array.from(map.values()).sort((a, b) =>
       a.supplierName.localeCompare(b.supplierName, "ko"),
     );
-  }, [mapped]);
+  }, [allRows]);
 
   const grandTotal = groups.reduce((s, g) => s + g.totalAmount, 0);
   const totalItems = groups.reduce((s, g) => s + g.itemCount, 0);
@@ -61,6 +75,9 @@ export function StepSplitPreview({ mapped }: Props) {
         <p className="mt-1 text-sm text-gray-600">
           공급업체 × 공장 × 라인 단위로 자동 분할됩니다. 같은 그룹의 자재는 1개의
           DRAFT PO로 묶입니다.
+          <span className="ml-1 text-gray-500">
+            (부분재고 차감 후 잔여 발주 행도 포함)
+          </span>
         </p>
       </div>
 
@@ -100,9 +117,7 @@ export function StepSplitPreview({ mapped }: Props) {
                   )}
                 </div>
                 <div className="text-right">
-                  <div className="text-gray-600">
-                    {g.itemCount} 행
-                  </div>
+                  <div className="text-gray-600">{g.itemCount} 행</div>
                   <div className="font-semibold text-gray-900">
                     {g.totalAmount.toLocaleString()} 원
                   </div>
