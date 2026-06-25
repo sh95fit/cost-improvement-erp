@@ -220,6 +220,16 @@ function clearIdempotencyToken(
   );
 }
 
+// ★ FIX-IDEM-CANCELLED-2 (D27): step-meal-plan-group-select 에서 사용
+export function clearAllIdempotencyTokensFor(
+  mealPlanGroupId: string,
+  countSource: string,
+): void {
+  (["NEW", "DELTA", "REPLACE"] as const).forEach((m) =>
+    clearIdempotencyToken(mealPlanGroupId, countSource, m),
+  );
+}
+
 function reducer(state: WizardState, action: Action): WizardState {
   switch (action.type) {
     case "SET_GROUP":

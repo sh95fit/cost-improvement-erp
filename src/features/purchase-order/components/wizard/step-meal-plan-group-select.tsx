@@ -11,7 +11,7 @@ import {
   type WizardMode,
 } from "./wizard-mode-selector";
 import type { ExistingPOsSummaryResult } from "@/features/purchase-order/actions/purchase-order.action";
-
+import { clearAllIdempotencyTokensFor } from "./po-wizard";
 
 interface Props {
   value: MealPlanGroupOption | null;
@@ -105,6 +105,12 @@ export function StepMealPlanGroupSelect({
       //   - total === 0  → NEW 단독 표시 (selector 자체 비표시) → NEW 강제
       //   - total > 0    → NEW 옵션 자체가 제거됨 → NEW 였다면 가능한 모드로 자동 전환
       if (result.counts.total === 0) {
+        // ★ FIX-IDEM-CANCELLED-2 (D27): 활성 PO 0건이면 (이전 batch 가 전량 취소된 상태일 수 있음)
+        //   localStorage 의 모든 모드 토큰을 폐기해 신규 발주가 막히지 않도록 보장.
+        //   서버측 Fix 1 만으로도 동작하지만, 토스트 메시지를 깔끔히 보여주기 위한 보조 방어.
+        if (value) {
+          clearAllIdempotencyTokensFor(value.id, countSource);
+        }
         if (mode !== "NEW") onChangeMode("NEW", []);
       } else if (mode === "NEW") {
         // 활성 PO 가 있는데 NEW 가 선택돼 있던 경우 → DELTA 우선, 불가하면 REPLACE
