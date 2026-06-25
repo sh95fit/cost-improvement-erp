@@ -73,8 +73,14 @@ const formatCurrency = (value: number | null) =>
 const formatDate = (d: Date | null) =>
   d == null ? "-" : new Date(d).toLocaleDateString("ko-KR");
 
-const STATUS_OPTIONS: { value: POStatus | "all"; label: string }[] = [
-  { value: "all", label: "전체" },
+// ★ FIX-PO-LIST-CANCELLED (D27): C-1 정책 — 취소는 보존하되 기본 목록에서 숨김.
+//   "활성" = CANCELLED 제외 (DRAFT/SUBMITTED/APPROVED/RECEIVED)
+//   "전체" = CANCELLED 포함 모든 상태
+type StatusFilter = POStatus | "active" | "all";
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "active", label: "활성 (취소 제외)" },
+  { value: "all", label: "전체 (취소 포함)" },
   { value: "DRAFT", label: PO_STATUS_LABELS.DRAFT },
   { value: "SUBMITTED", label: PO_STATUS_LABELS.SUBMITTED },
   { value: "APPROVED", label: PO_STATUS_LABELS.APPROVED },
@@ -91,7 +97,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
     totalPages: 0,
   });
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<POStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseOrderRow | null>(null);
 
@@ -103,7 +109,12 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           page,
           limit: 20,
           search: search || undefined,
-          status: statusFilter === "all" ? undefined : statusFilter,
+          // ★ FIX-PO-LIST-CANCELLED (D27): "활성" 은 새 statusNotIn 파라미터 사용
+          status:
+            statusFilter === "all" || statusFilter === "active"
+              ? undefined
+              : statusFilter,
+          excludeCancelled: statusFilter === "active" ? true : undefined,
           sortBy: "orderDate",
           sortOrder: "desc",
         });
@@ -160,7 +171,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
         </div>
         <Select
           value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v as POStatus | "all")}
+          onValueChange={(v) => setStatusFilter(v as StatusFilter)}
         >
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="상태" />

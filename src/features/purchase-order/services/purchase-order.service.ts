@@ -101,12 +101,20 @@ export async function getPurchaseOrders(
   companyId: string,
   query: PurchaseOrderListQuery,
 ) {
-  const { page, limit, search, status, supplierId, dateFrom, dateTo, sortBy, sortOrder } = query;
+  const {
+    page, limit, search, status, excludeCancelled,
+    supplierId, dateFrom, dateTo, sortBy, sortOrder,
+  } = query;
   const skip = (page - 1) * limit;
 
   const where = {
     companyId,
-    ...(status && { status }),
+    ...(status
+      ? { status }
+      // ★ FIX-PO-LIST-CANCELLED (D27): status 미지정 + excludeCancelled=true 면 CANCELLED 만 제외
+      : excludeCancelled
+        ? { status: { not: "CANCELLED" as const } }
+        : {}),
     ...(supplierId && { supplierId }),
     ...(search && {
       OR: [

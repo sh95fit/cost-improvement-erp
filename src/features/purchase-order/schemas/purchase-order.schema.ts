@@ -155,6 +155,9 @@ export const purchaseOrderListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().optional(),
   status: z.nativeEnum(POStatus).optional(),
+  // ★ FIX-PO-LIST-CANCELLED (D27): "활성" 필터 — CANCELLED 만 제외
+  //   status 와는 별개 (status 가 지정되면 status 우선, 아니면 excludeCancelled 적용)
+  excludeCancelled: z.coerce.boolean().optional(),
   supplierId: z.string().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
