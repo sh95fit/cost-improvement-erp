@@ -91,21 +91,36 @@ export function StepMealPlanGroupSelect({
   const handleExistingPOsLoaded = useCallback(
     (result: ExistingPOsSummaryResult) => {
       setExistingPOCounts(result.counts);
-      setDeltaTargetIds(
-        result.pos
-          .filter((p) => p.status === "DRAFT" || p.status === "SUBMITTED")
-          .map((p) => p.id),
-      );
-      setReplaceTargetIds(
-        result.pos.filter((p) => p.status === "DRAFT").map((p) => p.id),
-      );
-      // PO가 사라졌으면 모드를 NEW로 리셋
-      if (result.counts.total === 0 && mode !== "NEW") {
-        onChangeMode("NEW", []);
+  
+      // ★ R1-b4: REPLACE 대상도 DRAFT + SUBMITTED 로 통일
+      //   (백엔드 executeReplaceMode 도 DRAFT/SUBMITTED 모두 CANCELLED 로 일괄 전이)
+      const deltaIds = result.pos
+        .filter((p) => p.status === "DRAFT" || p.status === "SUBMITTED")
+        .map((p) => p.id);
+      const replaceIds = deltaIds;
+      setDeltaTargetIds(deltaIds);
+      setReplaceTargetIds(replaceIds);
+  
+      // ★ D18 (R1-b5-1): 활성 PO 카운트에 따른 모드 자동 보정
+      //   - total === 0  → NEW 단독 표시 (selector 자체 비표시) → NEW 강제
+      //   - total > 0    → NEW 옵션 자체가 제거됨 → NEW 였다면 가능한 모드로 자동 전환
+      if (result.counts.total === 0) {
+        if (mode !== "NEW") onChangeMode("NEW", []);
+      } else if (mode === "NEW") {
+        // 활성 PO 가 있는데 NEW 가 선택돼 있던 경우 → DELTA 우선, 불가하면 REPLACE
+        const lockedCount = result.counts.approved + result.counts.received;
+        const editableCount = result.counts.draft + result.counts.submitted;
+        if (editableCount > 0) {
+          onChangeMode("DELTA", deltaIds);
+        } else if (lockedCount > 0) {
+          // 편집 가능한 PO 없음 + APPROVED/RECEIVED 만 존재 → DELTA 도 REPLACE 도 비활성
+          // selector 는 둘 다 disabled 로 렌더링됨. 값은 DELTA 로 두되 basedOnPOIds 는 빈 배열.
+          onChangeMode("DELTA", []);
+        }
       }
     },
     [mode, onChangeMode],
-  );
+  );  
 
   const handleModeChange = useCallback(
     (next: WizardMode) => {

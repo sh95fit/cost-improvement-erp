@@ -15,7 +15,12 @@ interface ModeOption {
 interface Props {
   value: WizardMode;
   onChange: (mode: WizardMode) => void;
-  /** 활성 PO가 있는 식단그룹에서만 의미가 있음 — 없으면 컴포넌트 자체를 렌더하지 않음 */
+  /**
+   * 활성 PO 카운트 (CANCELLED 제외).
+   * 백엔드 getExistingPOsForMealPlanGroupAction이 이미 CANCELLED를 필터링해 내려주므로
+   * 이 값이 곧 활성 PO 카운트와 동일하다.
+   * 0 이면 컴포넌트 자체를 렌더하지 않음 (호출부에서 검사해도 무방).
+   */
   existingPOCount: number;
   /** ★ R1-b3: 상태별 카운트 — 모드 가용성 판정에 사용 */
   draftCount: number;
@@ -39,14 +44,11 @@ export function WizardModeSelector({
   // ★ R1-b4: REPLACE 는 DRAFT/SUBMITTED 가 1건이라도 있고, APPROVED 이상이 섞이지 않아야 가능
   const replaceEnabled = draftCount + submittedCount > 0 && lockedCount === 0;
 
+  // ★ D18 (R1-b5-1): 활성 PO 가 존재할 때(=이 컴포넌트가 렌더되는 시점)는
+  //   NEW 옵션을 노출하지 않는다. NEW 발주는 멱등성 키((mealPlanGroupId, outboundDate))
+  //   충돌로 어차피 실패하므로 사용자를 막다른 길로 안내하지 않는다.
+  //   식단 외 발주는 Phase 4-D 수동 발주 트랙(/purchase-orders/manual)에서 처리한다.
   const options: ModeOption[] = [
-    {
-      value: "NEW",
-      label: "신규 발주",
-      description:
-        "기존 발주서와 별개로 새 발주서를 추가 생성합니다. 식단 외 추가 자재가 필요할 때 사용합니다.",
-      enabled: true,
-    },
     {
       value: "DELTA",
       label: "차분 발주",
@@ -64,7 +66,6 @@ export function WizardModeSelector({
           ? "발주확정 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
           : "작성중·발주등록 PO가 없어 사용할 수 없습니다.",
       enabled: replaceEnabled,
-      // ★ R1-b4 완료 — comingSoonLabel 제거
     },
   ];
 
