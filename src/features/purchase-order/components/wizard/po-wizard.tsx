@@ -12,7 +12,9 @@ import type { SupplierItemWithSupplier } from "@/features/supplier/actions/suppl
 import { StepMealPlanGroupSelect } from "./step-meal-plan-group-select";
 import { StepLoadSummary } from "./step-load-summary";
 import { StepMappingTable } from "./step-mapping-table";
-import { StepSplitPreview } from "./step-split-preview";
+// ★ D25-3: StepSplitPreview → WizardPreviewPanel 로 교체 (모드별 분기)
+//    StepSplitPreview 는 D25-4 정리 단계에서 삭제 예정
+import { WizardPreviewPanel } from "./wizard-preview-panel";
 import { StepConfirmCreate } from "./step-confirm-create";
 import { useWizardPersistence } from "./use-wizard-persistence";
 import { calculateOrderQuantity } from "@/features/purchase-order/lib/unit-conversion";
@@ -852,10 +854,16 @@ export function POWizard() {
           />
         )}
 
+        {/* ★ D25-3: 모드별 분기 미리보기 (NEW/DELTA/REPLACE) */}
         {state.step === 4 && (
-          <StepSplitPreview
+          <WizardPreviewPanel
+            mode={state.mode}
             mapped={state.mapped}
             mappedPartialStock={state.mappedPartialStock}
+            deltaPreview={state.deltaPreview}
+            deltaPreviewLoading={state.deltaPreviewLoading}
+            deltaPreviewError={state.deltaPreviewError}
+            basedOnPOIds={state.basedOnPOIds}
           />
         )}
 
