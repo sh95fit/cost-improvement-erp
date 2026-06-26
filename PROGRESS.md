@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-26 (D28·D29 결정 추가 — 품목별 입고일 표시 정책 + Step 4 라인업 3종 뷰)
+> 마지막 갱신: 2026-06-26 (Phase 4-C 착수 + D30 예고 — 입고서 모델 1 RN ↔ N PO 품목)
 
 ---
 
@@ -127,11 +127,12 @@
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 - **다음 진행 항목**:
-  1. **Phase 4-C** — PO 상세 + 상태 전이 다이얼로그 + 품목별 예상 입고일 (D28) + Step 5 D-N 배지
+  1. **Phase 4-C** (진행 중) — PO 상세 + 상태 전이 + 품목별 예상 입고일 (D28) + Step 5 D-N 배지
   2. **Phase 4-C2** — Step 4 라인업 3종 뷰 (D29)
-  3. **Phase 4-D** — 수동 발주 페이지 (`/purchase-orders/manual`, D19)
-  4. **Phase 4-F** — PO 목록 다축 뷰 (D21-A, D29와 통합 가능성 검토)
-  5. **Phase 4-E** — PO 권한 스코프 (D21-B)
+  3. **Phase 4-D** — 수동 발주 페이지 (D19)
+  4. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
+  5. **Phase 4-F** — PO 목록 다축 뷰 (D21-A)
+  6. **Phase 4-E** — PO 권한 스코프 (D21-B)
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0
@@ -178,7 +179,7 @@
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 — Step 3 단위환산 인라인 등록(✅ 완료) + Step 5 품목별 예상 입고일(⬜) + Step 4 라인업 뷰 백엔드(⬜) | 🟡 부분 | `07b7181` 등 |
 | **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건 + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + 정수 수량 강제 | ✅ | `c83c1e80`, `0ed1d8cf`, `d3ca6b2c`, `5b8edc7c`, `91967e3b` |
 | **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
-| **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지 | ⬜ | - |
+| **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | 🟡 진행 | - |
 | **4-C2** | Step 4 라인업 3종 뷰 + `lineupBreakdownAction` (D29) | ⬜ | - |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
@@ -473,6 +474,26 @@ po-wizard.tsx (state machine + step orchestration)
 - **백엔드**: `lineupBreakdownAction` 신설 — 발주 후보를 3축으로 집계 반환
 - **구현 위치**: Phase 4-F(PO 목록 다축 뷰, D21-A)와 통합하거나 **별도 Phase 4-C2로 분리**. 우선순위가 4-C(상세) 다음, 4-D(수동발주) 이전.
 - **Fix-R2 잔여 처리**: Step 4 `lineupBreakdown` 백엔드 항목은 본 D29로 흡수되어 닫힘. Fix-R2의 또다른 항목인 Step 5 품목별 입고일은 D28로 흡수됨. 따라서 Fix-R2 자체는 닫힘 처리.
+
+#### D30 (예고). 입고서 ↔ 발주서 관계 모델 (Phase 5 착수 전 확정)
+
+- **방향**: 1 ReceivingNote ↔ N PurchaseOrderItem (다대다, ReceivingNoteItem이 PO item을 FK로 참조).
+- **사유**:
+  - 운영 현장 멘탈 모델 = "오늘 공장에 들어온 물건" 1건 = 1 입고서
+  - 같은 일자에 여러 PO의 자재가 섞여 들어와도 1 입고서로 처리 가능
+  - 헌법 P2/P3 정합 (입고는 공장 단위, 재고도 공장 단위)
+- **트리거 구조**:
+  - 발주서 APPROVED 전이 = 입고서 작성 가능 시점 (발주 담당자의 마지막 행위)
+  - 입고서 확정 = `PurchaseOrderItem.receivedQty` 증분 (입고 담당자의 행위)
+  - `SUM(receivedQty) === SUM(quantity)` 조건 충족 시 PO 자동 `APPROVED → RECEIVED` (서비스 가드)
+- **입고 작성 UX (Phase 5)**: 입고일·공장 선택 시 "그 일자 예상 입고인 모든 활성 PO 품목" 자동 표출. 출고일 + 품목별 leadTimeDays로 계산.
+- **Phase 4-C와의 인터페이스**: 발주서 상세 품목 테이블에 "입고 수량" 컬럼 자리만 미리 잡고 Phase 5 완료까지는 `0 / quantity` 표기.
+- **확정 시점**: Phase 4-D 완료 직후, Phase 5 착수 직전 D30으로 정식 확정.
+
+#### D31 (예고). 부분 입고 진행률 UX (Phase 5)
+
+- 발주서 상세에서 입고 진척률을 품목별 `receivedQty / quantity` (예: "5/10 박스")로 표시.
+- APPROVED 상태이고 1품목이라도 `receivedQty > 0` 이면 "입고 진행중" 배지.
 
 ---
 
