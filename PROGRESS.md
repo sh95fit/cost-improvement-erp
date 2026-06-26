@@ -92,7 +92,7 @@
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase 1.7 / D17-10 (단위 환산 3중 가드 + UnitMaster.code 기반 매칭 일관화). 위저드 UX 정합 패치(R1-b5, D18~D22 기반) 진행 예정
+- **현재 기준 완료 지점**: Sprint 3 R1-b5 + D27 (위저드 UX 정합 + 멱등성 가드 + PO 목록 취소 정책)
 - **최근 완료**:
   - R1-a (commit `5afb0113`) — 위저드 4분류 (mapped / partial / full / unmapped)
   - R1-a-fix-2 — `stockOffsetAmount` raw 기준 + `Math.round` 정수 안정화
@@ -118,14 +118,20 @@
     - D17-9: factor 상한 (100,000 / 서버 1,000,000) + 비정수 입력 시 confirm
     - D17-10: 미매핑 행에서 ↗ 단위 환산 등록 버튼 숨김, 매핑 후 `supplyUnit.code` 잠금 전달, `DUPLICATE_CONVERSION` → 정상 흐름 + 재계산
     - 서버 schema: `factor.max(1_000_000)` 추가 (`unit-conversion.schema.ts`)
-  - 테스트: 410 PASS / 2 skipped / 0 fail. `tsc --noEmit`: 0 errors
+    - **R1-b5-1** (commit `c83c1e80`) — NEW 모드 표시조건 보정 (D18). 활성 PO 0건일 때만 NEW 노출, 1건 이상이면 DELTA/REPLACE 자동 전환
+  - **R1-b5-2** (commit `0ed1d8cf`) — Step 2 DeltaPreviewCard 제거 (D20). 차분 가이드는 Step 3 인라인 + Step 5 요약으로 이전
+  - **R1-b5-3** (commit `d3ca6b2c`) — Step 5 DeltaPreviewCard 접힘 + 발주량 정수 강제 (D20, D23). `Math.ceil` 라운드업 정책, `step={1}` 입력, reducer `safeValue` 가드
+  - **R1-b5-4** (commit `5b8edc7c` + hotfix `91967e3b`) — Step 3 인라인 차분 컬럼 (D20). DeltaCell 신설 (변경없음/신규 PO/추가/수량·단가·금액 델타). DELTA 모드에서만 노출, NEW/REPLACE 영향 없음. Hotfix: mapped 섹션이 unmapped 행을 받던 prop 오타 (rows={unmapped}/mode="unmapped" → rows={allMapped}/mode="mapped")
+  - **D27** (commits `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e`) — 멱등성 가드 + PO 목록 취소 정책:
+    - 서버: `createPurchaseOrdersBatch` 의 idempotent replay 가 batch 내 PO `status` 미검사로, 전량 CANCELLED 인 batch 도 replay 매칭되던 버그 수정. 매칭 시 활성 PO 만 응답에 포함, 전량 취소면 신규 토큰(suffix `_r{timestamp}`) 발급 후 신규 batch 생성. (`idempotencyKey`는 Prisma 스키마상 non-nullable 이므로 null 갱신 대신 신규 토큰 전략 채택)
+    - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
+    - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 - **다음 진행 항목**:
-  1. **R1-b5** — 위저드 UX 정합 패치 (D18~D22 적용: NEW 모드 표시조건 보정 + Step 2 차분 제거 + Step 3 인라인 차분 컬럼 + Step 5 차분 접힘)
-  2. **Fix-R2 잔여** — Step 5 품목별 예상 입고일 + Step 4 `lineupBreakdown` 백엔드
-  3. **Phase 4-C** — PO 상세 + 상태 전이 다이얼로그
-  4. **Phase 4-D** — 수동 발주 페이지 (`/purchase-orders/manual`, 식단 외 트랙, D19)
-  5. **Phase 4-F** — PO 목록 다축 뷰 (출고일 / 공급사 / 라인업, D21-A)
-  6. **Phase 4-E** — PO 권한 스코프 (회사 / 공장 / 라인 가시성, D21-B, 다중 사용자 환경 진입 시)
+  1. **Fix-R2 잔여** — Step 5 품목별 예상 입고일 + Step 4 `lineupBreakdown` 백엔드
+  2. **Phase 4-C** — PO 상세 + 상태 전이 다이얼로그
+  3. **Phase 4-D** — 수동 발주 페이지 (`/purchase-orders/manual`, 식단 외 트랙, D19)
+  4. **Phase 4-F** — PO 목록 다축 뷰 (출고일 / 공급사 / 라인업, D21-A)
+  5. **Phase 4-E** — PO 권한 스코프 (회사 / 공장 / 라인 가시성, D21-B, 다중 사용자 환경 진입 시)
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0
@@ -170,7 +176,8 @@
 | **1.6** | **D9 적용**: PurchaseOrder.deliveryDate → outboundDate 마이그레이션 + 서비스·액션·UI 일괄 갱신 | ✅ | `75f07d6` 등 |
 | **1.7** | **D16/D17 적용**: UnitCombobox 통합 + 공급단위 기준 단일 단계 환산 + UnitMaster.code 일원화 + factor 입력 가드 | ✅ | `fe046d11`, `9255b78`, `032f872`, `a6c4d15`, (이번 커밋) |
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 — Step 3 단위환산 인라인 등록(✅ 완료) + Step 5 품목별 예상 입고일(⬜) + Step 4 라인업 뷰 백엔드(⬜) | 🟡 부분 | `07b7181` 등 |
-| **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건(식단군 활성 PO 0건일 때만) + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + WizardPreviewPanel 호출 위치 정정 | ⬜ | - |
+| **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건 + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + 정수 수량 강제 | ✅ | `c83c1e80`, `0ed1d8cf`, `d3ca6b2c`, `5b8edc7c`, `91967e3b` |
+| **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
 | 4-C | 상세보기 + 상태 전이 다이얼로그 (Fix-R2 완료 후 착수) | ⬜ | - |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
@@ -422,6 +429,31 @@ po-wizard.tsx (state machine + step orchestration)
 └─ step-confirm-create.tsx [Step 5] 
 ├─ ExistingPONotice (재사용) 
 └─ DeltaPreviewCard (collapsed) ← D20 접힘  
+
+
+#### D23. 발주 수량 정수 강제 (Phase 1.7, R1-b5-3)
+
+- **결정**: 모든 발주량(`PurchaseOrderItem.quantity`) 은 정수만 허용. 소수 입력은 라운드업.
+- **사유**: 박스/포대 단위 발주는 분할 불가 — 사용자가 `12.5` 입력 시 13으로 자동 보정해 운영 사고 예방.
+- **적용**:
+  - 클라이언트: `QuantityCell` `step={1}`, `inputMode="numeric"`, onChange 에서 `parseInt + Math.ceil`. 시스템 권장값과 직접 비교(부동소수 임계값 폐기).
+  - reducer: `UPDATE_QUANTITY` 의 payload value 에 `safeValue = Math.max(0, Math.ceil((value ?? 0) - 1e-9))` 가드.
+  - 표시: `DeltaPreviewCard` 의 `ChangeRowsTable` 과 `newGroups` 도 `Math.round` 로 표시 안전성.
+- **테스트 시나리오**: 12.5 → 13, 빈 입력 → 0, 권장값으로 되돌리기 동작 검증.
+
+#### D27. 멱등성 가드 — 전량 취소 batch 제외 + PO 목록 취소 기본 숨김 (R1-b5 부속)
+
+- **계기**: 위저드로 5건 생성 → REPLACE/수동으로 모두 CANCELLED → 같은 식단그룹·모드로 재진입 시 "동일 세션으로 생성된 발주서 0건이 있어 기존 결과를 반환합니다" 토스트가 떠 신규 발주가 영구 차단되던 회귀.
+- **원인**: `createPurchaseOrdersBatch` 의 idempotent lookup 이 `existingBatch.purchaseOrders` 의 `status` 를 검사하지 않아 전량 취소된 batch 도 replay 매칭. localStorage 토큰 24h TTL.
+- **결정**:
+  1. 서버에서 매칭된 batch 의 PO 가 전량 CANCELLED 이면 replay 가 아니라 신규 생성 경로로 fall-through. 단 `PurchaseOrderBatch.idempotencyKey` 가 Prisma 스키마상 non-nullable + unique 이므로 null 갱신 불가 → **신규 토큰을 suffix `_r{timestamp}` 로 발급해 이번 호출만 새 batch 생성**. 기존 batch 행/PO 는 감사 추적용 보존.
+  2. 활성 PO 가 1건이라도 있으면 정상 replay (응답에서 CANCELLED 는 제외해 표시 정합 유지).
+  3. 클라이언트 보조 가드: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰을 일괄 폐기.
+- **PO 목록 정책 (C-1)**: CANCELLED 는 감사 추적용 보존하되 목록 기본은 숨김.
+  - `purchase-order-list.tsx`: STATUS_OPTIONS 에 "활성 (취소 제외)" / "전체 (취소 포함)" 분리, 기본 `statusFilter = "active"`.
+  - `purchase-order.schema.ts`: `excludeCancelled` 쿼리 파라미터 추가.
+  - `purchase-order.service.ts`: `status` 미지정 + `excludeCancelled=true` 이면 `where.status = { not: "CANCELLED" }`.
+- **회귀 방어**: 위저드 5건 생성 → 전량 취소 → 재진입 → 신규 발주 정상 생성 시나리오 수동 검증 완료.
 
 ---
 
