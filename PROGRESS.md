@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-26 (Phase 4-C 착수 + D30 예고 — 입고서 모델 1 RN ↔ N PO 품목)
+> 마지막 갱신: 2026-06-26 (Phase 4-C 완료 + Phase 4-C2 착수 예정)
 
 ---
 
@@ -127,12 +127,11 @@
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 - **다음 진행 항목**:
-  1. **Phase 4-C** (진행 중) — PO 상세 + 상태 전이 + 품목별 예상 입고일 (D28) + Step 5 D-N 배지
-  2. **Phase 4-C2** — Step 4 라인업 3종 뷰 (D29)
-  3. **Phase 4-D** — 수동 발주 페이지 (D19)
-  4. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
-  5. **Phase 4-F** — PO 목록 다축 뷰 (D21-A)
-  6. **Phase 4-E** — PO 권한 스코프 (D21-B)
+  1. **Phase 4-C2** (진행 예정) — Step 4 라인업 3종 뷰 (D29)
+  2. **Phase 4-D** — 수동 발주 페이지 (D19)
+  3. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
+  4. **Phase 4-F** — PO 목록 다축 뷰 (D21-A)
+  5. **Phase 4-E** — PO 권한 스코프 (D21-B)
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0
@@ -179,7 +178,7 @@
 | **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 — Step 3 단위환산 인라인 등록(✅ 완료) + Step 5 품목별 예상 입고일(⬜) + Step 4 라인업 뷰 백엔드(⬜) | 🟡 부분 | `07b7181` 등 |
 | **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건 + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + 정수 수량 강제 | ✅ | `c83c1e80`, `0ed1d8cf`, `d3ca6b2c`, `5b8edc7c`, `91967e3b` |
 | **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
-| **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | 🟡 진행 | - |
+| **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | ✅ | `{D28 커밋해시들}` |
 | **4-C2** | Step 4 라인업 3종 뷰 + `lineupBreakdownAction` (D29) | ⬜ | - |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
@@ -456,6 +455,14 @@ po-wizard.tsx (state machine + step orchestration)
   - `purchase-order.schema.ts`: `excludeCancelled` 쿼리 파라미터 추가.
   - `purchase-order.service.ts`: `status` 미지정 + `excludeCancelled=true` 이면 `where.status = { not: "CANCELLED" }`.
 - **회귀 방어**: 위저드 5건 생성 → 전량 취소 → 재진입 → 신규 발주 정상 생성 시나리오 수동 검증 완료.
+
+- **Phase 4-C / D28** (commits `{커밋해시들}`) — 품목별 예상 입고일 표시 정책 통일:
+  - `format-lead-time.ts` 유틸 3종 (`formatLeadTimeBadge`, `calculateExpectedReceiveDate`, `formatExpectedReceiveDate`) — Step 5 위저드와 상세 화면이 공유
+  - `POItemCandidate.supplierItem` 에 `leadTimeDays` 노출 (`build-po-items-from-mr.ts`)
+  - `po-wizard.tsx` `RESOLVE_UNMAPPED` 리듀서가 새로 매핑되는 행에도 `leadTimeDays` 전달 (회귀 1건 fix)
+  - Step 5 (`step-confirm-create.tsx`) 에 품목별 `D-N · YYYY-MM-DD` 리스트 추가 — 출고일 입력 전에는 안내 문구
+  - 상세 (`purchase-order-detail.tsx`) "예상 입고일" 셀을 `formatDate(ko-KR)` → `formatExpectedReceiveDate(YYYY-MM-DD)` 로 통일
+  - 정책 분리: Step 5 = D-N + 절대일자(미리보기), 상세 = 절대일자만(확정값), 헤더 = 표시 안 함 (D20 와 정합)
 
 #### D28. 품목별 예상 입고일 표시 정책 (2026-06-26, D20 보강)
 
