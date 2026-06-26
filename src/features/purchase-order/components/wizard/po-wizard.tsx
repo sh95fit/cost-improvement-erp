@@ -394,6 +394,7 @@ function reducer(state: WizardState, action: Action): WizardState {
         supplyUnitCode,           // 비교용 code
         supplyUnitQty: supplierItem.supplyUnitQty,
         currentPrice: supplierItem.currentPrice,
+        leadTimeDays: supplierItem.leadTimeDays,
       };
     
       // 이전 경고에서 "공급업체"/"매핑" 관련 제거 + D17 warnings 추가
