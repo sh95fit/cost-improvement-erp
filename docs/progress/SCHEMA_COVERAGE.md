@@ -45,7 +45,7 @@
 | 35 | Lineup | S6 | P5 | ⬜ |
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
 | 37 | AutoGenLog | S8 | P7 | ⬜ |
-| 38 | MaterialRequirement | S2 | P9 | ✅ schema·service·action·UI 완료 (Phase 9-A~9-C-Fix-R1 / 9-D-Sym에서 countSource 입력값 대칭화) |
+| 38 | MaterialRequirement | S2 | P9 / P4-C2-pre | 🔄 (lineupId 컬럼 추가 예정 — COST_LINEUP_ALIGNMENT.md GAP-1) |
 | 39 | PurchaseOrder | S3 | P1-4 / P1.5 / P4-B' | 🔄 (Phase 1.5 에서 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 + 위저드 액션 완료) |
 | 40 | PurchaseOrderItem | S3 | P1-4 / P4-B' | 🔄 (Phase 4-B' 배치 생성 서비스 + PriceHistory 적층 정책 적용) |
 | 41 | ReceivingNote | S3 | P5-8 | ⬜ |
