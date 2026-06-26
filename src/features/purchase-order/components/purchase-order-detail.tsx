@@ -18,6 +18,7 @@ import {
   getNextAllowedStatuses,
 } from "../schemas/purchase-order.schema";
 import type { getPurchaseOrderByIdAction } from "../actions/purchase-order.action";
+import { formatExpectedReceiveDate } from "../lib/format-lead-time";
 
 type ActionData = Extract<
   Awaited<ReturnType<typeof getPurchaseOrderByIdAction>>,
@@ -184,7 +185,11 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
                       {formatCurrency(Number(it.totalPrice))}
                     </TableCell>
                     <TableCell>
-                      {formatDate(it.itemExpectedReceiveDate)}
+                      {formatExpectedReceiveDate(
+                        it.itemExpectedReceiveDate
+                          ? new Date(it.itemExpectedReceiveDate)
+                          : null,
+                      )}
                     </TableCell>
                   </TableRow>
                 );

@@ -11,6 +11,11 @@ import { ExistingPONotice } from "./existing-po-notice";
 import { MODE_LABEL } from "./wizard-mode-selector";
 import { DeltaPreviewCard } from "./delta-preview-card";
 import type { PreviewDeltaPlanResult } from "@/features/purchase-order/actions/purchase-order.action";
+import {
+  calculateExpectedReceiveDate,
+  formatExpectedReceiveDate,
+  formatLeadTimeBadge,
+} from "@/features/purchase-order/lib/format-lead-time";
 
 interface Props {
   mealPlanGroupId: string;
@@ -177,8 +182,8 @@ export function StepConfirmCreate({
         <p className="mt-1 text-sm text-gray-600">
           주문일·출고일·메모를 입력하고 발주서를 일괄 생성합니다. 모든 PO는
           DRAFT 상태로 생성되며, 단가 적층은 DRAFT → SUBMITTED 전이 시점에
-          반영됩니다. 출고일이 발주서 단위 입고 기준일을 겸하며, 품목별 입고
-          예정일은 발주 상세 화면의 품목 테이블에서 확인할 수 있습니다.
+          반영됩니다. 출고일이 발주서 단위 입고 기준일을 겸하며, 품목별 예상
+          입고일은 아래 목록에서 확인할 수 있습니다.
         </p>
       </div>
 
@@ -303,6 +308,49 @@ export function StepConfirmCreate({
           </div>
         );
       })()}
+
+      {/* ★ D28: 품목별 예상 입고일 (D-N) — outboundDate 기준 클라이언트 계산 */}
+      {validMapped.length > 0 && (
+        <div className="rounded-md border border-gray-200 bg-white p-4 text-sm">
+          <div className="mb-2 font-medium text-gray-900">
+            품목별 예상 입고일 ({validMapped.length}건)
+          </div>
+          {!outboundDate ? (
+            <p className="text-xs text-gray-500">
+              출고일을 입력하면 품목별 D-N 배지가 표시됩니다
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {validMapped.map((r) => {
+                const lt = r.supplierItem?.leadTimeDays ?? null;
+                const eta = calculateExpectedReceiveDate(outboundDate, lt);
+                return (
+                  <li
+                    key={r.materialRequirementId}
+                    className="flex items-center justify-between py-1.5"
+                  >
+                    <span className="text-gray-800">
+                      {r.materialName}
+                      <span className="ml-2 text-xs text-gray-500">
+                        {r.supplierItem?.supplierName} ·{" "}
+                        {r.supplierItem?.productName}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2 text-xs">
+                      <span className="rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">
+                        {formatLeadTimeBadge(lt)}
+                      </span>
+                      <span className="text-gray-600">
+                        {formatExpectedReceiveDate(eta)}
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
         <p>

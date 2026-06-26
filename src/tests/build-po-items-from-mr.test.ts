@@ -50,6 +50,7 @@ function makeMaterial(
           supplierId: `sup_${id}`,
           productName: `${name} 1박스`,
           currentPrice: 50000,
+          leadTimeDays: 1,
           supplyUnitQty: 1,            // ★ D17: 1박스 = 1박스 단위. 환산은 UnitConversion 이 g/박스 직접 제공.
           supplier: { id: `sup_${id}`, name: `공급사_${id}` },
           // ★ D17 (UnitMaster.code 기반 매칭) — code 필드 추가

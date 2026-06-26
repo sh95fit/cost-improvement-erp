@@ -38,9 +38,10 @@ export interface POItemCandidate {
     supplierName: string;
     productName: string;
     supplyUnitName: string;
-    supplyUnitCode: string;       
+    supplyUnitCode: string;
     supplyUnitQty: number;
     currentPrice: number;
+    leadTimeDays: number;
   } | null;
   orderQuantity: number | null;
   orderQuantityRaw: number | null;
@@ -333,6 +334,7 @@ export async function buildPOItemsFromMR(
             supplyUnitCode: dsi.supplyUnit.code,
             supplyUnitQty: dsi.supplyUnitQty,
             currentPrice: dsi.currentPrice,
+            leadTimeDays: dsi.leadTimeDays,
           }
         : null,
       orderQuantity: calcNet.orderQuantity,
