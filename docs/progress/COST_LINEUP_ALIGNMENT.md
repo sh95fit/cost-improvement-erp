@@ -99,6 +99,7 @@ model Lineup {
   // ... 기존 필드 그대로
   materialRequirements MaterialRequirement[]
 }
+
 5.2 서비스 변경 (material-requirement.service.ts)
 AggregatedRequirement 인터페이스에 lineupId: string | null 추가
 makeKey 시그니처: (productionLineId, materialMasterId) → (productionLineId, lineupId, materialMasterId)
