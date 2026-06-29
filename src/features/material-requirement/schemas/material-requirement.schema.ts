@@ -44,6 +44,7 @@ export type GenerateMaterialRequirementsInput = z.infer<
 export const listMaterialRequirementsSchema = z.object({
   mealPlanGroupId: z.string().min(1, "식단 그룹 ID가 필요합니다"),
   productionLineId: z.string().optional(),
+  lineupId: z.string().optional(),
   materialMasterId: z.string().optional(),
   // Phase 9-A-1.5: 산출 흐름 필터 (미지정 시 양쪽 모두 반환)
   countSource: z.enum(MealCountSource).optional(),

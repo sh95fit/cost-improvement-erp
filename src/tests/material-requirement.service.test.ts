@@ -380,6 +380,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       {
         id: "mr-1",
         productionLineId: LINE_ID,
+        lineupId: LINEUP_ID,
         locationId: LOCATION_ID,
         materialMasterId: MAT_ID,
         requiredQty: 1000,
@@ -422,6 +423,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       {
         id: "mr-1",
         productionLineId: LINE_ID,
+        lineupId: LINEUP_ID,
         locationId: LOCATION_ID,
         materialMasterId: MAT_ID,
         requiredQty: 500, // 다름
@@ -466,6 +468,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       {
         id: "mr-1",
         productionLineId: LINE_ID,
+        lineupId: LINEUP_ID,
         locationId: LOCATION_ID,
         materialMasterId: MAT_ID,
         requiredQty: 500,
@@ -508,6 +511,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       {
         id: "mr-1",
         productionLineId: LINE_ID,
+        lineupId: LINEUP_ID,
         locationId: LOCATION_ID,
         materialMasterId: MAT_ID,
         requiredQty: 1000,
@@ -519,6 +523,7 @@ describe("generateMaterialRequirements — diff 동작", () => {
       {
         id: "mr-2",
         productionLineId: LINE_ID,
+        lineupId: LINEUP_ID,
         locationId: LOCATION_ID,
         materialMasterId: MAT_ID_2, // 이번 산출에 없음
         requiredQty: 500,

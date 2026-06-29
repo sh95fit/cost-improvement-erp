@@ -49,6 +49,7 @@ import {
 
 interface AggregatedRequirement {
   productionLineId: string;
+  lineupId: string | null;
   locationId: string;
   materialMasterId: string;
   requiredQty: number; // grams
@@ -124,7 +125,10 @@ export async function generateMaterialRequirements(
     });
     const existingMap = new Map<string, MaterialRequirement>();
     for (const row of existing) {
-      existingMap.set(makeKey(row.productionLineId, row.materialMasterId), row);
+      existingMap.set(
+        makeKey(row.productionLineId, row.lineupId, row.materialMasterId),
+        row,
+      );
     }
 
     // ---- Step 1-4. Diff 적용 ----
@@ -146,6 +150,7 @@ export async function generateMaterialRequirements(
             companyId: group.companyId,
             mealPlanGroupId,
             productionLineId: agg.productionLineId,
+            lineupId: agg.lineupId,
             locationId: agg.locationId,
             materialMasterId: agg.materialMasterId,
             requiredQty: agg.requiredQty,
@@ -279,6 +284,13 @@ const LIST_INCLUDE = {
       name: true,
     },
   },
+  lineup: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+    },
+  },
 } satisfies Prisma.MaterialRequirementInclude;
 
 export type MaterialRequirementListItem = Prisma.MaterialRequirementGetPayload<{
@@ -297,6 +309,7 @@ export async function listMaterialRequirements(
   const {
     mealPlanGroupId,
     productionLineId,
+    lineupId,
     materialMasterId,
     countSource,
     activeOnly,
@@ -308,6 +321,7 @@ export async function listMaterialRequirements(
     companyId,
     mealPlanGroupId,
     ...(productionLineId ? { productionLineId } : {}),
+    ...(lineupId ? { lineupId } : {}),
     ...(materialMasterId ? { materialMasterId } : {}),
     ...(countSource ? { countSource } : {}),
     ...(activeOnly ? { deletedAt: null } : {}),
@@ -319,6 +333,7 @@ export async function listMaterialRequirements(
       include: LIST_INCLUDE,
       orderBy: [
         { productionLine: { name: "asc" } },
+        { lineup: { name: "asc" } },
         { materialMaster: { name: "asc" } },
         { countSource: "asc" },
       ],
@@ -561,6 +576,7 @@ async function calculateRequirementsForGroup(
           recipeBom: repSlot.recipeBom,
           effectiveCount: ok.effectiveCount,
           productionLineId: repLineSlot.productionLineId,
+          lineupId: repLineSlot.mealPlan.lineupId,
           locationId,
           companyId,
           tx,
@@ -591,6 +607,7 @@ async function calculateRequirementsForGroup(
             recipeBom: repSlot.recipeBom,
             effectiveCount: qty,
             productionLineId: slot.productionLineId,
+            lineupId: slot.mealPlan.lineupId,
             locationId,
             companyId,
             tx,
@@ -674,19 +691,24 @@ function accumulate(
   map: Map<string, AggregatedRequirement>,
   next: AggregatedRequirement,
 ): void {
-  const key = makeKey(next.productionLineId, next.materialMasterId);
+  const key = makeKey(next.productionLineId, next.lineupId, next.materialMasterId);
   const prev = map.get(key);
   if (!prev) {
     map.set(key, { ...next });
   } else {
-    // 같은 (line, material)이면 locationId는 반드시 동일해야 함
+    // 같은 (line, lineup, material)이면 locationId는 반드시 동일해야 함
     // (locationId는 productionLine에 종속되므로)
     prev.requiredQty += next.requiredQty;
   }
 }
 
-function makeKey(productionLineId: string, materialMasterId: string): string {
-  return `${productionLineId}::${materialMasterId}`;
+function makeKey(
+  productionLineId: string,
+  lineupId: string | null,
+  materialMasterId: string,
+): string {
+  // null 라인업은 명시적으로 "__NULL__" 토큰으로 키화하여 충돌 방지
+  return `${productionLineId}::${lineupId ?? "__NULL__"}::${materialMasterId}`;
 }
 
 // ============================================================
@@ -714,11 +736,12 @@ async function expandBomAndAccumulate(args: {
   recipeBom: BomForExpand;
   effectiveCount: number;
   productionLineId: string;
+  lineupId: string | null;
   locationId: string;
   companyId: string;
   tx: Prisma.TransactionClient;
 }): Promise<void> {
-  const { required, recipeBom, effectiveCount, productionLineId, locationId, companyId, tx } = args;
+  const { required, recipeBom, effectiveCount, productionLineId, lineupId, locationId, companyId, tx } = args;
 
   for (const bomSlot of recipeBom.slots) {
     for (const item of bomSlot.items) {
@@ -736,6 +759,7 @@ async function expandBomAndAccumulate(args: {
         }
         accumulate(required, {
           productionLineId,
+          lineupId,
           locationId,
           materialMasterId: item.materialMasterId,
           requiredQty: slotWeightG * effectiveCount,
@@ -782,6 +806,7 @@ async function expandBomAndAccumulate(args: {
           );
           accumulate(required, {
             productionLineId,
+            lineupId,
             locationId,
             materialMasterId: bomItem.materialMasterId,
             requiredQty: itemQtyG * ratio * effectiveCount,
