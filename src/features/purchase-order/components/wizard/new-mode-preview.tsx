@@ -30,9 +30,11 @@ interface PreviewGroup {
 /**
  * ★ D25-2 (D-PREVIEW-PLACEMENT): NEW / REPLACE 모드에서 사용되는
  *    공급업체×공장×라인 단위 분할 미리보기.
+ *    D25-3 에서 po-wizard 의 사용처가 WizardPreviewPanel 경유로 교체됨.
+ *    D25-4 에서 레거시 StepSplitPreview 가 삭제되어 본 컴포넌트가 단일 SSOT.
  *
- *    기존 StepSplitPreview 를 흡수했으며 D25-3 에서 사용처가 교체된다.
- *    (StepSplitPreview 는 deprecated 예정)
+ * ★ Phase 4-C2 (UI): 다축 집계 뷰(GroupByTabs)를 하단에 부착.
+ *    PO 분할 결과(쓰기 경로)는 영향 없고 표시 축만 변환하는 읽기 전용 뷰.
  */
 export function NewModePreview({
   mapped,

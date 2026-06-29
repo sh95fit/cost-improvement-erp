@@ -12,8 +12,8 @@ import type { SupplierItemWithSupplier } from "@/features/supplier/actions/suppl
 import { StepMealPlanGroupSelect } from "./step-meal-plan-group-select";
 import { StepLoadSummary } from "./step-load-summary";
 import { StepMappingTable } from "./step-mapping-table";
-// ★ D25-3: StepSplitPreview → WizardPreviewPanel 로 교체 (모드별 분기)
-//    StepSplitPreview 는 D25-4 정리 단계에서 삭제 예정
+// ★ D25-3: WizardPreviewPanel 로 모드별 분기 (NEW/DELTA/REPLACE)
+// ★ D25-4: 레거시 StepSplitPreview 삭제 완료 (NewModePreview 가 흡수)
 import { WizardPreviewPanel } from "./wizard-preview-panel";
 import { StepConfirmCreate } from "./step-confirm-create";
 import { useWizardPersistence } from "./use-wizard-persistence";
