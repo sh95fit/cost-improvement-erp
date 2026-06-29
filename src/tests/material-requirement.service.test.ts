@@ -21,6 +21,7 @@ const MAT_ID_2 = "mat-2";
 const RECIPE_BOM_ID = "rb-1";
 const SLOT_ID = "cms-1";
 const LINEUP_ID = "lineup-1";
+const LINEUP_ID_2 = "lineup-2";
 
 // ★ Phase 9-C-Fix-R1-6: generateMaterialRequirements는 group.status 가드를 가진다.
 //    - ESTIMATED: IN_PROGRESS / COMPLETED 만 허용
@@ -210,6 +211,139 @@ describe("generateMaterialRequirements — 정상 산출", () => {
         countSource: "ESTIMATED",
       }),
     ).rejects.toThrow(MATERIAL_REQUIREMENT_ERRORS.GROUP_EMPTY);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// 6. generateMaterialRequirements — lineup 분리 (S3)
+// ────────────────────────────────────────────────────────────────
+// COST_LINEUP_ALIGNMENT.md (DC1 / DoD)
+//   - 동일 (line, material)이라도 lineupId가 다르면 별도 MR 행
+//   - 동일 (line, lineup, material)이면 한 행으로 합산
+//   - lineupId=null도 정상 처리
+// ════════════════════════════════════════════════════════════════
+describe("generateMaterialRequirements — lineup 분리", () => {
+  it("동일 (line, material)이라도 lineup이 다르면 별도 행으로 분리된다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(GROUP_RECORD);
+    // 두 lineup × 같은 companyMealSlotId 기준 mealCount 2건
+    mockPrisma.mealCount.findMany.mockResolvedValueOnce([
+      {
+        companyMealSlotId: SLOT_ID,
+        lineupId: LINEUP_ID,
+        estimatedCount: 100,
+        finalCount: 95,
+      },
+      {
+        companyMealSlotId: SLOT_ID,
+        lineupId: LINEUP_ID_2,
+        estimatedCount: 100,
+        finalCount: 95,
+      },
+    ]);
+    // 같은 productionLine + 같은 material, lineup만 다른 두 슬롯
+    mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([
+      makeContainerSlot({
+        id: "slot-A",
+        mealPlanId: "mp-A",
+        mealPlan: { companyMealSlotId: SLOT_ID, lineupId: LINEUP_ID },
+      }),
+      makeContainerSlot({
+        id: "slot-B",
+        mealPlanId: "mp-B",
+        mealPlan: { companyMealSlotId: SLOT_ID, lineupId: LINEUP_ID_2 },
+      }),
+    ]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
+    mockPrisma.materialRequirement.create
+      .mockResolvedValueOnce({ id: "mr-1", generationVersion: 1 })
+      .mockResolvedValueOnce({ id: "mr-2", generationVersion: 1 });
+
+    const result = await generateMaterialRequirements(COMPANY_ID, {
+      mealPlanGroupId: GROUP_ID,
+      countSource: "ESTIMATED",
+    });
+
+    // lineup별 1행씩 총 2행
+    expect(result.stats.inserted).toBe(2);
+    expect(result.stats.updated).toBe(0);
+    expect(result.stats.unchanged).toBe(0);
+
+    // create 두 번 호출되었고 lineupId가 서로 달라야 함
+    expect(mockPrisma.materialRequirement.create).toHaveBeenCalledTimes(2);
+    const calls = mockPrisma.materialRequirement.create.mock.calls;
+    const lineupIds = calls
+      .map((c) => (c[0] as { data: { lineupId: string | null } }).data.lineupId)
+      .sort();
+    expect(lineupIds).toEqual([LINEUP_ID, LINEUP_ID_2].sort());
+  });
+
+  it("동일 (line, lineup, material) 슬롯은 한 행으로 합산된다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(GROUP_RECORD);
+    mockPrisma.mealCount.findMany.mockResolvedValueOnce([MEAL_COUNT_BASIC]);
+    // 같은 lineup, 같은 라인, 같은 자재 → recipeId도 동일하므로
+    // 기존 정책(같은 recipeId 그룹은 FALLBACK 모드에서 BOM 1회만 전개) 적용:
+    // requiredQty = weightG(10) × mealCount(100) = 1000g
+    mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([
+      makeContainerSlot({ id: "slot-A" }),
+      makeContainerSlot({ id: "slot-B" }),
+    ]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
+    mockPrisma.materialRequirement.create.mockResolvedValueOnce({
+      id: "mr-1",
+      generationVersion: 1,
+    });
+
+    const result = await generateMaterialRequirements(COMPANY_ID, {
+      mealPlanGroupId: GROUP_ID,
+      countSource: "ESTIMATED",
+    });
+
+    expect(result.stats.inserted).toBe(1);
+    expect(mockPrisma.materialRequirement.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.materialRequirement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lineupId: LINEUP_ID,
+          requiredQty: 1000,
+        }),
+      }),
+    );
+  });
+
+  it("lineupId가 null인 슬롯도 정상적으로 한 행을 만든다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce(GROUP_RECORD);
+    mockPrisma.mealCount.findMany.mockResolvedValueOnce([
+      {
+        companyMealSlotId: SLOT_ID,
+        lineupId: null,
+        estimatedCount: 100,
+        finalCount: 95,
+      },
+    ]);
+    mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([
+      makeContainerSlot({
+        mealPlan: { companyMealSlotId: SLOT_ID, lineupId: null },
+      }),
+    ]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
+    mockPrisma.materialRequirement.create.mockResolvedValueOnce({
+      id: "mr-1",
+      generationVersion: 1,
+    });
+
+    const result = await generateMaterialRequirements(COMPANY_ID, {
+      mealPlanGroupId: GROUP_ID,
+      countSource: "ESTIMATED",
+    });
+
+    expect(result.stats.inserted).toBe(1);
+    expect(mockPrisma.materialRequirement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lineupId: null,
+        }),
+      }),
+    );
   });
 });
 
