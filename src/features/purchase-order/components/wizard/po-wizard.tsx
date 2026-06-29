@@ -877,6 +877,7 @@ export function POWizard() {
             deltaPreviewLoading={state.deltaPreviewLoading}
             deltaPreviewError={state.deltaPreviewError}
             basedOnPOIds={state.basedOnPOIds}
+            scopeLevel="COMPANY" /* TODO(Phase 4-E): pull from session.userScope */            
           />
         )}
 

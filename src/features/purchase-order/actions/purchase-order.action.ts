@@ -308,12 +308,25 @@ export async function loadPOWizardDataAction(
         locationId: true,
         requiredQty: true,
         unit: true,
+        // ★ Phase 4-C2 (UI): lineup 차원 전파 (DC5 다축 뷰용, 쓰기 경로 무영향)
+        lineupId: true,
+        lineup: { select: { name: true } },
       },
     });
 
     const result = await buildPOItemsFromMR({
       companyId: session.companyId,
-      materialRequirements: mrs,
+      // ★ Phase 4-C2 (UI): lineupId/lineupName 평탄화 후 전달
+      materialRequirements: mrs.map((mr) => ({
+        id: mr.id,
+        materialMasterId: mr.materialMasterId,
+        productionLineId: mr.productionLineId,
+        locationId: mr.locationId,
+        requiredQty: mr.requiredQty,
+        unit: mr.unit,
+        lineupId: mr.lineupId,
+        lineupName: mr.lineup?.name ?? null,
+      })),
     });
 
     return actionOk(result);

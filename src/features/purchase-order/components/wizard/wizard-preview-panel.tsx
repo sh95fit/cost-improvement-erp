@@ -15,6 +15,8 @@ interface Props {
   deltaPreviewError: string | null;
   /** REPLACE 모드에서만 사용됨 — 덮어쓸 기준 PO id 목록 */
   basedOnPOIds: string[];
+  /** ★ Phase 4-C2 (UI): 다축 뷰 기본 축 결정 — NewModePreview 로 전파 */
+  scopeLevel: "COMPANY" | "LOCATION" | "PRODUCTION_LINE";  
 }
 
 /**
@@ -35,6 +37,7 @@ export function WizardPreviewPanel({
   deltaPreviewLoading,
   deltaPreviewError,
   basedOnPOIds,
+  scopeLevel,
 }: Props) {
   // ───────────────────────────────────────────────
   // NEW 모드 — 분할 미리보기만
@@ -46,6 +49,7 @@ export function WizardPreviewPanel({
           mapped={mapped}
           mappedPartialStock={mappedPartialStock}
           hideHeader
+          scopeLevel={scopeLevel}
         />
       </div>
     );
@@ -87,10 +91,11 @@ export function WizardPreviewPanel({
         </p>
       </div>
       <NewModePreview
-        mapped={mapped}
-        mappedPartialStock={mappedPartialStock}
-        hideHeader
-      />
+          mapped={mapped}
+          mappedPartialStock={mappedPartialStock}
+          hideHeader
+          scopeLevel={scopeLevel}
+        />
     </div>
   );
 }

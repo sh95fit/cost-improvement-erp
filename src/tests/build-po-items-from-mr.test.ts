@@ -28,6 +28,8 @@ function makeMR(overrides: Partial<{
     locationId: LOCATION_ID,
     requiredQty: overrides.requiredQty ?? 19000,
     unit: 'g',
+    lineupId: null,        // ★ Phase 4-C2 (UI)
+    lineupName: null,      // ★ Phase 4-C2 (UI)    
   };
 }
 
@@ -294,8 +296,8 @@ describe('buildPOItemsFromMR', () => {
     await buildPOItemsFromMR({
       companyId: COMPANY_ID,
       materialRequirements: [
-        { id: 'mr_1', materialMasterId: 'mat_1', productionLineId: LINE_ID, locationId: LOCATION_ID, requiredQty: 1000, unit: 'g' },
-        { id: 'mr_2', materialMasterId: 'mat_2', productionLineId: LINE_ID, locationId: LOCATION_ID, requiredQty: 1000, unit: 'g' },
+        { id: 'mr_1', materialMasterId: 'mat_1', productionLineId: LINE_ID, locationId: LOCATION_ID, requiredQty: 1000, unit: 'g', lineupId: null, lineupName: null },
+        { id: 'mr_2', materialMasterId: 'mat_2', productionLineId: LINE_ID, locationId: LOCATION_ID, requiredQty: 1000, unit: 'g', lineupId: null, lineupName: null },
       ],
       inventoryAdapter: stubAdapter,
     });

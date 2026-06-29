@@ -25,6 +25,8 @@ export interface POItemCandidate {
   isMaterialActive: boolean;
   locationId: string;
   productionLineId: string;
+  lineupId: string | null;
+  lineupName: string | null;  
   requiredQtyG: number;
   stockQtyG: number;
   netRequiredG: number;
@@ -86,6 +88,8 @@ export interface BuildPOItemsInput {
     materialMasterId: string;
     productionLineId: string;
     locationId: string;
+    lineupId: string | null;
+    lineupName: string | null;    
     requiredQty: number;
     unit: string;
   }>;
@@ -258,6 +262,8 @@ export async function buildPOItemsFromMR(
         isMaterialActive: false,
         locationId: mr.locationId,
         productionLineId: mr.productionLineId,
+        lineupId: mr.lineupId,
+        lineupName: mr.lineupName,        
         requiredQtyG: mr.requiredQty,
         stockQtyG: 0,
         netRequiredG: mr.requiredQty,
@@ -318,6 +324,8 @@ export async function buildPOItemsFromMR(
       isMaterialActive: material.isActive,
       locationId: mr.locationId,
       productionLineId: mr.productionLineId,
+      lineupId: mr.lineupId,
+      lineupName: mr.lineupName,      
       requiredQtyG: mr.requiredQty,
       stockQtyG: stockG,
       netRequiredG: calcNet.netRequiredG,

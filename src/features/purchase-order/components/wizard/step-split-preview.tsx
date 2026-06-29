@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { POItemCandidate } from "@/features/purchase-order/lib/build-po-items-from-mr";
+import { GroupByTabs } from "./group-by-tabs";
 
 interface Props {
   mapped: POItemCandidate[];
@@ -10,6 +11,8 @@ interface Props {
    *    Step 5 합계(validMapped)와 일치시키기 위해 분할 미리보기에 포함한다.
    */
   mappedPartialStock: POItemCandidate[];
+  /** ★ Phase 4-C2 (UI): 권한 스코프별 기본 그룹핑 축 결정용 (DC5 다축 뷰) */
+  scopeLevel: "COMPANY" | "LOCATION" | "PRODUCTION_LINE";
 }
 
 interface PreviewGroup {
@@ -23,7 +26,7 @@ interface PreviewGroup {
   totalAmount: number;
 }
 
-export function StepSplitPreview({ mapped, mappedPartialStock }: Props) {
+export function StepSplitPreview({ mapped, mappedPartialStock, scopeLevel }: Props) {
   // ★ D25-1: SSOT — mapped + mappedPartialStock 통합
   const allRows = useMemo(
     () => [...mapped, ...mappedPartialStock],
@@ -167,6 +170,20 @@ export function StepSplitPreview({ mapped, mappedPartialStock }: Props) {
           ))}
         </div>
       )}
+      {/* ★ Phase 4-C2 (UI): 다축 집계 뷰 (DC5 읽기 전용, 쓰기 경로 무영향) */}
+      <section className="border-t border-gray-200 pt-6">
+        <div className="mb-3">
+          <h3 className="text-base font-semibold">다축 집계 뷰</h3>
+          <p className="mt-1 text-xs text-gray-600">
+            위 PO 분할 결과는 그대로 유지되며, 아래는 표시 축만 바꿔 볼 수 있는 읽기 전용 뷰입니다.
+            (Step 5에서 생성될 PO 개수와 묶음은 변하지 않습니다.)
+          </p>
+        </div>
+        <GroupByTabs
+          rows={[...mapped, ...mappedPartialStock]}
+          scopeLevel={scopeLevel}
+        />
+      </section>
     </div>
   );
 }
