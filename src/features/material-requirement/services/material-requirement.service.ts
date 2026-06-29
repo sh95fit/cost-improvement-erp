@@ -18,6 +18,11 @@ import {
   type ListMaterialRequirementsQuery,
 } from "../schemas/material-requirement.schema";
 
+import type {
+  LineupBreakdownInput,
+  LineupBreakdownResult,
+} from "../schemas/material-requirement-breakdown.schema";
+
 import {
   validateSlotQuantitiesForMealPlan,
   type RecipeGroupOk,
@@ -815,4 +820,91 @@ async function expandBomAndAccumulate(args: {
       }
     }
   }
+}
+
+// ============================================================
+// 4. getLineupBreakdown (DC5 / Phase 4-C2 D29)
+// ------------------------------------------------------------
+// 읽기 전용 집계: 라인업 × {자재} 묶음 반환.
+//   - PO 그룹핑/재고 쓰기 경로에 영향 없음 (PC2/DC4).
+//   - 활성(deletedAt=null) MR 행만 대상.
+//   - lineupId가 null인 행은 별도 "미분류" 그룹으로 묶임.
+//   - 정렬: lineup.name asc, 그 안에서 material.name asc.
+//   - suppliers/orders는 S5-A에서 채움. 현재 빈 배열.
+// ============================================================
+export async function getLineupBreakdown(
+  companyId: string,
+  input: LineupBreakdownInput,
+): Promise<LineupBreakdownResult> {
+  const { mealPlanGroupId, countSource } = input;
+
+  const rows = await prisma.materialRequirement.findMany({
+    where: {
+      companyId,
+      mealPlanGroupId,
+      countSource,
+      deletedAt: null,
+    },
+    include: {
+      materialMaster: {
+        select: { id: true, code: true, name: true },
+      },
+      lineup: {
+        select: { id: true, code: true, name: true },
+      },
+    },
+    orderBy: [
+      { lineup: { name: "asc" } },
+      { materialMaster: { name: "asc" } },
+    ],
+  });
+
+  // lineupId 기준 그룹화 (null은 "__UNCLASSIFIED__" 키)
+  const NULL_KEY = "__UNCLASSIFIED__";
+  const groupMap = new Map<
+    string,
+    {
+      lineupId: string | null;
+      lineupCode: string | null;
+      lineupName: string | null;
+      materials: Array<{
+        materialMasterId: string;
+        materialCode: string;
+        materialName: string;
+        requiredQty: number;
+        unit: "g";
+      }>;
+    }
+  >();
+
+  for (const row of rows) {
+    const key = row.lineupId ?? NULL_KEY;
+    let g = groupMap.get(key);
+    if (!g) {
+      g = {
+        lineupId: row.lineupId,
+        lineupCode: row.lineup?.code ?? null,
+        lineupName: row.lineup?.name ?? null,
+        materials: [],
+      };
+      groupMap.set(key, g);
+    }
+    g.materials.push({
+      materialMasterId: row.materialMasterId,
+      materialCode: row.materialMaster.code,
+      materialName: row.materialMaster.name,
+      requiredQty: row.requiredQty,
+      unit: "g",
+    });
+  }
+
+  return {
+    mealPlanGroupId,
+    countSource,
+    groups: Array.from(groupMap.values()).map((g) => ({
+      ...g,
+      suppliers: [],
+      orders: [],
+    })),
+  };
 }

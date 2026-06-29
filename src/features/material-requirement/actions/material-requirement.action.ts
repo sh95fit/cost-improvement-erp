@@ -14,6 +14,7 @@ import {
   getMaterialRequirementByIdSchema,
   MATERIAL_REQUIREMENT_ERRORS,
 } from "../schemas/material-requirement.schema";
+import { lineupBreakdownInputSchema } from "../schemas/material-requirement-breakdown.schema";
 import * as materialRequirementService from "../services/material-requirement.service";
 
 // UI에서 사용할 List 응답 타입 re-export
@@ -192,6 +193,38 @@ export async function getMaterialRequirementByIdAction(
     return handleActionError(
       error,
       "소요량 단건 조회에 실패했습니다",
+      MR_DOMAIN_ERRORS,
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 4. 라인업 Breakdown 조회 (READ 권한) — Phase 4-C2 D29 / DC5
+// ------------------------------------------------------------
+// 읽기 전용. PO/재고 쓰기 경로에 영향 없음 (PC2/DC4).
+// ══════════════════════════════════════════════════════════════
+export async function getLineupBreakdownAction(
+  rawInput: Record<string, unknown>,
+): Promise<
+  ActionResult<
+    Awaited<ReturnType<typeof materialRequirementService.getLineupBreakdown>>
+  >
+> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "materialRequirement", "READ");
+    const input = lineupBreakdownInputSchema.parse(rawInput);
+
+    const result = await materialRequirementService.getLineupBreakdown(
+      session.companyId,
+      input,
+    );
+
+    return actionOk(result);
+  } catch (error) {
+    return handleActionError(
+      error,
+      "라인업별 소요량 집계 조회에 실패했습니다",
       MR_DOMAIN_ERRORS,
     );
   }
