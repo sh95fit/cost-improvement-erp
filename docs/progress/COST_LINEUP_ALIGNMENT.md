@@ -134,7 +134,8 @@ DoD6. 기존 테스트 PASS + 신규 라인업 분리 케이스 PASS
 DoD7. PROGRESS.md 의 핵심 설계 결정 섹션에 PC1~PC5, DC1~DC5 반영
 8. 변경 이력
 2026-06-26: 초안 작성 (GAP-1 즉시 조정, GAP-2/3 사전 결정)
-Copy
+- 2026-06-29: GAP-1 종결 (S0~S6 완료). 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` 적용. `MaterialRequirement.lineupId` + 5컬럼 unique + `getLineupBreakdownAction` 백엔드 완성. UI(Step 4 라인업 3종 뷰)는 Phase 4-C2 (UI) 로 별도 진행. 커밋: `318d602` (S1), `cc086e25` (S2), `61e8da48` (S3), `b9d043c1` (S5), `9ea97f88` (S5-A). 누적 테스트 22/22 PASS.
+
 ---
 
 ## 📌 지금 S0 만 먼저 처리, 검토 후 S1 진행

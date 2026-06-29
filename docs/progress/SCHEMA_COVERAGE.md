@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-06-16 (Sprint 3 Phase 4-B' 백엔드 진행 중)
+> 마지막 갱신: 2026-06-29 (Phase 4-C2 pre — MaterialRequirement.lineupId 추가)
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -45,7 +45,7 @@
 | 35 | Lineup | S6 | P5 | ⬜ |
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
 | 37 | AutoGenLog | S8 | P7 | ⬜ |
-| 38 | MaterialRequirement | S2 | P9 / P4-C2-pre | 🔄 (lineupId 컬럼 추가 예정 — COST_LINEUP_ALIGNMENT.md GAP-1) |
+| 38 | MaterialRequirement | S2 / S3 | P9 / P4-C2-pre | ✅ (Phase 9-A~D + Phase 4-C2 pre 완료: lineupId 추가, 5컬럼 unique, getLineupBreakdown 액션. GAP-1 종결) |
 | 39 | PurchaseOrder | S3 | P1-4 / P1.5 / P4-B' | 🔄 (Phase 1.5 에서 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 + 위저드 액션 완료) |
 | 40 | PurchaseOrderItem | S3 | P1-4 / P4-B' | 🔄 (Phase 4-B' 배치 생성 서비스 + PriceHistory 적층 정책 적용) |
 | 41 | ReceivingNote | S3 | P5-8 | ⬜ |
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-06-29 **Phase 4-C2 pre (GAP-1 종결)**: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id`. 서비스 `makeKey` 3-arg 전환 및 `mealPlan.lineupId` BOM 전파. 신규 read-only 액션 `getLineupBreakdownAction` (라인업 × 자재/공급사/PO 3종 집계). 누적 테스트 +3 (22/22 PASS). 커밋 `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`. 근거: `docs/progress/COST_LINEUP_ALIGNMENT.md` (PC1~5 / DC1~5 / DoD1~7).
 - 2026-06-16 Phase 4-B'-5a: 위저드 server actions 3종 추가 (`getMealPlanGroupsForOrderAction`, `loadPOWizardDataAction`, `createPurchaseOrdersBatchAction`) + `loadPOWizardDataSchema`. 커밋 `cff165e4`. 모두 thin wrapper, 테스트 미추가.
 - 2026-06-16 **Sprint 3 Phase 4-B' 진행 중** (백엔드 4 단계 완료, 343 PASS / 0 fail)
 - Phase 1.5: PurchaseOrder.locationId NOT NULL, productionLineId nullable 추가 (마이그레이션 `20260615114719_sprint3_phase1_5_po_location_rollup`). 커밋 `58da2a1e`, `f1db9d25`.

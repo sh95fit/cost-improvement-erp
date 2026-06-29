@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-26 (Phase 4-C 완료 + Phase 4-C2 착수 예정)
+> 마지막 갱신: 2026-06-29 (Phase 4-C2 백엔드 완료 — GAP-1 / lineupBreakdownAction)
 
 ---
 
@@ -94,6 +94,12 @@
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 R1-b5 + D27 (위저드 UX 정합 + 멱등성 가드 + PO 목록 취소 정책)
 - **최근 완료**:
+  - **Phase 4-C2 pre / GAP-1** (commits `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`) — 원가 ↔ 라인업 차원 정합성:
+    - 스키마: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` (S1)
+    - 서비스: `AggregatedRequirement.lineupId` + `makeKey` 3-arg + BOM 전개 시 `mealPlan.lineupId` 전파 + INSERT 영속화 + list include/filter (S2). 테스트 +3 (S3, 22/22 PASS)
+    - 신규 read-only 액션 `getLineupBreakdownAction` (S5+S5-A) — 라인업 × {자재 / 공급사 / PO} 3종 집계. PO 역추적은 `PurchaseOrderItem.materialRequirementId`, CANCELLED PO 제외, 같은 PO 가 여러 라인업에 contributedAmount 로 분배
+    - 쓰기 경로(PO 그룹핑 키, 재고 차감) 무수정 (PC2/DC4 보존)
+    - 근거: `docs/progress/COST_LINEUP_ALIGNMENT.md` PC1~5 / DC1~5 / DoD1~7
   - R1-a (commit `5afb0113`) — 위저드 4분류 (mapped / partial / full / unmapped)
   - R1-a-fix-2 — `stockOffsetAmount` raw 기준 + `Math.round` 정수 안정화
   - **R1-b1** (commit `a32e255`) — 멱등성 키 (`PurchaseOrderBatch.idempotencyKey`) + Step 1·5 기존 PO 사전 안내 카드 (`ExistingPONotice`)
@@ -127,7 +133,7 @@
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 - **다음 진행 항목**:
-  1. **Phase 4-C2** (진행 예정) — Step 4 라인업 3종 뷰 (D29)
+  1. **Phase 4-C2 (UI)** — Step 4 라인업 3종 뷰 프런트 구현 (백엔드 완료, D29 UI 남음)
   2. **Phase 4-D** — 수동 발주 페이지 (D19)
   3. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
   4. **Phase 4-F** — PO 목록 다축 뷰 (D21-A)
@@ -179,7 +185,8 @@
 | **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건 + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + 정수 수량 강제 | ✅ | `c83c1e80`, `0ed1d8cf`, `d3ca6b2c`, `5b8edc7c`, `91967e3b` |
 | **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
 | **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | ✅ | `{D28 커밋해시들}` |
-| **4-C2** | Step 4 라인업 3종 뷰 + `lineupBreakdownAction` (D29) | ⬜ | - |
+| **4-C2 (pre)** | GAP-1 해소 (MR.lineupId) + `getLineupBreakdownAction` 백엔드 3종 집계 (D29 백엔드) | ✅ | `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88` |
+| **4-C2 (UI)** | Step 4 라인업 3종 뷰 UI (D29 프런트) | ⬜ | - |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
 | 4-F | PO 목록 다축 뷰 (출고일/공급사/라인업, D21-A) — D29와 일부 중첩, 통합 검토 | ⬜ | - |
