@@ -30,15 +30,36 @@ const breakdownMaterialRowSchema = z.object({
   unit: z.literal("g"),
 });
 
+// ── 라인업 × 공급사 집계 단건 (S5-A) ────────────────────────────
+// PO Item 의 unitPrice × quantity 합산 (MR 매칭된 PurchaseOrderItem 기준).
+// CANCELLED PO 제외. PO 가 없는 라인업은 빈 배열.
+const breakdownSupplierRowSchema = z.object({
+  supplierId: z.string(),
+  supplierCode: z.string(),
+  supplierName: z.string(),
+  orderCount: z.number().int().nonnegative(), // 해당 라인업에 기여한 PO 건수
+  totalAmount: z.number().nonnegative(),      // unitPrice × quantity 합계
+});
+
+// ── 라인업 × PO 집계 단건 (S5-A) ────────────────────────────────
+// PO 1건이 여러 라인업 수요를 합쳐 발주된 경우, 같은 PO id 가 여러 라인업
+// 그룹에 노출될 수 있다 (각 라인업이 기여한 amount 만 표시).
+const breakdownOrderRowSchema = z.object({
+  purchaseOrderId: z.string(),
+  orderNumber: z.string(),
+  supplierId: z.string(),
+  status: z.string(),               // POStatus
+  contributedAmount: z.number().nonnegative(), // 이 라인업이 기여한 unitPrice × quantity
+});
+
 // ── 라인업 단위 그룹 ────────────────────────────────────────────
 const lineupBreakdownGroupSchema = z.object({
   lineupId: z.string().nullable(),
   lineupCode: z.string().nullable(),
   lineupName: z.string().nullable(),
   materials: z.array(breakdownMaterialRowSchema),
-  // S5-A에서 채움. 현재는 항상 빈 배열.
-  suppliers: z.array(z.unknown()).default([]),
-  orders: z.array(z.unknown()).default([]),
+  suppliers: z.array(breakdownSupplierRowSchema),
+  orders: z.array(breakdownOrderRowSchema),
 });
 
 export const lineupBreakdownResultSchema = z.object({
@@ -49,6 +70,7 @@ export const lineupBreakdownResultSchema = z.object({
 
 export type LineupBreakdownResult = z.infer<typeof lineupBreakdownResultSchema>;
 export type LineupBreakdownGroup = z.infer<typeof lineupBreakdownGroupSchema>;
-export type LineupBreakdownMaterialRow = z.infer<
-  typeof breakdownMaterialRowSchema
+export type LineupBreakdownSupplierRow = z.infer<
+  typeof breakdownSupplierRowSchema
 >;
+export type LineupBreakdownOrderRow = z.infer<typeof breakdownOrderRowSchema>;

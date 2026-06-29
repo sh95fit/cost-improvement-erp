@@ -825,12 +825,13 @@ async function expandBomAndAccumulate(args: {
 // ============================================================
 // 4. getLineupBreakdown (DC5 / Phase 4-C2 D29)
 // ------------------------------------------------------------
-// 읽기 전용 집계: 라인업 × {자재} 묶음 반환.
+// 읽기 전용 집계: 라인업 × {자재 / 공급사 / PO} 3종 묶음 반환.
 //   - PO 그룹핑/재고 쓰기 경로에 영향 없음 (PC2/DC4).
 //   - 활성(deletedAt=null) MR 행만 대상.
 //   - lineupId가 null인 행은 별도 "미분류" 그룹으로 묶임.
-//   - 정렬: lineup.name asc, 그 안에서 material.name asc.
-//   - suppliers/orders는 S5-A에서 채움. 현재 빈 배열.
+//   - PO 역추적: PurchaseOrderItem.materialRequirementId → MR.lineupId
+//   - CANCELLED PO 는 집계에서 제외 (활성 발주만 표시).
+//   - 정렬: lineup.name asc, 자재/공급사/주문은 이름·금액 기준.
 // ============================================================
 export async function getLineupBreakdown(
   companyId: string,
@@ -838,7 +839,10 @@ export async function getLineupBreakdown(
 ): Promise<LineupBreakdownResult> {
   const { mealPlanGroupId, countSource } = input;
 
-  const rows = await prisma.materialRequirement.findMany({
+  // ──────────────────────────────────────────────────────────
+  // (1) MR 행 조회 + lineupId 기준 그룹화
+  // ──────────────────────────────────────────────────────────
+  const mrRows = await prisma.materialRequirement.findMany({
     where: {
       companyId,
       mealPlanGroupId,
@@ -846,12 +850,8 @@ export async function getLineupBreakdown(
       deletedAt: null,
     },
     include: {
-      materialMaster: {
-        select: { id: true, code: true, name: true },
-      },
-      lineup: {
-        select: { id: true, code: true, name: true },
-      },
+      materialMaster: { select: { id: true, code: true, name: true } },
+      lineup: { select: { id: true, code: true, name: true } },
     },
     orderBy: [
       { lineup: { name: "asc" } },
@@ -859,25 +859,46 @@ export async function getLineupBreakdown(
     ],
   });
 
-  // lineupId 기준 그룹화 (null은 "__UNCLASSIFIED__" 키)
   const NULL_KEY = "__UNCLASSIFIED__";
-  const groupMap = new Map<
-    string,
-    {
-      lineupId: string | null;
-      lineupCode: string | null;
-      lineupName: string | null;
-      materials: Array<{
-        materialMasterId: string;
-        materialCode: string;
-        materialName: string;
-        requiredQty: number;
-        unit: "g";
-      }>;
-    }
-  >();
 
-  for (const row of rows) {
+  interface InternalGroup {
+    lineupId: string | null;
+    lineupCode: string | null;
+    lineupName: string | null;
+    materials: Array<{
+      materialMasterId: string;
+      materialCode: string;
+      materialName: string;
+      requiredQty: number;
+      unit: "g";
+    }>;
+    suppliers: Map<
+      string,
+      {
+        supplierId: string;
+        supplierCode: string;
+        supplierName: string;
+        orderIds: Set<string>;
+        totalAmount: number;
+      }
+    >;
+    orders: Map<
+      string,
+      {
+        purchaseOrderId: string;
+        orderNumber: string;
+        supplierId: string;
+        status: string;
+        contributedAmount: number;
+      }
+    >;
+  }
+
+  const groupMap = new Map<string, InternalGroup>();
+  // MR id → 그룹 키 매핑 (PO 역추적에 사용)
+  const mrIdToGroupKey = new Map<string, string>();
+
+  for (const row of mrRows) {
     const key = row.lineupId ?? NULL_KEY;
     let g = groupMap.get(key);
     if (!g) {
@@ -886,6 +907,8 @@ export async function getLineupBreakdown(
         lineupCode: row.lineup?.code ?? null,
         lineupName: row.lineup?.name ?? null,
         materials: [],
+        suppliers: new Map(),
+        orders: new Map(),
       };
       groupMap.set(key, g);
     }
@@ -896,15 +919,108 @@ export async function getLineupBreakdown(
       requiredQty: row.requiredQty,
       unit: "g",
     });
+    mrIdToGroupKey.set(row.id, key);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // (2) PO Item 역추적: MR id → PurchaseOrderItem → 라인업 귀속
+  //     - mealPlanGroupId 가 같은 PO 만 대상 (불필요 데이터 제거)
+  //     - CANCELLED PO 제외
+  //     - materialRequirementId 가 위 MR id 집합에 속하는 item 만 사용
+  // ──────────────────────────────────────────────────────────
+  const mrIds = Array.from(mrIdToGroupKey.keys());
+
+  if (mrIds.length > 0) {
+    const poItems = await prisma.purchaseOrderItem.findMany({
+      where: {
+        materialRequirementId: { in: mrIds },
+        purchaseOrder: {
+          companyId,
+          mealPlanGroupId,
+          status: { not: "CANCELLED" },
+        },
+      },
+      select: {
+        materialRequirementId: true,
+        quantity: true,
+        unitPrice: true,
+        purchaseOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            supplierId: true,
+            supplier: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
+    });
+
+    for (const item of poItems) {
+      if (!item.materialRequirementId) continue; // 타입 안전
+      const groupKey = mrIdToGroupKey.get(item.materialRequirementId);
+      if (!groupKey) continue;
+      const g = groupMap.get(groupKey);
+      if (!g) continue;
+
+      const amount = item.quantity * item.unitPrice;
+      const po = item.purchaseOrder;
+      const sup = po.supplier;
+
+      // suppliers 집계
+      let sRow = g.suppliers.get(sup.id);
+      if (!sRow) {
+        sRow = {
+          supplierId: sup.id,
+          supplierCode: sup.code,
+          supplierName: sup.name,
+          orderIds: new Set(),
+          totalAmount: 0,
+        };
+        g.suppliers.set(sup.id, sRow);
+      }
+      sRow.orderIds.add(po.id);
+      sRow.totalAmount += amount;
+
+      // orders 집계 (같은 라인업 안에서 같은 PO 가 여러 item 기여 가능)
+      let oRow = g.orders.get(po.id);
+      if (!oRow) {
+        oRow = {
+          purchaseOrderId: po.id,
+          orderNumber: po.orderNumber,
+          supplierId: po.supplierId,
+          status: po.status,
+          contributedAmount: 0,
+        };
+        g.orders.set(po.id, oRow);
+      }
+      oRow.contributedAmount += amount;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // (3) Map → 배열 변환 + 정렬
+  // ──────────────────────────────────────────────────────────
   return {
     mealPlanGroupId,
     countSource,
     groups: Array.from(groupMap.values()).map((g) => ({
-      ...g,
-      suppliers: [],
-      orders: [],
+      lineupId: g.lineupId,
+      lineupCode: g.lineupCode,
+      lineupName: g.lineupName,
+      materials: g.materials, // 이미 orderBy 로 정렬됨
+      suppliers: Array.from(g.suppliers.values())
+        .map((s) => ({
+          supplierId: s.supplierId,
+          supplierCode: s.supplierCode,
+          supplierName: s.supplierName,
+          orderCount: s.orderIds.size,
+          totalAmount: s.totalAmount,
+        }))
+        .sort((a, b) => a.supplierName.localeCompare(b.supplierName, "ko")),
+      orders: Array.from(g.orders.values()).sort((a, b) =>
+        a.orderNumber.localeCompare(b.orderNumber),
+      ),
     })),
   };
 }
