@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-06-29 (Phase 4-C2 pre — MaterialRequirement.lineupId 추가)
+> 마지막 갱신: 2026-06-29 (Phase 4-C2 UI 완료 — Step 4 다축 집계 뷰)
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-06-29 **Phase 4-C2 UI 완료 + D25-4 정리**: Step 4 라인업 다축 집계 뷰 (`GroupByTabs`) — 4축 탭(공장/제조라인/공급업체/라인업) + `scopeLevel` prop 체인 + 라인업/기준량(g) 컬럼. `POItemCandidate.lineupId`/`lineupName` 전파, `loadPOWizardDataAction` 에서 MR.lineup include. 쓰기 경로 무수정 (PC2/DC4 보존). D25-4: 레거시 `StepSplitPreview` 삭제 → `NewModePreview` 단일 SSOT. 커밋 `bf103b1a`, `{Stage1_SHA}`. 누적 22/22 PASS. 모델 #38 상태는 변동 없음 (✅ 유지).
 - 2026-06-29 **Phase 4-C2 pre (GAP-1 종결)**: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id`. 서비스 `makeKey` 3-arg 전환 및 `mealPlan.lineupId` BOM 전파. 신규 read-only 액션 `getLineupBreakdownAction` (라인업 × 자재/공급사/PO 3종 집계). 누적 테스트 +3 (22/22 PASS). 커밋 `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`. 근거: `docs/progress/COST_LINEUP_ALIGNMENT.md` (PC1~5 / DC1~5 / DoD1~7).
 - 2026-06-16 Phase 4-B'-5a: 위저드 server actions 3종 추가 (`getMealPlanGroupsForOrderAction`, `loadPOWizardDataAction`, `createPurchaseOrdersBatchAction`) + `loadPOWizardDataSchema`. 커밋 `cff165e4`. 모두 thin wrapper, 테스트 미추가.
 - 2026-06-16 **Sprint 3 Phase 4-B' 진행 중** (백엔드 4 단계 완료, 343 PASS / 0 fail)

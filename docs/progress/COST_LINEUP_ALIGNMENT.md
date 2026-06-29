@@ -135,14 +135,6 @@ DoD7. PROGRESS.md 의 핵심 설계 결정 섹션에 PC1~PC5, DC1~DC5 반영
 8. 변경 이력
 2026-06-26: 초안 작성 (GAP-1 즉시 조정, GAP-2/3 사전 결정)
 - 2026-06-29: GAP-1 종결 (S0~S6 완료). 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` 적용. `MaterialRequirement.lineupId` + 5컬럼 unique + `getLineupBreakdownAction` 백엔드 완성. UI(Step 4 라인업 3종 뷰)는 Phase 4-C2 (UI) 로 별도 진행. 커밋: `318d602` (S1), `cc086e25` (S2), `61e8da48` (S3), `b9d043c1` (S5), `9ea97f88` (S5-A). 누적 테스트 22/22 PASS.
+- 2026-06-29: **Phase 4-C2 (UI) 종결** — Step 4 다축 집계 뷰(`GroupByTabs`) 구현으로 DC5(읽기 전용 라인업 × {자재/공급사/PO} 뷰)가 위저드 UI 까지 도달. `POItemCandidate.lineupId`/`lineupName` 전파, `loadPOWizardDataAction` 에서 MR.lineup 포함, `scopeLevel` prop 체인(현재 임시 `"COMPANY"` 하드코딩 — Phase 4-E 진입 시 세션 userScope 와 결선). 쓰기 경로 무수정 — PC2/DC4 보존 재확인 (DoD4). 부가: 레거시 `StepSplitPreview` 삭제(D25-4). 커밋 `bf103b1a` (UI), `{Stage1_SHA}` (D25-4 정리).
 
 ---
-
-## 📌 지금 S0 만 먼저 처리, 검토 후 S1 진행
-
-위 문서를 그대로 **`docs/progress/COST_LINEUP_ALIGNMENT.md`** 로 커밋하시고, **PROGRESS.md 의 "핵심 설계 결정" 섹션 끝**에 다음 한 줄을 추가하시면 됩니다:
-
-
-- 원가-라인업 차원 정합성: docs/progress/COST_LINEUP_ALIGNMENT.md
-  (PC1-5 / DC1-5 / GAP-1 즉시 조정, GAP-2/3 Sprint 4/5 진입 시)
-

@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-29 (Phase 4-C2 백엔드 완료 — GAP-1 / lineupBreakdownAction)
+> 마지막 갱신: 2026-06-29 (Phase 4-C2 UI 완료 — Step 4 다축 집계 뷰 + D25-4 정리)
 
 ---
 
@@ -92,8 +92,16 @@
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 R1-b5 + D27 (위저드 UX 정합 + 멱등성 가드 + PO 목록 취소 정책)
+- **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
+  - **Phase 4-C2 (UI)** (commit `bf103b1a`) — Step 4 라인업 다축 집계 뷰 (D29 프런트):
+    - `POItemCandidate` 에 `lineupId` / `lineupName` 전파 (`build-po-items-from-mr.ts`)
+    - `loadPOWizardDataAction`: MR select 에 `lineupId` + `lineup.name` 포함 후 평탄화
+    - 신규 `GroupByTabs` 컴포넌트 (4축 탭: 공장 / 제조라인 / 공급업체 / 라인업) — `scopeLevel` 별 기본 축 차등
+    - `NewModePreview` 에 라인업 · 기준량(g) 컬럼 추가 + 다축 집계 뷰 섹션 부착
+    - `WizardPreviewPanel` 에 `scopeLevel` prop 전파, `po-wizard.tsx` 임시 `scopeLevel="COMPANY"` (TODO: 세션 userScope 연결)
+    - 쓰기 경로 무수정 (PC2/DC4 보존), 읽기 전용 뷰만 추가 (DC5)
+  - **D25-4** (commit `{Stage1_SHA}`) — 레거시 `StepSplitPreview` 정리: D25-3 에서 `WizardPreviewPanel` 경유로 사용처가 모두 교체된 이후 deprecated 상태이던 `step-split-preview.tsx` 삭제. `NewModePreview` 가 단일 SSOT. `po-wizard.tsx` / `new-mode-preview.tsx` 의 D25-3/D25-4 주석 갱신.
   - **Phase 4-C2 pre / GAP-1** (commits `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`) — 원가 ↔ 라인업 차원 정합성:
     - 스키마: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` (S1)
     - 서비스: `AggregatedRequirement.lineupId` + `makeKey` 3-arg + BOM 전개 시 `mealPlan.lineupId` 전파 + INSERT 영속화 + list include/filter (S2). 테스트 +3 (S3, 22/22 PASS)
@@ -133,11 +141,10 @@
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 - **다음 진행 항목**:
-  1. **Phase 4-C2 (UI)** — Step 4 라인업 3종 뷰 프런트 구현 (백엔드 완료, D29 UI 남음)
+  1. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
   2. **Phase 4-D** — 수동 발주 페이지 (D19)
-  3. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
-  4. **Phase 4-F** — PO 목록 다축 뷰 (D21-A)
-  5. **Phase 4-E** — PO 권한 스코프 (D21-B)
+  3. **Phase 4-F** — PO 목록 다축 뷰 (D21-A) — 4-C2 UI 의 `GroupByTabs` 재사용 검토
+  4. **Phase 4-E** — PO 권한 스코프 (D21-B) — `scopeLevel` 하드코딩 제거 진입점
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0
@@ -186,7 +193,8 @@
 | **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
 | **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | ✅ | `{D28 커밋해시들}` |
 | **4-C2 (pre)** | GAP-1 해소 (MR.lineupId) + `getLineupBreakdownAction` 백엔드 3종 집계 (D29 백엔드) | ✅ | `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88` |
-| **4-C2 (UI)** | Step 4 라인업 3종 뷰 UI (D29 프런트) | ⬜ | - |
+| **4-C2 (UI)** | Step 4 라인업 다축 집계 뷰 UI (D29 프런트) — `GroupByTabs` 4축 탭 + 라인업/기준량(g) 컬럼 + `scopeLevel` prop 체인 | ✅ | `bf103b1a` |
+| **D25-4** | 레거시 `StepSplitPreview` 삭제 — D25-3 에서 사용처 교체 완료 후 정리. `NewModePreview` 단일 SSOT 확정 | ✅ | `{Stage1_SHA}` |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
 | 4-F | PO 목록 다축 뷰 (출고일/공급사/라인업, D21-A) — D29와 일부 중첩, 통합 검토 | ⬜ | - |
