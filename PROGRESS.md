@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-29 (Phase 4-C2 UI 완료 — Step 4 다축 집계 뷰 + D25-4 정리)
+> 마지막 갱신: 2026-06-30 (PO 라이프사이클 재정의 — POStatus 라벨 정합화 + SUBMITTED→RECEIVED 직접 전이 + RECEIVED 트리거를 사용자 명시 액션으로 분리)
 
 ---
 
@@ -94,6 +94,14 @@
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
+- **PO 라이프사이클 재정의** (commit `{이번_커밋_SHA}`) — 발주서 도메인 명확화:
+  - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
+  - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
+  - **전이 매트릭스 보강**: `SUBMITTED → RECEIVED` 직접 전이 허용. APPROVED 단계는 결재 도입 전까지 우회 가능. 결재 도입 시 매트릭스 좁히면 됨.
+  - **RECEIVED 자동 전이 폐기**: 누적 수량 도달 기반 자동 트리거 폐기. **입고 확정은 사용자 명시 액션**으로만 발생. 미달/초과/정확 일치 모든 케이스를 운영자가 판단. 안정성 우선.
+  - **책임 분리**: ReceivingNoteService.confirm 은 InventoryLot/Transaction 생성만 담당하고 PO 상태에는 손대지 않음. PO 전이는 별도 `markPurchaseOrderAsReceivedAction` (D30에서 신설).
+  - **하드코딩 라벨 정합화**: 7개 파일(existing-po-notice.tsx, wizard-mode-selector.tsx, step-confirm-create.tsx, delta-preview-card.tsx, wizard-preview-panel.tsx, purchase-order.action.ts, purchase-order.schema.ts) 안내문·에러 메시지 정합화.
+  - **신규 문서**: `docs/progress/PO_LIFECYCLE.md` — 5단계 정의, 전이 매트릭스, APPROVED 보존 정책, RECEIVED 트리거 결정 기록.
   - **Phase 4-C2 (UI)** (commit `bf103b1a`) — Step 4 라인업 다축 집계 뷰 (D29 프런트):
     - `POItemCandidate` 에 `lineupId` / `lineupName` 전파 (`build-po-items-from-mr.ts`)
     - `loadPOWizardDataAction`: MR select 에 `lineupId` + `lineup.name` 포함 후 평탄화
@@ -140,11 +148,33 @@
     - 서버: `createPurchaseOrdersBatch` 의 idempotent replay 가 batch 내 PO `status` 미검사로, 전량 CANCELLED 인 batch 도 replay 매칭되던 버그 수정. 매칭 시 활성 PO 만 응답에 포함, 전량 취소면 신규 토큰(suffix `_r{timestamp}`) 발급 후 신규 batch 생성. (`idempotencyKey`는 Prisma 스키마상 non-nullable 이므로 null 갱신 대신 신규 토큰 전략 채택)
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
-- **다음 진행 항목**:
-  1. **D30·D31 확정** (Phase 5 착수 전) — 입고서 모델 + 부분 입고 UX
-  2. **Phase 4-D** — 수동 발주 페이지 (D19)
-  3. **Phase 4-F** — PO 목록 다축 뷰 (D21-A) — 4-C2 UI 의 `GroupByTabs` 재사용 검토
-  4. **Phase 4-E** — PO 권한 스코프 (D21-B) — `scopeLevel` 하드코딩 제거 진입점
+## 다음 진행 항목 (확정 순서)
+  1. **Phase 4-F-1** — 발주 일괄 상태 전이 (목록 페이지 체크박스 + 액션바). 대상 액션: "선택 발주 확정"(DRAFT→SUBMITTED), "선택 입고 완료"(SUBMITTED→RECEIVED), "선택 취소". 결재 미도입 동안 APPROVED 관련 액션 미노출.
+  2. **Phase 4-G** — 자재 소요량 페이지 재정의 (대시보드화):
+    - G-1 식단 IN_PROGRESS 전환 hook 에 MR 자동 산출 동기 호출.
+    - G-2 발주 위저드 진입 조건은 기존 그대로(`IN_PROGRESS / COMPLETED`). G-1 정상 동작 시 MR 항상 존재.
+    - G-3 자재 소요량 페이지의 상태 변경 버튼 일체 제거 → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 집계 카드, unmapped/이상치 알림.
+    - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만.
+  3. **D30 — 입고서 (ReceivingNote)**:
+    - 마이그레이션 1건: `ReceivingNoteItem.overReceivedQty / overReceivedReason`.
+    - `ReceivingNoteService.create / confirm / createCorrection` + actions + zod.
+    - `confirm` 내부: InventoryLot 생성 + InventoryTransaction(PURCHASE) 적층. **PO 상태 무변경**(★ A-3 결정).
+    - 신규 `markPurchaseOrderAsReceivedAction` (PO SUBMITTED→RECEIVED 단건 전이). UI 진입점 3개.
+    - 입고 UI 3종: 입고 대기 PO 목록, 부분 입고 입력 폼, 입고서 상세(입고 완료 처리 버튼 포함).
+    - 모든 신규 server action 에 `assertScope` 강제.
+  4. **Phase 4-D** — 수동 발주 UI (위저드 우회 단건 발주).
+  5. **Phase 4-F-2** — 발주 엑셀 내보내기/일괄 export.
+  6. **Phase 4-E** — scopeLevel 동적화 (현재 위저드 "COMPANY" 하드코딩 해제).
+  7. **Sprint 4 — 사용(출고) + 재고**:
+    - D32 가용재고 조회 + FIFO 출고 엔진.
+    - D35 ConsumptionItem(PER_MEAL_COUNT/FIXED_QUANTITY) + MealCount 트리거 + ConsumptionLotDetail.
+    - D33 InventoryReservation 자동 생성/해제 + MR.stockQtyG 정합.
+    - D34 InventoryTransfer Lot 분할/원가 승계.
+  8. **Sprint 5 — 원가 정산**:
+    - D36 월말 원가(소비 기반 vs 재고 차분).
+    - D37 ESTIMATED/ORDER_BASED/ACTUAL 3중 정합성 리포트.
+    - D38 라인업·지점·라인 원가 분해 대시보드.
+  9. **Phase A (병행 트랙)** — 권한 매트릭스 정합화 + 초대(Invitation) UI + 감사 로그.
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0

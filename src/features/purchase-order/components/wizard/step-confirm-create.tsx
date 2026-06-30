@@ -203,7 +203,7 @@ export function StepConfirmCreate({
         </span>
         {mode === "REPLACE" && (
           <span className="text-xs text-red-700">
-            ⚠ 기존 작성중·발주등록 PO {basedOnPOIds.length}건이 모두 취소되고 새 발주서로 대체됩니다
+            ⚠ 기존 작성중·발주 확정 PO {basedOnPOIds.length}건이 모두 취소되고 새 발주서로 대체됩니다
           </span>
         )}
         {basedOnPOIds.length > 0 && (

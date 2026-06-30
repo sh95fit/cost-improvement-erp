@@ -53,18 +53,18 @@ export function WizardModeSelector({
       value: "DELTA",
       label: "차분 발주",
       description: deltaEnabled
-        ? `기존 작성중·발주등록 PO와 비교해 변경된 수량만큼 자동 갱신하고 변경 이력을 적층합니다. (대상 ${draftCount + submittedCount}건)`
-        : "변경 가능한 작성중·발주등록 PO가 없어 사용할 수 없습니다.",
+        ? `기존 작성중·발주 확정 PO와 비교해 변경된 수량만큼 자동 갱신하고 변경이력을 적층합니다. (대상 ${draftCount + submittedCount}건)`
+        : "변경 가능한 작성중·발주 확정 PO가 없어 사용할 수 없습니다.",
       enabled: deltaEnabled,
     },
     {
       value: "REPLACE",
       label: "덮어쓰기 발주",
       description: replaceEnabled
-        ? `기존 작성중·발주등록 PO를 모두 취소하고 새 발주서로 대체합니다. (대상 ${draftCount + submittedCount}건)`
+        ? `기존 작성중·발주 확정 PO를 모두 취소하고 새 발주서로 대체합니다. (대상 ${draftCount + submittedCount}건)`
         : lockedCount > 0
-          ? "발주확정 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
-          : "작성중·발주등록 PO가 없어 사용할 수 없습니다.",
+          ? "결재 승인 이상 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
+          : "작성중·발주 확정 PO가 없어 사용할 수 없습니다.",
       enabled: replaceEnabled,
     },
   ];

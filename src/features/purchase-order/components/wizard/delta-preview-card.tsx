@@ -95,7 +95,7 @@ export function DeltaPreviewCard({ preview, isLoading, error, context }: Props) 
       {/* ★ R1-b5-3: 본문 4개 블록을 collapsed 로 감싸기. blocked 경고는 안전상 항상 노출. */}
       {blocked.hasApprovedOrLocked && (
         <div className="border-b border-amber-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
-          ⚠ 발주확정(APPROVED) 이상 상태의 PO {blocked.lockedPOIds.length}건이
+          ⚠ 결재 승인 이상 상태의 PO {blocked.lockedPOIds.length}건이
           포함되어 있어 실행이 차단됩니다. 부족분은 신규 발주로, 오배송·과다는
           재고 실사로 처리하세요.
         </div>

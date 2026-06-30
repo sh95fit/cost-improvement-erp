@@ -7,8 +7,8 @@ import { POStatus, ItemType } from '@prisma/client'
 // ============================================================
 export const PO_STATUS_LABELS: Record<POStatus, string> = {
   DRAFT: '작성중',
-  SUBMITTED: '발주등록',
-  APPROVED: '발주확정',
+  SUBMITTED: '발주확정',
+  APPROVED: '결재승인',
   RECEIVED: '입고완료',
   CANCELLED: '취소',
 }
@@ -31,7 +31,9 @@ export const PO_STATUS_BADGE_COLOR: Record<POStatus, string> = {
 //   - RECEIVED, CANCELLED: 잠금 (전이 불가)
 export const PO_STATUS_TRANSITIONS: Record<POStatus, POStatus[]> = {
   DRAFT: ['SUBMITTED', 'CANCELLED'],
-  SUBMITTED: ['APPROVED', 'DRAFT', 'CANCELLED'],
+  // SUBMITTED → RECEIVED 는 결재 미도입 운영을 위해 직접 허용 (D30 입고서 자동 전이용).
+  // 결재 도입 시 RECEIVED 를 제거하고 APPROVED 단계를 강제할 수 있음.
+  SUBMITTED: ['APPROVED', 'DRAFT', 'CANCELLED', 'RECEIVED'],
   APPROVED: ['RECEIVED', 'CANCELLED'],
   RECEIVED: [],
   CANCELLED: [],

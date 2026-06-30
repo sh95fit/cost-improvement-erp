@@ -87,7 +87,7 @@ export function WizardPreviewPanel({
         <p className="mt-1 text-red-800">
           기준 PO <strong>{basedOnPOIds.length}건</strong>이{" "}
           <strong>일괄 취소</strong>되고, 아래 내용으로 새 발주서가 생성됩니다.
-          기준 PO 중 발주확정(APPROVED) 이상 상태가 포함되면 실행이 차단됩니다.
+          기준 PO 중 결재 승인 이상 상태가 포함되면 실행이 차단됩니다.
         </p>
       </div>
       <NewModePreview

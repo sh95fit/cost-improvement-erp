@@ -12,9 +12,9 @@ import type { POStatus } from "@prisma/client";
 
 const STATUS_LABEL: Record<POStatus, string> = {
   DRAFT: "작성중",
-  SUBMITTED: "발주등록",
-  APPROVED: "발주확정",
-  RECEIVED: "입고완료",
+  SUBMITTED: '발주확정',
+  APPROVED: '결재승인',
+  RECEIVED: '입고완료',
   CANCELLED: "취소",
 };
 
@@ -96,14 +96,14 @@ export function ExistingPONotice({ mealPlanGroupId, context, onLoaded }: Props) 
               ).length;
               const parts: string[] = [];
               if (draft > 0) parts.push(`작성중 ${draft}건`);
-              if (submitted > 0) parts.push(`발주등록 ${submitted}건`);
-              if (locked > 0) parts.push(`발주확정·입고완료 ${locked}건 (변경 불가)`);
+              if (submitted > 0) parts.push(`발주 확정 ${submitted}건`);
+              if (locked > 0) parts.push(`결재 승인·입고 완료 ${locked}건 (변경 불가)`);
               return `상태별: ${parts.join(" · ")}`;
             })()}
           </p>
           <p className="mt-1 text-xs text-amber-800">
-            작성중·발주등록 PO는 차분 발주(DELTA)로 수정 가능, 작성중은 덮어쓰기(REPLACE)도
-            가능합니다. 발주확정 이상은 변경 불가 — 부족분은 신규 발주로, 오배송·과다는
+            작성중·발주 확정 PO는 차분 발주(DELTA)로 수정 가능, 작성중은 덮어쓰기(REPLACE)도
+            가능합니다. 결재 승인 이상은 변경 불가 — 부족분은 신규 발주로, 오배송·과다는
             재고 실사로 처리하세요.
           </p>
 
