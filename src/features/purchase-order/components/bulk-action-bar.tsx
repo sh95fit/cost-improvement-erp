@@ -39,9 +39,6 @@ export function BulkActionBar({ selectedRows, onCompleted, onClearSelection }: P
   const canBulkSubmit = selectedRows.every(
     (r) => r.status === "SUBMITTED" || canTransitionPOStatus(r.status, "SUBMITTED"),
   );
-  const canBulkReceive = selectedRows.every(
-    (r) => r.status === "RECEIVED" || canTransitionPOStatus(r.status, "RECEIVED"),
-  );
   const canBulkCancel = selectedRows.every(
     (r) => r.status === "CANCELLED" || canTransitionPOStatus(r.status, "CANCELLED"),
   );
@@ -93,14 +90,6 @@ export function BulkActionBar({ selectedRows, onCompleted, onClearSelection }: P
             onClick={() => run("SUBMITTED")}
           >
             선택 발주 확정
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!canBulkReceive || busy}
-            onClick={() => run("RECEIVED")}
-          >
-            선택 입고 완료
           </Button>
           <Button
             size="sm"

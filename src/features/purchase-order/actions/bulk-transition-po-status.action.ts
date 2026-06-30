@@ -22,7 +22,10 @@ import * as purchaseOrderService from "../services/purchase-order.service";
 
 const bulkTransitionInputSchema = z.object({
   ids: z.array(z.string().min(1)).min(1, "1건 이상 선택하세요").max(200, "한 번에 최대 200건까지 처리할 수 있습니다"),
-  toStatus: z.nativeEnum(POStatus),
+  // Phase 4-F-1 범위: 일괄 액션 허용 대상은 SUBMITTED(발주 확정) / CANCELLED(취소) 만.
+  // RECEIVED 는 입고서 확정 시 단일 트랜잭션 내 자동 전이로만 도달 (P5 재정정 2026-06-30).
+  // APPROVED 는 결재 도입 전까지 단건 처리만 허용.
+  toStatus: z.enum([POStatus.SUBMITTED, POStatus.CANCELLED]),
   cancelReason: z.string().max(500).optional(),
 }).superRefine((data, ctx) => {
   if (data.toStatus === "CANCELLED" && !data.cancelReason?.trim()) {
@@ -62,7 +65,12 @@ export type BulkTransitionResult = {
  *
  * 사용 예:
  *   - DRAFT → SUBMITTED 일괄 (선택 발주 확정)
- *   - SUBMITTED → RECEIVED 일괄 (선택 입고 완료)
+ *   - DRAFT → SUBMITTED 일괄 (선택 발주 확정)
+ *   - * → CANCELLED 일괄 (선택 취소, cancelReason 필수)
+ *
+ * 제외 (P5 재정정 2026-06-30):
+ *   - SUBMITTED → RECEIVED 는 ReceivingNoteService.confirm 단일 트랜잭션 내에서만 도달
+ *   - APPROVED 전이는 결재 도입 전까지 단건만 허용
  *   - * → CANCELLED 일괄 (선택 취소)
  */
 export async function bulkTransitionPOStatusAction(
