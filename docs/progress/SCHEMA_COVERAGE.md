@@ -48,7 +48,7 @@
 | 38 | MaterialRequirement | S2 / S3 | P9 / P4-C2-pre | ✅ (Phase 9-A~D + Phase 4-C2 pre 완료: lineupId 추가, 5컬럼 unique, getLineupBreakdown 액션. GAP-1 종결) |
 | 39 | PurchaseOrder | S3 | P1-4 / P1.5 / P4-B' | 🔄 (Phase 1.5 에서 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 + 위저드 액션 완료) |
 | 40 | PurchaseOrderItem | S3 | P1-4 / P4-B' | 🔄 (Phase 4-B' 배치 생성 서비스 + PriceHistory 적층 정책 적용) |
-| 41 | ReceivingNote | S3 | P5-8 | ⬜ |
+| 41 | ReceivingNote | S3 | P5-8 / D30 | 🔄 (D30: `confirmedAt`/`confirmedByUserId` 추가, `confirmReceivingNote` 서비스 완료. 액션·UI 미착수) |
 | 42 | ReceivingNoteItem | S3 | P5-8 | ⬜ |
 | 43 | InventoryLot | S4 | P1-2 | ⬜ |
 | 44 | InventoryTransaction | S4 | P1-2 | ⬜ |
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-06-30 **D30 (입고 확정 통합) 스키마 + 서비스 완료**: `DiscrepancyType` enum + `ReceivingDiscrepancy` 모델 추가, `ReceivingNote.confirmedAt/confirmedByUserId` 추가, `confirmReceivingNote` 서비스(단일 트랜잭션으로 InventoryLot 생성 + PO RECEIVED 전이 + 불일치 스냅샷) 구현. 테스트 10/10 PASS. P5·P9 재정정(2026-06-30) 반영: 입고 확정 = 재고 생성 + PO 종결 통합, 단가는 PO 확정 시점 고정. 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta`. 커밋 `67a60e34`, `35773f1b`, `64924006`, `f8764185`. 모델 #41 ReceivingNote ⬜→🔄. 액션·UI(C-3) 미착수.
 - 2026-06-29 **Phase 4-C2 UI 완료 + D25-4 정리**: Step 4 라인업 다축 집계 뷰 (`GroupByTabs`) — 4축 탭(공장/제조라인/공급업체/라인업) + `scopeLevel` prop 체인 + 라인업/기준량(g) 컬럼. `POItemCandidate.lineupId`/`lineupName` 전파, `loadPOWizardDataAction` 에서 MR.lineup include. 쓰기 경로 무수정 (PC2/DC4 보존). D25-4: 레거시 `StepSplitPreview` 삭제 → `NewModePreview` 단일 SSOT. 커밋 `bf103b1a`, `{Stage1_SHA}`. 누적 22/22 PASS. 모델 #38 상태는 변동 없음 (✅ 유지).
 - 2026-06-29 **Phase 4-C2 pre (GAP-1 종결)**: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id`. 서비스 `makeKey` 3-arg 전환 및 `mealPlan.lineupId` BOM 전파. 신규 read-only 액션 `getLineupBreakdownAction` (라인업 × 자재/공급사/PO 3종 집계). 누적 테스트 +3 (22/22 PASS). 커밋 `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`. 근거: `docs/progress/COST_LINEUP_ALIGNMENT.md` (PC1~5 / DC1~5 / DoD1~7).
 - 2026-06-16 Phase 4-B'-5a: 위저드 server actions 3종 추가 (`getMealPlanGroupsForOrderAction`, `loadPOWizardDataAction`, `createPurchaseOrdersBatchAction`) + `loadPOWizardDataSchema`. 커밋 `cff165e4`. 모두 thin wrapper, 테스트 미추가.
@@ -113,4 +114,14 @@
 
 ### 정책 연관
 - **P5**: 입고 확정 = 재고 생성 + PO 종료 (단일 트랜잭션)
-- **P9**: 입고 단계 단가 변경 금지 — `UNIT_PRICE_DIFF`는 스냅샷만, `InventoryLot.unitCost`는 PO 확정 시점 단가 고정
+- **P9**: 입고 단계 단가 변경 금지 — `UNIT_PRICE_DIFF`는 스냅샷만, `InventoryLot.unitPrice`는 PO 확정 시점 단가 고정
+
+### 제약 (현 스키마)
+- `InventoryTransaction.materialMasterId` NOT NULL, `subsidiaryMasterId` 컬럼 없음
+- SUBSIDIARY 입고는 Sprint 4 Phase 10 스키마 보강 후 지원
+- 그 전까지 `confirmReceivingNote` 가 `UnsupportedSubsidiaryReceivingError` throw
+
+### 구현 상태 (2026-06-30)
+- **C-1 (스키마)**: ✅ commit `67a60e34` — 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta`
+- **C-2 (서비스)**: ✅ commit `35773f1b` → `64924006` → `f8764185` — `confirmReceivingNote` + 테스트 10/10 PASS
+- **C-3 (액션 + UI)**: ⬜ 미착수
