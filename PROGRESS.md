@@ -219,25 +219,41 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - G-3 자재 소요량 페이지의 상태 변경 버튼 일체 제거 → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 집계 카드 + unmapped/이상치 알림.
     - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만.
 
-  3. **D30 — 입고서 (ReceivingNote) + 불일치 기록 (ReceivingDiscrepancy)**:
-    - **스키마 변경** (마이그레이션 1건 `d30_receiving_with_discrepancy_log`):
-      - `ReceivingNoteItem` 에 `overReceivedQty Float? @default(0)`, `overReceivedReason String?` 추가.
-      - 신규 enum `DiscrepancyType { QUANTITY_SHORT, QUANTITY_OVER, UNIT_PRICE_DIFF, ITEM_MISSING, ITEM_UNEXPECTED }`.
-      - 신규 모델 `ReceivingDiscrepancy` (append-only 스냅샷): `purchaseOrderId / purchaseOrderItemId? / receivingNoteId / receivingNoteItemId? / discrepancyType / expectedQty? / actualQty? / expectedUnitPrice? / actualUnitPrice? / diffValue / reason? / recordedAt / recordedByUserId`.
-    - **서비스/액션 신규**:
-      - `ReceivingNoteService.createDraft / confirm / createCorrection`.
-      - `confirm` 내부에서 InventoryLot 생성 + InventoryTransaction(PURCHASE) 적층 + **입고 시점 불일치 기록** (UNIT_PRICE_DIFF, QUANTITY_OVER). **PO 상태 무변경**.
-      - 신규 액션 `markPurchaseOrderAsReceivedAction`: PO `SUBMITTED → RECEIVED` 단건 전이 + **발주 종결 시점 불일치 기록** (QUANTITY_SHORT, ITEM_MISSING).
-      - 모든 신규 server action 에 `assertScope` 강제 (A2-min).
-    - **단가 정책**: 입고 단가 차이는 ReceivingDiscrepancy 에 기록만. **SupplierItem.currentPrice 무갱신** (P9·P9' 보존).
-    - **UI 5종**:
-      - `/receiving/pending` (입고 대기 PO 목록 — SUBMITTED 상태).
-      - `/receiving/[poId]/new` (부분 입고 입력 폼; 관리자만 overReceivedQty 활성 + 사유 필수).
-      - `/receiving/notes/[id]` (입고서 상세 + 이 입고서에서 발견된 불일치 섹션).
-      - PO 상세 페이지에 "발주 종결(입고 완료) 처리" 버튼 + 확인 모달 (미달/일치/초과 요약 + 사유 입력 — 차단 없음, 사유는 미달 ReceivingDiscrepancy.reason 으로 저장).
-      - PO 상세 페이지에 "이 발주의 불일치 이력" 섹션.
-    - **테스트** 12케이스: 정상 / 부분 누적 / 완전 일치 / 일반 사용자 과입고 차단 / 관리자 과입고 + 사유 누락 차단 / 관리자 과입고 + 사유 통과 / 정정 음수 / expirationDate 자동 / confirm 후 PO 상태 SUBMITTED 유지 / markAsReceived 호출 시 RECEIVED 전이 / 입고 단가 차이 UNIT_PRICE_DIFF 기록 / 발주 종결 시 QUANTITY_SHORT·ITEM_MISSING 기록.
-    - **문서 갱신**: 신규 `docs/progress/RECEIVING_INVENTORY_POLICY.md` (불일치 기록 정책 포함), `SCHEMA_COVERAGE.md` 에 ReceivingNote/Item/Discrepancy ✅, `COST_LINEUP_ALIGNMENT.md` 변경 이력 D30 라인, `PO_LIFECYCLE.md` §3-A 에 "발주 종결 시 미달·미입고는 ReceivingDiscrepancy 로 자동 기록" 한 줄.
+  3. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
+
+    **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
+    - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
+    - enum `DiscrepancyType { QUANTITY_SHORT, QUANTITY_OVER, UNIT_PRICE_DIFF, ITEM_MISSING }` (4개).
+    - 모델 `ReceivingDiscrepancy` (append-only 스냅샷): `purchaseOrderId / purchaseOrderItemId? / receivingNoteId / receivingNoteItemId? / type / expectedQty? / actualQty? / expectedUnitPrice? / actualUnitPrice? / diffValue / reason? / recordedAt / recordedByUserId`.
+    - `ReceivingNote.confirmedAt / confirmedByUserId` 추가.
+    - 서비스 `confirmReceivingNote(companyId, noteId, actorUserId)` 단일 트랜잭션으로 (commits `35773f1b → 64924006 → f8764185`):
+      1. InventoryLot 생성 (`unitPrice = PO 단가`, P9 고정) + InventoryTransaction(PURCHASE) 적층
+      2. PurchaseOrderItem.receivedQty 누적
+      3. 수량·단가 불일치 스냅샷 (`QUANTITY_SHORT/OVER`, `UNIT_PRICE_DIFF`, `ITEM_MISSING`)
+      4. `ReceivingNote.status = CONFIRMED` + `confirmedAt/By` 기록
+      5. `transitionPurchaseOrderStatus(..., toStatus: RECEIVED, ..., tx)` 같은 트랜잭션 합류 — **P5 재정정 반영**
+    - 테스트 10/10 PASS (정상/수량부족/수량초과/단가차이/PO외항목/입고누락/중복확정/회사불일치/없음/SUBSIDIARY 차단).
+    - **제약**: SUBSIDIARY 입고는 현 스키마(`InventoryTransaction.materialMasterId` NOT NULL, `subsidiaryMasterId` 컬럼 없음)에서 미지원 → `UnsupportedSubsidiaryReceivingError` throw. Sprint 4 Phase 10에서 스키마 보강 예정.
+
+    **C-3 (액션 + UI) ⬜ 미착수**
+    - `confirmReceivingNoteAction(input)` — `assertScope` (A2-min) + `confirmReceivingNote` 호출 + `createAuditLog` + `revalidatePath`.
+    - UI 3종 (구버전 5종에서 축소):
+      - `/receiving/pending` — 입고 대기 PO 목록 (SUBMITTED 상태).
+      - `/receiving/notes/new?poId=...` — 입고서 작성 폼 (1 PO = 1 Note, 부분 입고 미지원).
+      - `/receiving/notes/[id]` — 입고서 상세 + "입고 확정" 버튼 + 확인 모달 (미달/일치/초과 요약, 차단 없음) + 불일치 이력 섹션.
+    - PO 상세 페이지에 "이 발주의 불일치 이력" 섹션 (`ReceivingDiscrepancy` 조회).
+
+    **D30 범위에서 제외된 항목 (의사결정 2026-06-30)**
+    - `overReceivedQty / overReceivedReason` 컬럼 추가 — `ReceivingDiscrepancy(QUANTITY_OVER)` 스냅샷으로 통합되므로 불필요.
+    - `createDraft / createCorrection` 서비스 — D31(부분 입고 진행률) 또는 Sprint 4로 이관.
+    - 부분 입고(split receiving) — "1 PO = 1 ReceivingNote" 단순 모델 유지, Sprint 4 이후 확장.
+    - 관리자 과입고 사유 필수 게이트 — 모든 불일치는 차단 없이 기록만(P5 재정정).
+    - 별도 `markPurchaseOrderAsReceivedAction` — `confirmReceivingNote` 단일 트랜잭션에 통합되어 폐기.
+    - `ITEM_UNEXPECTED` enum — 실제로는 `ITEM_MISSING`이 양방향(발주에만 있음 / 입고에만 있음) 케이스를 모두 표현.
+
+    **문서 갱신**
+    - C-1·C-2 시점: `SCHEMA_COVERAGE.md` 갱신 완료 (모델 #41 🔄), 변경 이력 D30 라인 추가.
+    - C-3 시점에 추가 갱신: `RECEIVING_INVENTORY_POLICY.md` (신규), `PO_LIFECYCLE.md` §3-A 에 "발주 종결은 ReceivingNote 확정과 단일 트랜잭션" 한 줄.
 
   4. **Phase 4-D** — 수동 발주 UI (위저드 우회 단건 발주).
   5. **Phase 4-F-2** — 발주 엑셀 내보내기 / 일괄 export.
