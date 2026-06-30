@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-30 (PO 라이프사이클 재정의 — POStatus 라벨 정합화 + SUBMITTED→RECEIVED 직접 전이 + RECEIVED 트리거를 사용자 명시 액션으로 분리)
+> 마지막 갱신: 2026-06-30 (D30 입고서 설계 확정 — ReceivingDiscrepancy / 재고 실사(D39~D41) 단계 누락 보강 / SUBMITTED→RECEIVED 직접 전이 적용 완료)
 
 ---
 
@@ -80,6 +80,19 @@
 | P9' | 발주서 작성/수정 단계의 `unitPrice` 편집은 `PurchaseOrderItem.unitPrice` 에만 영향 — `SupplierItem.currentPrice` 불변 | DRAFT 단계에서는 마스터 갱신 없음. SUBMITTED 전환 시 변경분만 적층 + 마스터 갱신 |
 | P10 | 모든 레벨이 발주→입고→사용→재고→폐기 전체 라이프사이클 지원 | |
 
+### 헌법 보강
+
+**P5 보강 (2026-06-30)**
+- "입고서 확정"(ReceivingNote.status=CONFIRMED): InventoryLot 생성·InventoryTransaction(PURCHASE) 적층까지 담당.
+- "발주 입고 완료"(PurchaseOrder.status=RECEIVED): 발주 종결 의사결정. 사용자 명시 액션으로만 전이.
+- 둘은 서로 다른 도메인 이벤트이며, 입고서 확정은 PO 상태에 영향을 주지 않는다.
+- 상세: `docs/progress/PO_LIFECYCLE.md` §3-A.
+
+**P9 보강 (2026-06-30, D30 결정)**
+- SupplierItem.currentPrice 갱신은 **발주 확정(DRAFT → SUBMITTED) 시점에만** 발생 (기존 P9' 그대로).
+- 입고 시 발견되는 단가 차이는 ReceivingDiscrepancy(UNIT_PRICE_DIFF) 로 기록만 하며 SupplierItem 마스터는 갱신하지 않는다.
+- 다음 발주 작성 시 사용자가 마스터 단가를 수정할지 별도 판단한다.
+
 ### 작업 전 체크리스트
 새 Phase 시작 전 반드시 자문:
 - [ ] 이 작업이 "실시간 원가" 또는 "재무 원가" 산출에 어떻게 기여하는가?
@@ -94,14 +107,15 @@
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
-- **PO 라이프사이클 재정의** (commit `{이번_커밋_SHA}`) — 발주서 도메인 명확화:
-  - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
-  - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
-  - **전이 매트릭스 보강**: `SUBMITTED → RECEIVED` 직접 전이 허용. APPROVED 단계는 결재 도입 전까지 우회 가능. 결재 도입 시 매트릭스 좁히면 됨.
-  - **RECEIVED 자동 전이 폐기**: 누적 수량 도달 기반 자동 트리거 폐기. **입고 확정은 사용자 명시 액션**으로만 발생. 미달/초과/정확 일치 모든 케이스를 운영자가 판단. 안정성 우선.
-  - **책임 분리**: ReceivingNoteService.confirm 은 InventoryLot/Transaction 생성만 담당하고 PO 상태에는 손대지 않음. PO 전이는 별도 `markPurchaseOrderAsReceivedAction` (D30에서 신설).
-  - **하드코딩 라벨 정합화**: 7개 파일(existing-po-notice.tsx, wizard-mode-selector.tsx, step-confirm-create.tsx, delta-preview-card.tsx, wizard-preview-panel.tsx, purchase-order.action.ts, purchase-order.schema.ts) 안내문·에러 메시지 정합화.
-  - **신규 문서**: `docs/progress/PO_LIFECYCLE.md` — 5단계 정의, 전이 매트릭스, APPROVED 보존 정책, RECEIVED 트리거 결정 기록.
+  - **PO 라이프사이클 재정의** (commits `14b2d20c`, `13b1d5f8`) — 발주서 도메인 명확화:
+    - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
+    - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
+    - **전이 매트릭스 보강**: `SUBMITTED → RECEIVED` 직접 전이 허용. APPROVED 단계는 결재 도입 전까지 우회 가능. 결재 도입 시 매트릭스 좁히면 됨.
+    - **RECEIVED 자동 전이 폐기**: 누적 수량 도달 기반 자동 트리거 폐기. **입고 확정은 사용자 명시 액션**으로만 발생. 미달/초과/정확 일치 모든 케이스를 운영자가 판단. 안정성 우선.
+    - **책임 분리**: ReceivingNoteService.confirm 은 InventoryLot/Transaction 생성만 담당하고 PO 상태에는 손대지 않음. PO 전이는 별도 `markPurchaseOrderAsReceivedAction` (D30 에서 신설).
+    - **하드코딩 라벨 정합화**: 7개 파일 안내문·에러 메시지 정합화 (`14b2d20c`). 후속 공백 정정 2개 파일 보강 (`13b1d5f8`).
+    - **신규 문서**: `docs/progress/PO_LIFECYCLE.md` — 5단계 정의, 전이 매트릭스, APPROVED 보존 정책, RECEIVED 트리거 결정 기록.
+    - **헌법 P5 보강**: 입고서 확정(ReceivingNote CONFIRMED)은 InventoryLot/InventoryTransaction 적재까지만 담당. 발주 종결(PO RECEIVED)은 사용자 명시 액션으로만 전이. 두 이벤트는 분리되어 있으며 서로 부수효과를 일으키지 않는다.
   - **Phase 4-C2 (UI)** (commit `bf103b1a`) — Step 4 라인업 다축 집계 뷰 (D29 프런트):
     - `POItemCandidate` 에 `lineupId` / `lineupName` 전파 (`build-po-items-from-mr.ts`)
     - `loadPOWizardDataAction`: MR select 에 `lineupId` + `lineup.name` 포함 후 평탄화
@@ -149,32 +163,89 @@
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
 ## 다음 진행 항목 (확정 순서)
-  1. **Phase 4-F-1** — 발주 일괄 상태 전이 (목록 페이지 체크박스 + 액션바). 대상 액션: "선택 발주 확정"(DRAFT→SUBMITTED), "선택 입고 완료"(SUBMITTED→RECEIVED), "선택 취소". 결재 미도입 동안 APPROVED 관련 액션 미노출.
-  2. **Phase 4-G** — 자재 소요량 페이지 재정의 (대시보드화):
-    - G-1 식단 IN_PROGRESS 전환 hook 에 MR 자동 산출 동기 호출.
-    - G-2 발주 위저드 진입 조건은 기존 그대로(`IN_PROGRESS / COMPLETED`). G-1 정상 동작 시 MR 항상 존재.
-    - G-3 자재 소요량 페이지의 상태 변경 버튼 일체 제거 → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 집계 카드, unmapped/이상치 알림.
+  ### Sprint 3 잔여
+  1. **Phase 4-F-1 — 발주 일괄 상태 전이** (Phase 4-F-1):
+    - `bulkTransitionPOStatusAction` 신설 (트랜잭션·skip·INVALID_TRANSITION 분류·부분 실패 시 전체 롤백).
+    - 발주 목록 페이지에 행 체크박스 + 액션바("선택 발주 확정", "선택 입고 완료", "선택 취소").
+    - 결재 미도입 상태에서 APPROVED 관련 액션 미노출.
+    - 단가 이력 적층(P9') 은 단건 transition 위임으로 자동 보존.
+
+  2. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화)**:
+    - G-1 식단 IN_PROGRESS 전환 hook 에 MR 자동 산출 동기 호출. 실패 시 식단 IN_PROGRESS 차단(부분 상태 방지).
+    - G-2 발주 위저드 진입 조건은 기존 그대로 (`IN_PROGRESS / COMPLETED`). G-1 정상 동작 시 MR 항상 존재.
+    - G-3 자재 소요량 페이지의 상태 변경 버튼 일체 제거 → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 집계 카드 + unmapped/이상치 알림.
     - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만.
-  3. **D30 — 입고서 (ReceivingNote)**:
-    - 마이그레이션 1건: `ReceivingNoteItem.overReceivedQty / overReceivedReason`.
-    - `ReceivingNoteService.create / confirm / createCorrection` + actions + zod.
-    - `confirm` 내부: InventoryLot 생성 + InventoryTransaction(PURCHASE) 적층. **PO 상태 무변경**(★ A-3 결정).
-    - 신규 `markPurchaseOrderAsReceivedAction` (PO SUBMITTED→RECEIVED 단건 전이). UI 진입점 3개.
-    - 입고 UI 3종: 입고 대기 PO 목록, 부분 입고 입력 폼, 입고서 상세(입고 완료 처리 버튼 포함).
-    - 모든 신규 server action 에 `assertScope` 강제.
+
+  3. **D30 — 입고서 (ReceivingNote) + 불일치 기록 (ReceivingDiscrepancy)**:
+    - **스키마 변경** (마이그레이션 1건 `d30_receiving_with_discrepancy_log`):
+      - `ReceivingNoteItem` 에 `overReceivedQty Float? @default(0)`, `overReceivedReason String?` 추가.
+      - 신규 enum `DiscrepancyType { QUANTITY_SHORT, QUANTITY_OVER, UNIT_PRICE_DIFF, ITEM_MISSING, ITEM_UNEXPECTED }`.
+      - 신규 모델 `ReceivingDiscrepancy` (append-only 스냅샷): `purchaseOrderId / purchaseOrderItemId? / receivingNoteId / receivingNoteItemId? / discrepancyType / expectedQty? / actualQty? / expectedUnitPrice? / actualUnitPrice? / diffValue / reason? / recordedAt / recordedByUserId`.
+    - **서비스/액션 신규**:
+      - `ReceivingNoteService.createDraft / confirm / createCorrection`.
+      - `confirm` 내부에서 InventoryLot 생성 + InventoryTransaction(PURCHASE) 적층 + **입고 시점 불일치 기록** (UNIT_PRICE_DIFF, QUANTITY_OVER). **PO 상태 무변경**.
+      - 신규 액션 `markPurchaseOrderAsReceivedAction`: PO `SUBMITTED → RECEIVED` 단건 전이 + **발주 종결 시점 불일치 기록** (QUANTITY_SHORT, ITEM_MISSING).
+      - 모든 신규 server action 에 `assertScope` 강제 (A2-min).
+    - **단가 정책**: 입고 단가 차이는 ReceivingDiscrepancy 에 기록만. **SupplierItem.currentPrice 무갱신** (P9·P9' 보존).
+    - **UI 5종**:
+      - `/receiving/pending` (입고 대기 PO 목록 — SUBMITTED 상태).
+      - `/receiving/[poId]/new` (부분 입고 입력 폼; 관리자만 overReceivedQty 활성 + 사유 필수).
+      - `/receiving/notes/[id]` (입고서 상세 + 이 입고서에서 발견된 불일치 섹션).
+      - PO 상세 페이지에 "발주 종결(입고 완료) 처리" 버튼 + 확인 모달 (미달/일치/초과 요약 + 사유 입력 — 차단 없음, 사유는 미달 ReceivingDiscrepancy.reason 으로 저장).
+      - PO 상세 페이지에 "이 발주의 불일치 이력" 섹션.
+    - **테스트** 12케이스: 정상 / 부분 누적 / 완전 일치 / 일반 사용자 과입고 차단 / 관리자 과입고 + 사유 누락 차단 / 관리자 과입고 + 사유 통과 / 정정 음수 / expirationDate 자동 / confirm 후 PO 상태 SUBMITTED 유지 / markAsReceived 호출 시 RECEIVED 전이 / 입고 단가 차이 UNIT_PRICE_DIFF 기록 / 발주 종결 시 QUANTITY_SHORT·ITEM_MISSING 기록.
+    - **문서 갱신**: 신규 `docs/progress/RECEIVING_INVENTORY_POLICY.md` (불일치 기록 정책 포함), `SCHEMA_COVERAGE.md` 에 ReceivingNote/Item/Discrepancy ✅, `COST_LINEUP_ALIGNMENT.md` 변경 이력 D30 라인, `PO_LIFECYCLE.md` §3-A 에 "발주 종결 시 미달·미입고는 ReceivingDiscrepancy 로 자동 기록" 한 줄.
+
   4. **Phase 4-D** — 수동 발주 UI (위저드 우회 단건 발주).
-  5. **Phase 4-F-2** — 발주 엑셀 내보내기/일괄 export.
-  6. **Phase 4-E** — scopeLevel 동적화 (현재 위저드 "COMPANY" 하드코딩 해제).
-  7. **Sprint 4 — 사용(출고) + 재고**:
-    - D32 가용재고 조회 + FIFO 출고 엔진.
-    - D35 ConsumptionItem(PER_MEAL_COUNT/FIXED_QUANTITY) + MealCount 트리거 + ConsumptionLotDetail.
-    - D33 InventoryReservation 자동 생성/해제 + MR.stockQtyG 정합.
-    - D34 InventoryTransfer Lot 분할/원가 승계.
-  8. **Sprint 5 — 원가 정산**:
-    - D36 월말 원가(소비 기반 vs 재고 차분).
-    - D37 ESTIMATED/ORDER_BASED/ACTUAL 3중 정합성 리포트.
-    - D38 라인업·지점·라인 원가 분해 대시보드.
-  9. **Phase A (병행 트랙)** — 권한 매트릭스 정합화 + 초대(Invitation) UI + 감사 로그.
+  5. **Phase 4-F-2** — 발주 엑셀 내보내기 / 일괄 export.
+  6. **Phase 4-E** — scopeLevel 동적화 (현재 위저드 `"COMPANY"` 하드코딩 해제 → 세션 userScope 연결).
+
+  ### Sprint 4 — 사용(출고) + 재고
+  - D32 가용재고 조회 + FIFO 출고 엔진 (선행 의존).
+  - D35 ConsumptionItem (PER_MEAL_COUNT / FIXED_QUANTITY) + MealCount 트리거 + ConsumptionLotDetail 기록 + ConsumptionDisposition (USED/RETURNED/DISPOSED) + DisposalReason.
+  - D33 InventoryReservation 자동 생성/해제 + MR.stockQtyG 정합 (excludeReserved).
+  - D34 InventoryTransfer 지점간 이동 + Lot 분할 + 원가 승계.
+
+  ### Sprint 4 후반 / Sprint 5 진입 직전 — 재고 실사 (StockTake)
+
+  > 사용 처리 완료 후 일정 주기로 실사를 진행하여 이론 재고와 실재고의 차이를 검출·기록·조정한다.
+  > Sprint 5 원가 정산(D36 재고 차분 방식)의 기말재고 입력원.
+  > ReceivingDiscrepancy(D30 발주↔입고 불일치) 와는 별개 도메인 — 시점·원천·트랜잭션 타입이 다르다.
+
+  - **D39 — StockTake 워크플로우** (DRAFT → IN_PROGRESS → PENDING_REVIEW → COMPLETED):
+    - 실사 시작 시 InventoryLot 스냅샷 → StockTakeItem 일괄 생성(이론 재고 freeze).
+    - 현장 측정값 입력 UI (공장·라인·자재 단위 분할 입력).
+    - PENDING_REVIEW 단계에서 차이 검토 + 사유 입력. COMPLETED 전이는 COMPANY_ADMIN 권한.
+
+  - **D40 — 실사 차이 자동 검출 + StockGrade 기록**:
+    - StockTakeItem expected(이론) vs actual(실측) 비교 → 차이 행 자동 추출.
+    - StockGrade(A/B/C) 입력으로 자재 상태 기록.
+    - 차이 사유 enum 신설 검토 (LOSS / DAMAGE / MISCOUNT / UNRECORDED_USE / OTHER — 스키마에 동등 enum 존재 여부 본격 진입 시 확인).
+
+  - **D41 — COMPLETED 전이 시 일괄 보정**:
+    - 차이만큼 `InventoryTransaction(type=ADJUSTMENT)` 적층, `referenceType='STOCK_TAKE' / referenceId=stockTakeId` 기록.
+    - InventoryLot.remainingQty 자동 보정.
+    - 음수 조정 = 손실원가, 양수 조정 = 미기록 입고로 별도 집계 가능 (Sprint 5 D37 정합성 리포트 입력원).
+    - 잔량 음수화 케이스 차단 정책은 본격 진입 시 스키마 확인 후 확정.
+
+  - **사전 확인 항목 (D39 진입 시점에 1회 점검)**:
+    - StockTake / StockTakeItem 모델 본문 (필드 셋, 라인업 귀속 컬럼 유무).
+    - 차이 사유용 enum 존재 여부 — 없으면 GAP-4 로 별도 마이그레이션 1건 분리.
+    - StockTakeItem.lineupId 누락 시 DC5(라인업 차원 보존) 위배 — GAP-4 와 함께 처리.
+
+  ### Sprint 5 — 원가 정산
+  - D36 월말 원가 정산 (소비 기반 vs 재고 차분, 라인업별 양립).
+  - D37 ESTIMATED / ORDER_BASED / ACTUAL 3중 정합성 리포트.
+  - D38 라인업·지점·라인 단위 원가 분해 대시보드.
+
+  ### Phase A (병행 트랙 — Sprint 4 진입 시 본격화)
+  - A1 권한 매트릭스 정합화 (`docs/progress/ACCESS_MATRIX.md`).
+  - A2 서버 가드 일원화 (`assertScope` 일괄 적용).
+  - A3 UI 가드.
+  - A4 초대 (`Invitation` 모델 이미 존재 — 서비스 + UI 만).
+  - A5 감사 로그 (`AuditAction` enum 이미 존재).
+
+
 - **현재 블로커**: 없음
 - **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
 - **TypeScript errors**: 0
