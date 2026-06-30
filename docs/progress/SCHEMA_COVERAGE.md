@@ -96,3 +96,21 @@
 - 2026-06-10: MealPlanSlot(#32) Phase 9-D-Sym 컬럼 분리 — `quantity` → `estimated_quantity` 개명 + `final_quantity Int?` 추가. MaterialRequirement(#38) Phase 9-A~9-C 완료 상태 반영.
 - 2026-06-05: Location(#2), ProductionLine(#3) ✅ 갱신 (Phase 8.5-A/B/C 반영)
 - 2026-06-04 이전: 원본 PROGRESS.md의 모델 표 그대로
+
+## D30 (2026-06-30) — 입고 확정 통합
+
+### 신규
+- **enum `DiscrepancyType`**: `QUANTITY_SHORT` / `QUANTITY_OVER` / `UNIT_PRICE_DIFF` / `ITEM_MISSING`
+- **model `ReceivingDiscrepancy`**: 발주 ↔ 입고 불일치 스냅샷 (수량·단가 차이를 기록 전용으로 보관, 추후 재고 실사 시 근거 자료)
+  - 인덱스: `(companyId, recordedAt)`, `purchaseOrderId`, `receivingNoteId`, `type`
+
+### 변경
+- **`ReceivingNote`**: `confirmedAt` (nullable), `confirmedByUserId` (nullable, FK → User, ON DELETE SET NULL) 추가, `confirmedByUserId` 인덱스 추가
+
+### 사용처
+- `ReceivingNoteService.confirmReceivingNote` (D30)
+- 향후 D39–D41 (재고 실사) 에서 `ReceivingDiscrepancy` 조회
+
+### 정책 연관
+- **P5**: 입고 확정 = 재고 생성 + PO 종료 (단일 트랜잭션)
+- **P9**: 입고 단계 단가 변경 금지 — `UNIT_PRICE_DIFF`는 스냅샷만, `InventoryLot.unitCost`는 PO 확정 시점 단가 고정
