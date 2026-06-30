@@ -12,9 +12,9 @@ import type { POStatus } from "@prisma/client";
 
 const STATUS_LABEL: Record<POStatus, string> = {
   DRAFT: "작성중",
-  SUBMITTED: '발주확정',
-  APPROVED: '결재승인',
-  RECEIVED: '입고완료',
+  SUBMITTED: "발주 확정",
+  APPROVED: "결재 승인",
+  RECEIVED: "입고 완료",
   CANCELLED: "취소",
 };
 
