@@ -10,6 +10,7 @@ import {
 } from "../schemas/purchase-order.schema";
 
 import { stackPriceHistoryForPO } from "../lib/stack-price-history";
+import { withTransaction } from "@/lib/auth/transaction";
 
 // ── 도메인 에러 키 ──
 export const PO_LOCATION_ERRORS = {
@@ -381,8 +382,9 @@ export async function transitionPurchaseOrderStatus(
   companyId: string,
   id: string,
   input: TransitionPOStatusInput,
+  existingTx?: Prisma.TransactionClient,
 ) {
-  return prisma.$transaction(async (tx) => {
+  return withTransaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({
       where: { id, companyId },
       select: { id: true, status: true },
@@ -414,14 +416,15 @@ export async function transitionPurchaseOrderStatus(
         data.cancelledByUser = { connect: { id: input.actorUserId } };
       }
     }
-    // APPROVED → RECEIVED 는 ReceivingNote 생성 시 별도 호출 (Phase 3)
+    // SUBMITTED → RECEIVED 는 D30 ReceivingNoteService.confirm 단일 트랜잭션 안에서
+    // existingTx 를 주입하여 호출됨 (P5 재정정 2026-06-30).
 
     return tx.purchaseOrder.update({
       where: { id },
       data,
       include: { items: true },
     });
-  });
+  }, { existingTx });
 }
 
 // ── 발주 삭제 (DRAFT만 허용) ──
