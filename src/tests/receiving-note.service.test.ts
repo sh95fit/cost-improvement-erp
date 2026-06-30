@@ -7,6 +7,7 @@ import {
   ReceivingNoteNotFoundError,
   ReceivingNoteAlreadyConfirmedError,
   ReceivingNoteCompanyMismatchError,
+  UnsupportedSubsidiaryReceivingError,
 } from "@/features/receiving-note/services/receiving-note.service";
 
 // withTransaction은 mockPrisma.$transaction과 같은 방식으로 콜백을 즉시 실행
@@ -249,6 +250,6 @@ describe("confirmReceivingNote", () => {
   
     await expect(
       confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID),
-    ).rejects.toThrow(/Subsidiary 입고/);
+    ).rejects.toBeInstanceOf(UnsupportedSubsidiaryReceivingError);
   });
 });
