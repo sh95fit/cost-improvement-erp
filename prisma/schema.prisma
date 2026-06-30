@@ -415,6 +415,17 @@ enum POAdjustmentAction {
   @@map("po_adjustment_action")
 }
 
+// ---- D30 (2026-06-30): 발주↔입고 불일치 스냅샷 ----
+
+enum DiscrepancyType {
+  QUANTITY_SHORT      // 입고량 < 발주량
+  QUANTITY_OVER       // 입고량 > 발주량
+  UNIT_PRICE_DIFF     // 입고 단가 ≠ 발주 단가 (P9: SupplierItem 마스터 무영향)
+  ITEM_MISSING        // 발주 품목이 입고서에 누락
+
+  @@map("discrepancy_type")
+}
+
 // ============================================================
 // MODELS
 // ============================================================
@@ -471,6 +482,7 @@ model Company {
   overheadCosts         OverheadCost[]
   unitMasters           UnitMaster[]
   companyMealSlots      CompanyMealSlot[] // ★ Phase 5-R Step 3.1: 식단 슬롯 마스터  
+  receivingDiscrepancies   ReceivingDiscrepancy[]
 
   @@map("companies")
 }
@@ -564,6 +576,8 @@ model User {
   createdPOBatches        PurchaseOrderBatch[]
   // ★ R1-b3: PO 조정 이력 액터
   poAdjustmentLogs        POAdjustmentLog[]  
+  receivingNotesConfirmed  ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
+  receivingDiscrepancies   ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")  
 
   @@map("users")
 }
@@ -1427,6 +1441,7 @@ model PurchaseOrder {
   productionLine  ProductionLine?     @relation(fields: [productionLineId], references: [id])
   // ★ R1-b3: 조정 이력 (DELTA 모드에서 적층)
   adjustmentLogs POAdjustmentLog[]
+  receivingDiscrepancies   ReceivingDiscrepancy[]  
 
   @@index([batchId])  // ★ R1-b1 추가
   @@index([companyId])
@@ -1476,23 +1491,63 @@ model PurchaseOrderItem {
 }
 
 model ReceivingNote {
-  id              String              @id @default(cuid())
-  companyId       String              @map("company_id")
-  purchaseOrderId String              @map("purchase_order_id")
-  receiveNumber   String              @unique @map("receive_number")
-  status          ReceivingNoteStatus @default(DRAFT)
-  receivedDate    DateTime            @map("received_date") @db.Date
-  note            String?
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  id                 String              @id @default(cuid())
+  companyId          String              @map("company_id")
+  purchaseOrderId    String              @map("purchase_order_id")
+  receiveNumber      String              @unique @map("receive_number")
+  status             ReceivingNoteStatus @default(DRAFT)
+  receivedDate       DateTime            @map("received_date") @db.Date
+  note               String?
+  // ★ D30 (2026-06-30): 확정 메타
+  confirmedAt        DateTime?           @map("confirmed_at")
+  confirmedByUserId  String?             @map("confirmed_by_user_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  company       Company             @relation(fields: [companyId], references: [id])
-  purchaseOrder PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
-  items         ReceivingNoteItem[]
+  company           Company                @relation(fields: [companyId], references: [id])
+  purchaseOrder     PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  items             ReceivingNoteItem[]
+  confirmedByUser   User?                  @relation("ReceivingNoteConfirmedBy", fields: [confirmedByUserId], references: [id])
+  discrepancies     ReceivingDiscrepancy[]
 
   @@index([companyId])
   @@index([purchaseOrderId])
+  @@index([confirmedByUserId])
   @@map("receiving_notes")
+}
+
+/// 발주↔입고 차이 스냅샷.
+/// 입고 확정 시점에만 기록되며, 마스터 데이터에 영향을 주지 않는다.
+/// 추후 재고 실사·원인 분석의 근거로 활용.
+model ReceivingDiscrepancy {
+  id                    String           @id @default(cuid())
+  companyId             String           @map("company_id")
+  purchaseOrderId       String           @map("purchase_order_id")
+  purchaseOrderItemId   String?          @map("purchase_order_item_id")
+  receivingNoteId       String           @map("receiving_note_id")
+  receivingNoteItemId   String?          @map("receiving_note_item_id")
+
+  type                  DiscrepancyType
+  expectedQty           Float?           @map("expected_qty")
+  actualQty             Float?           @map("actual_qty")
+  expectedUnitPrice     Float?           @map("expected_unit_price")
+  actualUnitPrice       Float?           @map("actual_unit_price")
+  diffValue             Float?           @map("diff_value")
+  reason                String?
+
+  recordedAt            DateTime         @default(now()) @map("recorded_at")
+  recordedByUserId      String?          @map("recorded_by_user_id")
+
+  company               Company          @relation(fields: [companyId], references: [id])
+  purchaseOrder         PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id])
+  receivingNote         ReceivingNote    @relation(fields: [receivingNoteId], references: [id])
+  recordedByUser        User?            @relation("ReceivingDiscrepancyRecordedBy", fields: [recordedByUserId], references: [id])
+
+  @@index([companyId, recordedAt])
+  @@index([purchaseOrderId])
+  @@index([receivingNoteId])
+  @@index([type])
+  @@map("receiving_discrepancies")
 }
 
 model ReceivingNoteItem {
