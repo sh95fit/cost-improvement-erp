@@ -32,18 +32,10 @@ DRAFT → SUBMITTED, CANCELLED SUBMITTED → APPROVED, DRAFT, CANCELLED, RECEIVE
 
 ## 3-A. RECEIVED 전이 정책 (안정성 우선)
 
-RECEIVED 전이는 **사용자 명시 액션**으로만 발생한다. 자동 트리거(누적 수량 도달)는 다음 이유로 채택하지 않는다:
-
-- 부동소수점 누적 오차로 도달 판정이 신뢰 불가.
-- 부분 입고를 다회 등록하는 운영 패턴에서 의도와 다른 조기 전이 위험.
-- 과입고(`overReceivedQty`) 처리 정책과 충돌.
-- 미달 상태에서 발주를 종결하는 운영 케이스(공급사 결품, 부분 납품 합의 등) 표현 불가.
-
-따라서:
-
-- `ReceivingNoteService.confirm` 은 InventoryLot 생성, InventoryTransaction(PURCHASE) 적층, ReceivingNote CONFIRMED 만 담당. **PO 상태에는 손대지 않는다.**
-- PO `SUBMITTED → RECEIVED` 전이는 별도 `markPurchaseOrderAsReceivedAction` 또는 일괄 액션에서만 발생.
-- 전이 확인 모달에서 미달·일치·초과 정보를 안내하되 차단은 하지 않는다.
+❌ 폐기: "RECEIVED 는 사용자 명시 액션(markPurchaseOrderAsReceivedAction)으로만 전이"
+✅ 채택: "RECEIVED 는 입고서 확정(confirmReceivingNoteAction)의 원자적 결과로 자동 전이. 별도 PO 종결 액션 없음."
+전이 매트릭스에서 SUBMITTED → RECEIVED 는 유지하되, "호출자: ReceivingNoteService.confirm 단일" 명시.
+단가 정책: "RECEIVED 전이 시 단가 마스터 무영향. PO 단가가 정본이며, 입고 단가 차이는 ReceivingDiscrepancy(UNIT_PRICE_DIFF) 기록."
 
 ## 4. APPROVED 보존 정책
 

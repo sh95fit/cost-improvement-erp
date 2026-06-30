@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-30 (D30 입고서 설계 확정 — ReceivingDiscrepancy / 재고 실사(D39~D41) 단계 누락 보강 / SUBMITTED→RECEIVED 직접 전이 적용 완료)
+> 마지막 갱신: 2026-06-30 (P5·P9 재정정 — 입고 확정과 발주 종결을 단일 도메인 이벤트로 통합, 발주 확정 = 거래 단가 확정 원칙 명시, markPurchaseOrderAsReceivedAction 폐기)
 
 ---
 
@@ -82,29 +82,59 @@
 
 ### 헌법 보강
 
-**P5 보강 (2026-06-30)**
-- "입고서 확정"(ReceivingNote.status=CONFIRMED): InventoryLot 생성·InventoryTransaction(PURCHASE) 적층까지 담당.
-- "발주 입고 완료"(PurchaseOrder.status=RECEIVED): 발주 종결 의사결정. 사용자 명시 액션으로만 전이.
-- 둘은 서로 다른 도메인 이벤트이며, 입고서 확정은 PO 상태에 영향을 주지 않는다.
-- 상세: `docs/progress/PO_LIFECYCLE.md` §3-A.
+**P5 재정정 (2026-06-30)**
 
-**P9 보강 (2026-06-30, D30 결정)**
-- SupplierItem.currentPrice 갱신은 **발주 확정(DRAFT → SUBMITTED) 시점에만** 발생 (기존 P9' 그대로).
-- 입고 시 발견되는 단가 차이는 ReceivingDiscrepancy(UNIT_PRICE_DIFF) 로 기록만 하며 SupplierItem 마스터는 갱신하지 않는다.
-- 다음 발주 작성 시 사용자가 마스터 단가를 수정할지 별도 판단한다.
+[도메인 이벤트: "입고 확정"]
+ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음을 원자적으로 수행한다:
+1. InventoryLot 생성·InventoryTransaction(PURCHASE) 적층
+2. 발주↔입고 차이 발생 시 `ReceivingDiscrepancy` 스냅샷 기록
+   - QUANTITY_SHORT / QUANTITY_OVER / UNIT_PRICE_DIFF / ITEM_MISSING / ITEM_UNEXPECTED
+3. PurchaseOrder.status → RECEIVED **자동 전이** (발주 종결)
+
+[설계 원칙]
+- 입고 확정과 발주 종결은 "하나의 사용자 의사결정" 으로 묶인다. 별도 버튼·별도 액션 없음.
+- 수량 미달·초과·단가 차이는 **입고를 막지 않는다**. 대신 `ReceivingDiscrepancy` 에 스냅샷으로 기록하여 추후 재고 실사(D39~D41) 및 원인 분석의 근거로 활용한다.
+- "발주 목록의 입고 완료 버튼" 은 존재하지 않는다. RECEIVED 는 오직 입고서 확정의 원자적 결과로만 도달한다.
+- 폐기된 안:
+  - 누적 수량 기반 자동 트리거 (부동소수 오차·시점 모호성)
+  - `markPurchaseOrderAsReceivedAction` (P5 를 두 도메인 이벤트로 분리한 잘못된 정정)
+
+[분할 입고 정책 — Sprint 4 이후 검토]
+현재 설계는 "1 발주 = 1 입고서" 단순 케이스 기준. N건 분할 입고 요구가 발생하면 별도 의사결정으로 확장한다.
+
+---
+
+**P9 재정정 (2026-06-30)**
+
+[원칙: 발주 확정 = 거래 단가 확정]
+- 단가 마스터 갱신은 **DRAFT → SUBMITTED 전이 시점에만** 발생한다.
+  - `SupplierItemPriceHistory` 적층
+  - `SupplierItem.currentPrice` 갱신
+- 입고 확정 시점에는 단가 마스터를 **일절 갱신하지 않는다**.
+  - `InventoryLot.unitCost = POItem.unitPrice` 를 그대로 사용 (PO 단가가 정본)
+  - 입고 실 단가가 PO 와 다르면 `ReceivingDiscrepancy(UNIT_PRICE_DIFF)` 스냅샷만 기록
+- 사유: 발주 확정 = 공급업체와의 거래 단가 합의 완료(계약 성립). 입고 시점의 단가 불일치는 "거래 단가의 변경" 이 아니라 "송장/실물 검증 실패" 이며, 마스터를 갱신하면 동일 공급품의 다른 진행 중 발주에 영향을 주어 거래 단가 확정 원칙이 깨진다.
+
+---
 
 **불일치 추적 도메인 분리 (2026-06-30, D30/D39 결정)**
 
 본 시스템은 두 종류의 불일치를 별도 도메인으로 추적한다. 혼동하지 않는다.
 
-| 도메인 | 시점 | 비교 대상 | 기록 모델 | 트랜잭션 |
+| 도메인 | 시점 | 비교 대상 | 기록 모델 | 트랜잭션 영향 |
 |---|---|---|---|---|
-| **발주 ↔ 입고** | 입고 확정 / 발주 종결 | PO 발주량 vs 누적 입고량 | `ReceivingDiscrepancy` (D30) | 없음 (기록만) |
-| **이론재고 ↔ 실재고** | 실사 완료 | InventoryLot 합계 vs 실측치 | `StockTake / StockTakeItem` (D39~D41) | `InventoryTransaction(type=ADJUSTMENT)` |
+| **발주 ↔ 입고** | 입고 확정 (동시에 발주 종결) | PO 발주량 vs 입고량 / PO 단가 vs 입고 단가 | `ReceivingDiscrepancy` (D30) | 없음 (기록만, 마스터 무영향) |
+| **이론재고 ↔ 실재고** | 재고 실사 완료 | InventoryLot 합계 vs 실측치 | `StockTake / StockTakeItem` (D39~D41) | `InventoryTransaction(type=ADJUSTMENT)` |
 
 - 발주↔입고 불일치는 **공급사·구매 프로세스** 원인 추적용.
 - 이론재고↔실재고 불일치는 **현장 운영·재고 관리** 원인 추적용.
-- 두 도메인은 서로의 트리거가 되지 않는다. 입고 단가 차이가 발견되어도 SupplierItem 마스터를 갱신하지 않으며(P9 보존), 실사 차이가 발견되어도 PO 상태에 영향을 주지 않는다.
+- 두 도메인은 서로의 트리거가 되지 않는다. 입고 단가 차이가 있어도 SupplierItem 마스터는 갱신하지 않으며(P9 보존), 실사 차이가 있어도 PO 상태에 영향을 주지 않는다.
+
+---
+
+**변경 이력**
+- 2026-06-30 — P5·P9 **재정정**: 이전 보강(입고 확정 ↔ 발주 종결 분리, markPurchaseOrderAsReceivedAction 신설)을 폐기하고, 입고 확정 시 PO 자동 종결로 통합. 발주 확정 = 거래 단가 확정 원칙을 P9 에 명시.
+- 2026-06-30 — 초기 P5/P9 보강 (현재 재정정으로 대체됨)
 
 ### 작업 전 체크리스트
 새 Phase 시작 전 반드시 자문:
@@ -124,11 +154,11 @@
     - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
     - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
     - **전이 매트릭스 보강**: `SUBMITTED → RECEIVED` 직접 전이 허용. APPROVED 단계는 결재 도입 전까지 우회 가능. 결재 도입 시 매트릭스 좁히면 됨.
-    - **RECEIVED 자동 전이 폐기**: 누적 수량 도달 기반 자동 트리거 폐기. **입고 확정은 사용자 명시 액션**으로만 발생. 미달/초과/정확 일치 모든 케이스를 운영자가 판단. 안정성 우선.
-    - **책임 분리**: ReceivingNoteService.confirm 은 InventoryLot/Transaction 생성만 담당하고 PO 상태에는 손대지 않음. PO 전이는 별도 `markPurchaseOrderAsReceivedAction` (D30 에서 신설).
+    - **RECEIVED 트리거 — 수량 자동 폐기, 입고 확정 시 통합**: 누적 수량 도달 기반 자동 트리거는 폐기(부동소수 오차·시점 모호성). 대신 **입고서 확정(ReceivingNote CONFIRMED) 시 동일 트랜잭션 내에서 PO를 RECEIVED로 자동 종결**한다. 미달/초과/단가 차이는 입고를 막지 않고 `ReceivingDiscrepancy` 스냅샷으로 기록.
+    - **책임 통합**: `ReceivingNoteService.confirm` 단일 트랜잭션이 (a) InventoryLot/InventoryTransaction 생성 (b) ReceivingDiscrepancy 기록 (c) PO RECEIVED 전이 까지 원자적으로 수행. 별도 `markPurchaseOrderAsReceivedAction` 은 **폐기** (UI 버튼 없음).
     - **하드코딩 라벨 정합화**: 7개 파일 안내문·에러 메시지 정합화 (`14b2d20c`). 후속 공백 정정 2개 파일 보강 (`13b1d5f8`).
     - **신규 문서**: `docs/progress/PO_LIFECYCLE.md` — 5단계 정의, 전이 매트릭스, APPROVED 보존 정책, RECEIVED 트리거 결정 기록.
-    - **헌법 P5 보강**: 입고서 확정(ReceivingNote CONFIRMED)은 InventoryLot/InventoryTransaction 적재까지만 담당. 발주 종결(PO RECEIVED)은 사용자 명시 액션으로만 전이. 두 이벤트는 분리되어 있으며 서로 부수효과를 일으키지 않는다.
+    - **헌법 P5·P9 재정정 (2026-06-30 정정)**: 입고 확정과 발주 종결을 **단일 도메인 이벤트** 로 재통합. 발주 확정 = 거래 단가 확정 원칙을 P9 에 명시. 상세는 `### 헌법 보강` 섹션 참조.
   - **Phase 4-C2 (UI)** (commit `bf103b1a`) — Step 4 라인업 다축 집계 뷰 (D29 프런트):
     - `POItemCandidate` 에 `lineupId` / `lineupName` 전파 (`build-po-items-from-mr.ts`)
     - `loadPOWizardDataAction`: MR select 에 `lineupId` + `lineup.name` 포함 후 평탄화
