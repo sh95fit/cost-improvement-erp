@@ -37,6 +37,8 @@ import {
 } from "../actions/purchase-order.action";
 import { PO_STATUS_LABELS } from "../schemas/purchase-order.schema";
 import { PurchaseOrderStatusBadge } from "./purchase-order-status-badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkActionBar } from "./bulk-action-bar";
 
 export type PurchaseOrderRow = {
   id: string;
@@ -101,6 +103,27 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseOrderRow | null>(null);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const selectedRows = items.filter((it) => selectedIds.has(it.id));
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === items.length ? new Set() : new Set(items.map((it) => it.id)),
+    );
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
   const fetchPurchaseOrders = useCallback(
     async (page = 1) => {
       setLoading(true);
@@ -129,6 +152,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           toast.error(result.error.message);
         }
       } finally {
+        setSelectedIds(new Set()); // 목록 갱신 시 선택 초기화
         setLoading(false);
       }
     },
@@ -157,6 +181,12 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
 
   return (
     <div className="space-y-4">
+      <BulkActionBar
+        selectedRows={selectedRows.map((r) => ({ id: r.id, status: r.status }))}
+        onCompleted={() => fetchPurchaseOrders(pagination.page)}
+        onClearSelection={clearSelection}
+      />
+
       {/* 상단: 검색 + 필터 + 등록 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
@@ -194,7 +224,14 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
       <div className="rounded-md border">
       <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow>  
+              <TableHead className="w-[40px] text-center">
+                <Checkbox
+                  checked={items.length > 0 && selectedIds.size === items.length}
+                  onCheckedChange={toggleAll}
+                  aria-label="전체 선택"
+                />
+              </TableHead>
               <TableHead className="w-[160px]">발주번호</TableHead>
               <TableHead className="w-[100px] text-center">상태</TableHead>
               <TableHead>공급업체</TableHead>
@@ -215,13 +252,13 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={12} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
                   불러오는 중...
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={13} className="h-24 text-center text-gray-500">
                   등록된 발주서가 없습니다
                 </TableCell>
               </TableRow>
@@ -232,6 +269,16 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
                   className="cursor-pointer hover:bg-gray-50"
                   onClick={() => onSelect(item)}
                 >
+                  <TableCell
+                    className="w-[40px] text-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selectedIds.has(item.id)}
+                      onCheckedChange={() => toggleOne(item.id)}
+                      aria-label={`${item.orderNumber} 선택`}
+                    />
+                  </TableCell>
                   <TableCell className="font-mono text-sm">
                     {item.orderNumber}
                     {item.isManual && (
