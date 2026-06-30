@@ -33,17 +33,18 @@ function baseNote() {
     id: NOTE_ID,
     companyId: COMPANY_ID,
     purchaseOrderId: PO_ID,
+    receiveNumber: "RN-2026-0001",
     status: "DRAFT",
     receivedDate: new Date("2026-06-30"),
     confirmedAt: null,
     confirmedByUserId: null,
     items: [
-      {
-        id: "rni-1",
-        purchaseOrderItemId: "poi-1",
-        quantity: 10,
-        unitPrice: 1000,
-      },
+        {
+          id: "rni-1",
+          purchaseOrderItemId: "poi-1",
+          receivedQty: 10,   // ← quantity 가 아니라 receivedQty
+          unitPrice: 1000,
+        },
     ],
     purchaseOrder: {
       id: PO_ID,
@@ -94,16 +95,16 @@ describe("confirmReceivingNote", () => {
       "@/features/purchase-order/services/purchase-order.service"
     );
     expect(transitionPurchaseOrderStatus).toHaveBeenCalledWith(
-      COMPANY_ID,
-      PO_ID,
-      "RECEIVED",
-      expect.objectContaining({ existingTx: expect.anything() }),
+        COMPANY_ID,
+        PO_ID,
+        { toStatus: "RECEIVED", actorUserId: ACTOR_ID },
+        expect.anything(),  // ★ tx 객체 직접 전달
     );
   });
 
   it("수량 부족: QUANTITY_SHORT 스냅샷 기록", async () => {
     const note = buildNote();
-    note.items[0].quantity = 7;
+    note.items[0].receivedQty = 7;
     mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
 
     await confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID);
@@ -122,7 +123,7 @@ describe("confirmReceivingNote", () => {
 
   it("수량 초과: QUANTITY_OVER 스냅샷 기록", async () => {
     const note = buildNote();
-    note.items[0].quantity = 12;
+    note.items[0].receivedQty = 12;
     mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
 
     await confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID);
@@ -137,17 +138,17 @@ describe("confirmReceivingNote", () => {
     );
   });
 
-  it("단가 불일치: UNIT_PRICE_DIFF 스냅샷만 기록 (Lot.unitCost는 PO 단가 유지 - P9)", async () => {
+  it("단가 불일치: UNIT_PRICE_DIFF 스냅샷만 기록 (Lot.unitPrice는 PO 단가 유지 - P9)", async () => {
     const note = buildNote();
     note.items[0].unitPrice = 1100; // 입고 단가가 다름
     mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
-
+  
     await confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID);
-
-    // Lot의 unitCost는 PO 단가(1000)로 고정
+  
+    // Lot의 unitPrice는 PO 단가(1000)로 고정
     expect(mockPrisma.inventoryLot.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ unitCost: 1000 }),
+        data: expect.objectContaining({ unitPrice: 1000 }),
       }),
     );
     // UNIT_PRICE_DIFF 스냅샷 존재
@@ -161,7 +162,7 @@ describe("confirmReceivingNote", () => {
         }),
       }),
     );
-  });
+  });  
 
   it("발주에 없는 항목이 입고됨: ITEM_MISSING 스냅샷, Lot 생성 없음", async () => {
     const note = buildNote();
@@ -237,5 +238,17 @@ describe("confirmReceivingNote", () => {
     await expect(
       confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID),
     ).rejects.toBeInstanceOf(ReceivingNoteNotFoundError);
+  });
+
+  it("SUBSIDIARY 항목은 현 스키마에서 차단", async () => {
+    const note = buildNote() as any;
+    note.purchaseOrder.items[0].itemType = "SUBSIDIARY";
+    note.purchaseOrder.items[0].materialMasterId = null;
+    note.purchaseOrder.items[0].subsidiaryMasterId = "sm-1";
+    mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
+  
+    await expect(
+      confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID),
+    ).rejects.toThrow(/Subsidiary 입고/);
   });
 });
