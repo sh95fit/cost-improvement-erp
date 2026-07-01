@@ -482,3 +482,129 @@ export async function createReceivingNoteDraft(
     });
   });
 }
+
+// ════════════════════════════════════════
+// D30 C-3-b2: 대시보드 & Eligible PO 목록 서비스
+// ════════════════════════════════════════
+
+/**
+ * 입고 대시보드 요약 (옵션 β).
+ *
+ * 반환:
+ *  - counts: 총 노트 / DRAFT / 이번 달 CONFIRMED / 확정 대기 PO (SUBMITTED 이면서 노트 없음)
+ *  - recentNotes: 최근 노트 5건 (수령일 desc)
+ *  - eligiblePOs: 확정 대기 PO 5건 (orderDate desc)
+ *  - discrepancySummary30d: 최근 30일 discrepancy 타입별 카운트
+ */
+export async function getReceivingDashboardSummary(companyId: string) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    totalNotes,
+    draftNotes,
+    confirmedThisMonth,
+    eligiblePOsCount,
+    recentNotes,
+    eligiblePOs,
+    discrepancyGroups,
+  ] = await Promise.all([
+    prisma.receivingNote.count({ where: { companyId } }),
+    prisma.receivingNote.count({ where: { companyId, status: "DRAFT" } }),
+    prisma.receivingNote.count({
+      where: { companyId, status: "CONFIRMED", confirmedAt: { gte: monthStart } },
+    }),
+    prisma.purchaseOrder.count({
+      where: { companyId, status: "SUBMITTED", receivingNotes: { none: {} } },
+    }),
+    prisma.receivingNote.findMany({
+      where: { companyId },
+      orderBy: { receivedDate: "desc" },
+      take: 5,
+      include: {
+        purchaseOrder: {
+          select: {
+            id: true, orderNumber: true,
+            supplier: { select: { id: true, name: true } },
+            location: { select: { id: true, name: true } },
+          },
+        },
+        _count: { select: { items: true } },
+      },
+    }),
+    prisma.purchaseOrder.findMany({
+      where: { companyId, status: "SUBMITTED", receivingNotes: { none: {} } },
+      orderBy: { orderDate: "desc" },
+      take: 5,
+      select: {
+        id: true, orderNumber: true, orderDate: true, totalAmount: true,
+        supplier: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+    prisma.receivingDiscrepancy.groupBy({
+      by: ["type"],
+      where: { companyId, recordedAt: { gte: thirtyDaysAgo } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const discrepancySummary30d = {
+    QUANTITY_SHORT: 0,
+    QUANTITY_OVER: 0,
+    UNIT_PRICE_DIFF: 0,
+    ITEM_MISSING: 0,
+    total: 0,
+  };
+  for (const g of discrepancyGroups) {
+    const n = g._count._all;
+    discrepancySummary30d[g.type] = n;
+    discrepancySummary30d.total += n;
+  }
+
+  return {
+    counts: {
+      totalNotes,
+      draftNotes,
+      confirmedThisMonth,
+      eligiblePOs: eligiblePOsCount,
+    },
+    recentNotes,
+    eligiblePOs,
+    discrepancySummary30d,
+  };
+}
+
+/**
+ * "새 입고서" 진입점에서 사용: SUBMITTED 이면서 입고 노트가 없는 PO 목록.
+ * SearchableSelect 용도로 최대 50건, orderDate desc.
+ */
+export async function listEligiblePOsForReceiving(
+  companyId: string,
+  options?: { search?: string; limit?: number },
+) {
+  const limit = Math.min(options?.limit ?? 50, 100);
+  return prisma.purchaseOrder.findMany({
+    where: {
+      companyId,
+      status: "SUBMITTED",
+      receivingNotes: { none: {} },
+      ...(options?.search && {
+        OR: [
+          { orderNumber: { contains: options.search, mode: "insensitive" as const } },
+          { supplier: { name: { contains: options.search, mode: "insensitive" as const } } },
+        ],
+      }),
+    },
+    orderBy: { orderDate: "desc" },
+    take: limit,
+    select: {
+      id: true, orderNumber: true, orderDate: true, locationId: true, totalAmount: true,
+      supplier: { select: { id: true, name: true } },
+      location: { select: { id: true, name: true } },
+      _count: { select: { items: true } },
+    },
+  });
+}

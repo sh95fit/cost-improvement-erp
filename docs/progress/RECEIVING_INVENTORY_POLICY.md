@@ -65,6 +65,20 @@
 
 동일 입고서를 두 번 확정하려 하면 `ReceivingNoteAlreadyConfirmedError` (액션 매핑: `ALREADY_CONFIRMED`) 를 던진다. 재고 이중 반영 방지의 1차 방어선이다. 스키마 레벨의 2차 방어선은 `ReceivingNote.status` 컬럼 자체가 상태를 보존한다는 사실이다.
 
-## 7. 변경 이력
 
+## 7. ReceivingDiscrepancy 관계 격리 정책
+
+`ReceivingDiscrepancy` 는 감사·스냅샷 성격의 이력 테이블이다. `purchaseOrderItemId`, `receivingNoteItemId` FK 스칼라 필드는 유지하되, Prisma 관계 라인(`@relation`)은 의도적으로 정의하지 않는다.
+
+**근거**:
+- 스냅샷 값(`expectedQty`, `actualQty`, `expectedUnitPrice`, `actualUnitPrice`, `diffValue`)이 기록 시점에 이미 박제되어 있어, 현재 상태를 관계로 다시 끌어올 필요가 없다.
+- 상위 엔티티(`PurchaseOrderItem`, `ReceivingNoteItem`)가 변경·삭제되더라도 이력의 진실성이 유지되도록 soft dependency 를 유지한다.
+- 반면 `company`, `purchaseOrder`, `receivingNote`, `recordedByUser` 관계는 유지한다. 집계·필터·권한 체크·기록자 표시에 필수이고, 상위 엔티티가 hard delete 되지 않는 도메인 규약을 갖기 때문이다.
+
+**UI 구현 규약**:
+품목명 등 부가 정보가 필요한 경우, 이미 로드된 `receivingNote.purchaseOrder.items` 배열에서 `purchaseOrderItemId` 로 클라이언트 사이드 조인한다. 추가 DB 조회를 하지 않는다.
+
+
+## 8. 변경 이력
 - 2026-07-01: 초안. D30 C-2 (서비스) 구현 시점의 실제 코드를 문서화. Discrepancy 부호 정책을 정책 A(`actual - expected`) 로 확정.
+- 2026-07-01: §8 (Discrepancy 관계 격리 정책) 추가. D30 C-3-a 보완 커밋(`c1b8abee`)에서 서비스 코드의 `include.purchaseOrderItem` 제거 근거 명시.

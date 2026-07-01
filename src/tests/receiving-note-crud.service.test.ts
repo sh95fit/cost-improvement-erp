@@ -139,3 +139,79 @@ describe("getReceivingDiscrepanciesByPO", () => {
     );
   });
 });
+
+import {
+    getReceivingDashboardSummary,
+    listEligiblePOsForReceiving,
+  } from "@/features/receiving-note/services/receiving-note.service";
+  
+  describe("getReceivingDashboardSummary", () => {
+    beforeEach(() => vi.clearAllMocks());
+  
+    it("모든 카운트/목록/불일치 요약을 병렬 조회하여 반환", async () => {
+      // counts
+      mockPrisma.receivingNote.count
+        .mockResolvedValueOnce(12) // totalNotes
+        .mockResolvedValueOnce(3)  // draftNotes
+        .mockResolvedValueOnce(7); // confirmedThisMonth
+      mockPrisma.purchaseOrder.count.mockResolvedValueOnce(2); // eligiblePOsCount
+  
+      // recentNotes
+      mockPrisma.receivingNote.findMany.mockResolvedValueOnce([{ id: "n-1" }]);
+      // eligiblePOs
+      mockPrisma.purchaseOrder.findMany.mockResolvedValueOnce([{ id: "po-1" }]);
+      // discrepancy groupBy
+      (mockPrisma.receivingDiscrepancy as unknown as {
+        groupBy: ReturnType<typeof vi.fn>;
+      }).groupBy = vi.fn().mockResolvedValue([
+        { type: "QUANTITY_SHORT", _count: { _all: 2 } },
+        { type: "UNIT_PRICE_DIFF", _count: { _all: 3 } },
+      ]);
+  
+      const result = await getReceivingDashboardSummary(COMPANY_ID);
+  
+      expect(result.counts).toEqual({
+        totalNotes: 12,
+        draftNotes: 3,
+        confirmedThisMonth: 7,
+        eligiblePOs: 2,
+      });
+      expect(result.recentNotes).toHaveLength(1);
+      expect(result.eligiblePOs).toHaveLength(1);
+      expect(result.discrepancySummary30d.QUANTITY_SHORT).toBe(2);
+      expect(result.discrepancySummary30d.UNIT_PRICE_DIFF).toBe(3);
+      expect(result.discrepancySummary30d.total).toBe(5);
+    });
+  });
+  
+  describe("listEligiblePOsForReceiving", () => {
+    beforeEach(() => vi.clearAllMocks());
+  
+    it("SUBMITTED + 노트 없는 PO 만 조회", async () => {
+      mockPrisma.purchaseOrder.findMany.mockResolvedValue([{ id: "po-1" }]);
+  
+      const result = await listEligiblePOsForReceiving(COMPANY_ID);
+  
+      expect(result).toHaveLength(1);
+      expect(mockPrisma.purchaseOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: COMPANY_ID,
+            status: "SUBMITTED",
+            receivingNotes: { none: {} },
+          }),
+          take: 50,
+        }),
+      );
+    });
+  
+    it("search 옵션 적용", async () => {
+      mockPrisma.purchaseOrder.findMany.mockResolvedValue([]);
+  
+      await listEligiblePOsForReceiving(COMPANY_ID, { search: "PO-2026" });
+  
+      const call = mockPrisma.purchaseOrder.findMany.mock.calls[0][0];
+      expect(call.where.OR).toBeDefined();
+      expect(call.where.OR).toHaveLength(2);
+    });
+  });  
