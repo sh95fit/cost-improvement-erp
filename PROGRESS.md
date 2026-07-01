@@ -88,7 +88,7 @@
 ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음을 원자적으로 수행한다:
 1. InventoryLot 생성·InventoryTransaction(PURCHASE) 적층
 2. 발주↔입고 차이 발생 시 `ReceivingDiscrepancy` 스냅샷 기록
-   - QUANTITY_SHORT / QUANTITY_OVER / UNIT_PRICE_DIFF / ITEM_MISSING / ITEM_UNEXPECTED
+   - QUANTITY_SHORT / QUANTITY_OVER / UNIT_PRICE_DIFF / ITEM_MISSING
 3. PurchaseOrder.status → RECEIVED **자동 전이** (발주 종결)
 
 [설계 원칙]
@@ -111,7 +111,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
   - `SupplierItemPriceHistory` 적층
   - `SupplierItem.currentPrice` 갱신
 - 입고 확정 시점에는 단가 마스터를 **일절 갱신하지 않는다**.
-  - `InventoryLot.unitCost = POItem.unitPrice` 를 그대로 사용 (PO 단가가 정본)
+  - `InventoryLot.unitPrice = POItem.unitPrice` 를 그대로 사용 (PO 단가가 정본)
   - 입고 실 단가가 PO 와 다르면 `ReceivingDiscrepancy(UNIT_PRICE_DIFF)` 스냅샷만 기록
 - 사유: 발주 확정 = 공급업체와의 거래 단가 합의 완료(계약 성립). 입고 시점의 단가 불일치는 "거래 단가의 변경" 이 아니라 "송장/실물 검증 실패" 이며, 마스터를 갱신하면 동일 공급품의 다른 진행 중 발주에 영향을 주어 거래 단가 확정 원칙이 깨진다.
 
