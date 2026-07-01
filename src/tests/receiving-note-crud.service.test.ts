@@ -56,7 +56,9 @@ describe("getReceivingNotes", () => {
 describe("createReceivingNoteDraft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPrisma.$transaction.mockImplementation((cb: (tx: typeof mockPrisma) => unknown) => cb(mockPrisma));
+    mockPrisma.$transaction.mockImplementation(
+        async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+      );
   });
 
   it("SUBMITTED PO 에 초안 생성 성공", async () => {

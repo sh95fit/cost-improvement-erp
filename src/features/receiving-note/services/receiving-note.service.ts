@@ -407,13 +407,8 @@ export async function getReceivingDiscrepanciesByPO(
     include: {
       recordedByUser: { select: { id: true, name: true } },
       receivingNote: { select: { id: true, receiveNumber: true, status: true } },
-      purchaseOrderItem: {
-        select: {
-          id: true,
-          materialMaster: { select: { id: true, name: true, code: true } },
-          subsidiaryMaster: { select: { id: true, name: true, code: true } },
-        },
-      },
+      // ★ purchaseOrderItem 관계 없음 (설계 의도: 스냅샷 이력 격리)
+      //    UI에서 품목명 표시가 필요하면 purchaseOrderItemId 로 PO items 에서 클라이언트 사이드 조인.
     },
   });
 }

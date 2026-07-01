@@ -692,6 +692,20 @@ po-wizard.tsx (state machine + step orchestration)
   - 테스트 6/6 pass (`src/tests/confirm-receiving-note.action.test.ts`)
 - ⏳ C-3-b UI: /receiving 신규 라우트 (목록 + 상세 + 확정 다이얼로그) — 다음 진행
 
+## D30-8. ReceivingDiscrepancy 관계 격리 정책
+
+`ReceivingDiscrepancy`는 감사·스냅샷 성격의 이력 테이블이다.
+`purchaseOrderItemId`, `receivingNoteItemId` FK 스칼라는 유지하되 Prisma 관계 라인은
+의도적으로 정의하지 않는다. 이유:
+
+- 스냅샷 값(expectedQty, actualQty, expectedUnitPrice, actualUnitPrice, diffValue)은
+  기록 시점에 이미 박제되어 있어 관계로 현재 상태를 다시 끌어올 필요가 없다.
+- 상위 엔티티(PurchaseOrderItem/ReceivingNoteItem)가 변경·삭제되어도 이력의 진실성이
+  유지되도록 soft dependency 를 유지한다.
+
+UI에서 품목명 등 부가 정보가 필요한 경우, 이미 로드된 `receivingNote.purchaseOrder.items`
+에서 `purchaseOrderItemId` 로 클라이언트 사이드 조인한다.
+
 ### 발견된 별건 이슈 (D30 스코프 외)
 
 - **seed.ts MealPlan 멱등성 버그**: `existingPlanB_LunchFresh` 조건이 unique key `(meal_plan_group_id, company_meal_slot_id, lineup_id)` 와 어긋나 재실행 시 P2002 발생. `receiving-note` 권한 seed 반영에는 영향 없음 (해당 단계 이후 실패). 별건 D 항목으로 분리 처리 예정.
