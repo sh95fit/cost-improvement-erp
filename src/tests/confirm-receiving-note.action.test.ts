@@ -130,10 +130,11 @@ describe("confirmReceivingNoteAction", () => {
   });
 
   it("Zod 검증 실패 (receivingNoteId 없음): INTERNAL_ERROR 로 fallback", async () => {
+    (assertPermission as ReturnType<typeof vi.fn>).mockImplementation(() => undefined);
+  
     const res = await confirmReceivingNoteAction({});
-
+  
     expect(res.success).toBe(false);
-    // ZodError 는 handleActionError 의 도메인 매핑 대상이 아니므로 fallback 발생
     if (!res.success) {
       expect(res.error.code).toBe("INTERNAL_ERROR");
     }

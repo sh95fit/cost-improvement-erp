@@ -672,6 +672,31 @@ po-wizard.tsx (state machine + step orchestration)
 - **Phase 4-C와의 인터페이스**: 발주서 상세 품목 테이블에 "입고 수량" 컬럼 자리만 미리 잡고 Phase 5 완료까지는 `0 / quantity` 표기.
 - **확정 시점**: Phase 4-D 완료 직후, Phase 5 착수 직전 D30으로 정식 확정.
 
+### D30 (2026-06-30 ~ 2026-07-01) 입고서 확정 & 재고 반영
+
+- ✅ C-1 스키마: ReceivingDiscrepancy 모델 + ReceivingNote.confirmedAt/confirmedByUserId
+  (migration: phase_3_d30_receiving_discrepancy_and_confirmed_meta, commit 67a60e34)
+- ✅ C-2 서비스: confirmReceivingNote 단일 트랜잭션 구현, 10/10 tests pass
+  (commit f8764185, 4da325a)
+- ✅ C-3-a 액션: confirmReceivingNoteAction + 6 tests pass
+  - 권한 리소스 seed 추가: "receiving-note" (seed.ts sysAdminResources)
+  - 정책 문서화: docs/progress/RECEIVING_INVENTORY_POLICY.md 신규 (§1-7)
+- ⏳ C-3-b UI: /receiving 신규 라우트 (목록 + 상세 + 확정 다이얼로그) — 다음 진행
+
+### D30 진행 상황 갱신 (2026-07-01)
+
+- ✅ C-3-a 액션: confirmReceivingNoteAction 구현 완료
+  - 권한 리소스 seed 추가: `"receiving-note"` (prisma/seed.ts sysAdminResources, 108개 PermissionSetItem 반영 확인)
+  - 정책 문서 신규: `docs/progress/RECEIVING_INVENTORY_POLICY.md` (§1-7: 도메인/단가/위치/Discrepancy 부호/부자재/멱등성/변경이력)
+  - 도메인 에러 매핑: NOT_FOUND / ALREADY_CONFIRMED / FORBIDDEN / UNSUPPORTED_SUBSIDIARY
+  - 테스트 6/6 pass (`src/tests/confirm-receiving-note.action.test.ts`)
+- ⏳ C-3-b UI: /receiving 신규 라우트 (목록 + 상세 + 확정 다이얼로그) — 다음 진행
+
+### 발견된 별건 이슈 (D30 스코프 외)
+
+- **seed.ts MealPlan 멱등성 버그**: `existingPlanB_LunchFresh` 조건이 unique key `(meal_plan_group_id, company_meal_slot_id, lineup_id)` 와 어긋나 재실행 시 P2002 발생. `receiving-note` 권한 seed 반영에는 영향 없음 (해당 단계 이후 실패). 별건 D 항목으로 분리 처리 예정.
+- **권한 리소스 키 불일치**: `bulk-transition-po-status.action.ts` 등이 `"purchase-order"` 리소스 키를 사용하나 seed 의 `sysAdminResources` 에는 `"purchasing"` 만 존재. SYSTEM_ADMIN·COMPANY_ADMIN 은 `assertPermission` 앞단에서 통과하므로 현재 운영은 문제없지만, MEMBER 롤 사용자는 FORBIDDEN 이 발생하는 잠재 버그. 별건으로 정리 필요.
+
 #### D31 (예고). 부분 입고 진행률 UX (Phase 5)
 
 - 발주서 상세에서 입고 진척률을 품목별 `receivedQty / quantity` (예: "5/10 박스")로 표시.
