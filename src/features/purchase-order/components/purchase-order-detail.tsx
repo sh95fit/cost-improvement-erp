@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // ★ D30 C-3-b1
 import { PurchaseOrderStatusBadge } from "./purchase-order-status-badge";
 import { POStatusTransitionDialog } from "./po-status-transition-dialog";
+import { ReceivingNoteStatusBadge } from "@/features/receiving-note/components/receiving-note-status-badge"; // ★ D30 C-3-b1
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -48,6 +50,22 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
   const locked = isPurchaseOrderLocked(po.status);
   const nextStatuses = getNextAllowedStatuses(po.status);
 
+  // ★ D30 C-3-b1: 입고서 작성/보기 버튼 상태 결정
+  //   - SUBMITTED 이고 노트 없음     → "입고서 작성" (/receiving/notes/new?poId=...)
+  //   - 노트 존재 (DRAFT/CONFIRMED)  → "입고서 보기" (/receiving/notes/[id])
+  //   - 그 외 (DRAFT/APPROVED/CANCELLED 등 노트 없음) → 버튼 숨김
+  const existingNote = po.receivingNotes?.[0] ?? null;
+  const canCreateNote = po.status === "SUBMITTED" && !existingNote;
+  const noteButton = existingNote ? (
+    <Button asChild variant="outline">
+      <Link href={`/receiving/notes/${existingNote.id}`}>입고서 보기</Link>
+    </Button>
+  ) : canCreateNote ? (
+    <Button asChild variant="outline">
+      <Link href={`/receiving/notes/new?poId=${po.id}`}>입고서 작성</Link>
+    </Button>
+  ) : null;
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -68,6 +86,7 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
           </p>
         </div>
         <div className="flex gap-2">
+          {noteButton /* ★ D30 C-3-b1 */}
           {!locked && nextStatuses.length > 0 && (
             <Button onClick={() => setDialogOpen(true)}>상태 변경</Button>
           )}
@@ -86,8 +105,6 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
         <Meta label="라인" value={po.productionLine?.name ?? "-"} />
         <Meta label="총액" value={formatCurrency(Number(po.totalAmount))} />
         <Meta label="출고일" value={formatDate(po.outboundDate)} />
-        {/* ★ D20 (D-EXPECTED-RECEIVE-SIMPLIFIED): 헤더 예상 입고일 메타 제거.
-            출고일이 헤더 단위 입고일을 겸하며, 품목별 입고일은 아래 품목 테이블에서 노출. */}
         <Meta label="식단 기준일" value={formatDate(po.mealPlanGroup?.planDate)} />
         <Meta label="품목 수" value={`${po.items.length}건`} />
         {po.submittedAt && (
@@ -130,7 +147,6 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* ★ D20: 품목 단위 입고예정일이 빠른 순으로 정렬 (사용자 가시성) */}
               {[...po.items]
                 .sort((a, b) => {
                   const da = a.itemExpectedReceiveDate
@@ -142,64 +158,64 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
                   return da - db;
                 })
                 .map((it) => {
-                const name =
-                  it.materialMaster?.name ??
-                  it.subsidiaryMaster?.name ??
-                  "-";
-                const code =
-                  it.materialMaster?.code ??
-                  it.subsidiaryMaster?.code ??
-                  "";
-                return (
-                  <TableRow key={it.id}>
-                    <TableCell>
-                      <div className="font-medium">{name}</div>
-                      <div className="text-xs text-gray-500">{code}</div>
-                    </TableCell>
-                    <TableCell>
+                  const name =
+                    it.materialMaster?.name ??
+                    it.subsidiaryMaster?.name ??
+                    "-";
+                  const code =
+                    it.materialMaster?.code ??
+                    it.subsidiaryMaster?.code ??
+                    "";
+                  return (
+                    <TableRow key={it.id}>
+                      <TableCell>
+                        <div className="font-medium">{name}</div>
+                        <div className="text-xs text-gray-500">{code}</div>
+                      </TableCell>
+                      <TableCell>
                         <div className="font-medium">
-                            {it.supplierItem?.productName ?? "-"}
+                          {it.supplierItem?.productName ?? "-"}
                         </div>
                         {(it.supplierItem?.spec || it.supplierItem?.supplierItemCode) && (
-                            <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500">
                             {it.supplierItem?.spec && <span>{it.supplierItem.spec}</span>}
                             {it.supplierItem?.spec && it.supplierItem?.supplierItemCode && (
-                                <span> · </span>
+                              <span> · </span>
                             )}
                             {it.supplierItem?.supplierItemCode && (
-                                <span>코드: {it.supplierItem.supplierItemCode}</span>
+                              <span>코드: {it.supplierItem.supplierItemCode}</span>
                             )}
-                            </div>
+                          </div>
                         )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {Number(it.quantity).toLocaleString("ko-KR")}
-                    </TableCell>
-                    <TableCell>
-                      {it.supplierItem?.supplyUnit?.code ?? "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(Number(it.unitPrice))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(Number(it.totalPrice))}
-                    </TableCell>
-                    <TableCell>
-                      {formatExpectedReceiveDate(
-                        it.itemExpectedReceiveDate
-                          ? new Date(it.itemExpectedReceiveDate)
-                          : null,
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {Number(it.quantity).toLocaleString("ko-KR")}
+                      </TableCell>
+                      <TableCell>
+                        {it.supplierItem?.supplyUnit?.code ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(Number(it.unitPrice))}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(Number(it.totalPrice))}
+                      </TableCell>
+                      <TableCell>
+                        {formatExpectedReceiveDate(
+                          it.itemExpectedReceiveDate
+                            ? new Date(it.itemExpectedReceiveDate)
+                            : null,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>
       </div>
 
-      {/* 입고 노트 */}
+      {/* 입고 이력 — ★ D30 C-3-b1: 배지 + 행 클릭 이동 */}
       {po.receivingNotes && po.receivingNotes.length > 0 && (
         <div>
           <h2 className="mb-2 text-lg font-semibold">입고 이력</h2>
@@ -214,10 +230,18 @@ export function PurchaseOrderDetail({ po }: { po: POData }) {
               </TableHeader>
               <TableBody>
                 {po.receivingNotes.map((rn) => (
-                  <TableRow key={rn.id}>
-                    <TableCell>{rn.receiveNumber}</TableCell>
+                  <TableRow
+                    key={rn.id}
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => router.push(`/receiving/notes/${rn.id}`)}
+                  >
+                    <TableCell className="font-medium text-blue-600">
+                      {rn.receiveNumber}
+                    </TableCell>
                     <TableCell>{formatDate(rn.receivedDate)}</TableCell>
-                    <TableCell>{rn.status}</TableCell>
+                    <TableCell>
+                      <ReceivingNoteStatusBadge status={rn.status} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

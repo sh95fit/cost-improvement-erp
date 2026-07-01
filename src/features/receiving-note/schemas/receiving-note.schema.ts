@@ -51,3 +51,48 @@ export const receivingNoteListQuerySchema = z.object({
 });
 
 export type ReceivingNoteListQuery = z.infer<typeof receivingNoteListQuerySchema>;
+
+
+// ════════════════════════════════════════
+// D30 C-3-b1: UI 라벨/배지 매핑
+// PO 스키마의 PO_STATUS_LABELS / PO_STATUS_BADGE_COLOR 패턴을 그대로 따름
+// ════════════════════════════════════════
+
+import type { ReceivingNoteStatus, DiscrepancyType } from "@prisma/client";
+
+/**
+ * 입고서 상태 라벨 (UI 표시용)
+ */
+export const RECEIVING_NOTE_STATUS_LABELS: Record<ReceivingNoteStatus, string> = {
+  DRAFT: "초안",
+  CONFIRMED: "확정",
+};
+
+/**
+ * 입고서 상태 배지 색상 (PurchaseOrderStatusBadge 와 동일한 COLOR_CLASS 키 사용)
+ */
+export const RECEIVING_NOTE_STATUS_BADGE_COLOR: Record<ReceivingNoteStatus, string> = {
+  DRAFT: "gray",
+  CONFIRMED: "emerald",
+};
+
+/**
+ * 불일치 타입 라벨 (D30 정책 §4 부호 규칙 기반)
+ *  - QUANTITY_SHORT : 수량 부족 (실제 < 예상)
+ *  - QUANTITY_OVER  : 수량 초과 (실제 > 예상)
+ *  - UNIT_PRICE_DIFF: 단가 차이 (PO 단가 ≠ 입고 단가)
+ *  - ITEM_MISSING   : 품목 누락 또는 예상치 못한 품목
+ */
+export const DISCREPANCY_TYPE_LABELS: Record<DiscrepancyType, string> = {
+  QUANTITY_SHORT: "수량 부족",
+  QUANTITY_OVER: "수량 초과",
+  UNIT_PRICE_DIFF: "단가 차이",
+  ITEM_MISSING: "품목 누락",
+};
+
+export const DISCREPANCY_TYPE_BADGE_COLOR: Record<DiscrepancyType, string> = {
+  QUANTITY_SHORT: "red",
+  QUANTITY_OVER: "amber",
+  UNIT_PRICE_DIFF: "blue",
+  ITEM_MISSING: "gray",
+};
