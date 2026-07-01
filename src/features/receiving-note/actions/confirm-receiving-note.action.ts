@@ -1,7 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
 import { requireCompanySession } from "@/lib/auth/session";
-import { assertPermission } from "@/lib/auth/permissions";
+import { assertPermission, assertScope } from "@/lib/auth/permissions";
 import { createAuditLog } from "@/lib/utils/audit";
 import { actionOk } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
@@ -27,18 +29,18 @@ export type ConfirmReceivingNoteResult = {
 /**
  * 입고서 확정 Server Action.
  *
- * 서비스가 단일 트랜잭션 안에서 다음을 수행한다:
+ * 권한 체크 순서 (PROGRESS.md D30 C-3 A2-min):
+ *   1) assertPermission(receiving-note, UPDATE)
+ *   2) assertScope(LOCATION, po.locationId) — 자기 공장 PO 만 확정 가능
+ *
+ * 서비스가 단일 트랜잭션 안에서:
  *   1) ReceivingNote → CONFIRMED (confirmedAt / confirmedByUserId 기록)
  *   2) InventoryLot / InventoryTransaction 생성 (P9: PO 단가 고정)
  *   3) PurchaseOrderItem.receivedQty 누적
  *   4) ReceivingDiscrepancy 스냅샷 (수량/단가/누락)
  *   5) PurchaseOrder → RECEIVED 자동 전이 (P5 재정정 2026-06-30)
  *
- * 도메인 에러 → ActionFailure 매핑 (RECEIVING_INVENTORY_POLICY §5, §6):
- *   - ReceivingNoteNotFoundError            → NOT_FOUND
- *   - ReceivingNoteAlreadyConfirmedError    → ALREADY_CONFIRMED
- *   - ReceivingNoteCompanyMismatchError     → FORBIDDEN (공용 매핑 사용)
- *   - UnsupportedSubsidiaryReceivingError   → UNSUPPORTED_SUBSIDIARY
+ * 성공 시 revalidatePath 3곳: 대기 목록, 노트 상세, PO 상세.
  */
 export async function confirmReceivingNoteAction(
   rawInput: Record<string, unknown>,
@@ -49,6 +51,17 @@ export async function confirmReceivingNoteAction(
 
     const { receivingNoteId } = confirmReceivingNoteSchema.parse(rawInput);
 
+    // 스코프 체크를 위해 노트의 PO locationId 얕게 조회
+    const noteMeta = await prisma.receivingNote.findFirst({
+      where: { id: receivingNoteId, companyId: session.companyId },
+      select: {
+        id: true,
+        purchaseOrder: { select: { id: true, locationId: true } },
+      },
+    });
+    if (!noteMeta) throw new Error("NOT_FOUND");
+    assertScope(session, "LOCATION", noteMeta.purchaseOrder.locationId);
+
     let updated: Awaited<ReturnType<typeof confirmReceivingNote>>;
     try {
       updated = await confirmReceivingNote(
@@ -57,8 +70,7 @@ export async function confirmReceivingNoteAction(
         session.userId,
       );
     } catch (err) {
-      // 서비스 계층 커스텀 에러를 handleActionError 매핑 규약(error.message === key)에 맞춰 재던짐.
-      // 서비스 테스트는 클래스 그대로 검증하므로 서비스 코드 변경 없음.
+      // 서비스 계층 커스텀 에러를 handleActionError 매핑 규약에 맞춰 재던짐.
       if (err instanceof ReceivingNoteNotFoundError) throw new Error("NOT_FOUND");
       if (err instanceof ReceivingNoteAlreadyConfirmedError) throw new Error("ALREADY_CONFIRMED");
       if (err instanceof ReceivingNoteCompanyMismatchError) throw new Error("FORBIDDEN");
@@ -66,7 +78,6 @@ export async function confirmReceivingNoteAction(
       throw err;
     }
 
-    // 감사 로그 (실패해도 결과에 영향 없음)
     await createAuditLog({
       session,
       action: "UPDATE",
@@ -74,6 +85,11 @@ export async function confirmReceivingNoteAction(
       entityId: updated.id,
       after: { status: "CONFIRMED" } as unknown as Record<string, unknown>,
     });
+
+    // 관련 페이지 캐시 무효화
+    revalidatePath("/receiving/pending");
+    revalidatePath(`/receiving/notes/${receivingNoteId}`);
+    revalidatePath(`/purchase-orders/${noteMeta.purchaseOrder.id}`);
 
     return actionOk({ id: updated.id, status: "CONFIRMED" });
   } catch (error) {

@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // ─── mocks ───
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    receivingNote: {
+      findFirst: vi.fn(),
+    },
+  },
+}));
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 vi.mock("@/lib/auth/session", () => ({
   requireCompanySession: vi.fn(),
 }));
 vi.mock("@/lib/auth/permissions", () => ({
   assertPermission: vi.fn(),
+  assertScope: vi.fn(),
 }));
 vi.mock("@/lib/utils/audit", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -21,6 +33,8 @@ vi.mock("@/features/receiving-note/services/receiving-note.service", async () =>
   };
 });
 
+import { assertScope } from "@/lib/auth/permissions";
+import { prisma } from "@/lib/prisma";
 import { confirmReceivingNoteAction } from "@/features/receiving-note/actions/confirm-receiving-note.action";
 import { requireCompanySession } from "@/lib/auth/session";
 import { assertPermission } from "@/lib/auth/permissions";
@@ -51,6 +65,13 @@ describe("confirmReceivingNoteAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (requireCompanySession as ReturnType<typeof vi.fn>).mockResolvedValue(SESSION);
+    (assertPermission as ReturnType<typeof vi.fn>).mockImplementation(() => undefined);
+    (assertScope as ReturnType<typeof vi.fn>).mockImplementation(() => undefined);
+    // 기본 mock: 스코프 체크 통과
+    (prisma.receivingNote.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: VALID_CUID,
+      purchaseOrder: { id: "po-1", locationId: "loc-1" },
+    });
   });
 
   it("정상: success=true + status CONFIRMED + 감사 로그 기록", async () => {
@@ -66,6 +87,7 @@ describe("confirmReceivingNoteAction", () => {
       expect(res.data).toEqual({ id: VALID_CUID, status: "CONFIRMED" });
     }
     expect(assertPermission).toHaveBeenCalledWith(SESSION, "receiving-note", "UPDATE");
+    expect(assertScope).toHaveBeenCalledWith(SESSION, "LOCATION", "loc-1");    
     expect(createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "UPDATE",
@@ -138,5 +160,31 @@ describe("confirmReceivingNoteAction", () => {
     if (!res.success) {
       expect(res.error.code).toBe("INTERNAL_ERROR");
     }
+  });
+
+  it("노트 조회 실패 (findFirst null): NOT_FOUND 로 매핑", async () => {
+    (prisma.receivingNote.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  
+    const res = await confirmReceivingNoteAction({ receivingNoteId: VALID_CUID });
+  
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("NOT_FOUND");
+    }
+    expect(confirmReceivingNote).not.toHaveBeenCalled();
+  });
+
+  it("스코프 위반 (다른 공장 PO): FORBIDDEN 으로 매핑", async () => {
+    (assertScope as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+  
+    const res = await confirmReceivingNoteAction({ receivingNoteId: VALID_CUID });
+  
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("FORBIDDEN");
+    }
+    expect(confirmReceivingNote).not.toHaveBeenCalled();
   });
 });
