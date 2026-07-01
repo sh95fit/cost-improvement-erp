@@ -266,3 +266,224 @@ export async function confirmReceivingNote(
     { existingTx: options?.existingTx },
   );
 }
+
+// ════════════════════════════════════════
+// D30 C-3-b1: 조회 & 초안 생성 서비스
+// ════════════════════════════════════════
+
+import { prisma } from "@/lib/prisma";
+import type {
+  ReceivingNoteListQuery,
+  CreateReceivingNoteDraftInput,
+} from "../schemas/receiving-note.schema";
+
+export class ReceivingNoteAlreadyExistsError extends Error {
+  constructor(poId: string) {
+    super(`이 발주에 대한 입고서가 이미 존재합니다: ${poId}`);
+    this.name = "ReceivingNoteAlreadyExistsError";
+  }
+}
+
+export class PurchaseOrderNotEligibleForReceivingError extends Error {
+  constructor(poId: string, status: string) {
+    super(
+      `발주 상태가 입고서 작성 대상이 아닙니다 (SUBMITTED 만 허용): poId=${poId}, status=${status}`,
+    );
+    this.name = "PurchaseOrderNotEligibleForReceivingError";
+  }
+}
+
+/**
+ * 입고서 목록 조회 (페이지네이션 + 필터).
+ */
+export async function getReceivingNotes(
+  companyId: string,
+  query: ReceivingNoteListQuery,
+) {
+  const {
+    page, limit, status, purchaseOrderId, search,
+    dateFrom, dateTo, sortBy, sortOrder,
+  } = query;
+  const skip = (page - 1) * limit;
+
+  const where = {
+    companyId,
+    ...(status && { status }),
+    ...(purchaseOrderId && { purchaseOrderId }),
+    ...(search && {
+      receiveNumber: { contains: search, mode: "insensitive" as const },
+    }),
+    ...((dateFrom || dateTo) && {
+      receivedDate: {
+        ...(dateFrom && { gte: dateFrom }),
+        ...(dateTo && { lte: dateTo }),
+      },
+    }),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.receivingNote.findMany({
+      where,
+      include: {
+        purchaseOrder: {
+          select: {
+            id: true, orderNumber: true, status: true,
+            supplier: { select: { id: true, name: true } },
+            location: { select: { id: true, name: true } },
+          },
+        },
+        confirmedByUser: { select: { id: true, name: true } },
+        _count: { select: { items: true } },
+      },
+      orderBy: { [sortBy]: sortOrder },
+      skip,
+      take: limit,
+    }),
+    prisma.receivingNote.count({ where }),
+  ]);
+
+  return {
+    items,
+    pagination: {
+      page, limit, total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
+/**
+ * 입고서 단건 조회 (품목 + PO + 불일치 이력 포함).
+ */
+export async function getReceivingNoteById(companyId: string, id: string) {
+  return prisma.receivingNote.findFirst({
+    where: { id, companyId },
+    include: {
+      purchaseOrder: {
+        include: {
+          supplier: true,
+          location: { select: { id: true, name: true, code: true } },
+          productionLine: { select: { id: true, name: true, code: true } },
+          items: {
+            include: {
+              supplierItem: { include: { supplyUnit: true } },
+              materialMaster: { select: { id: true, name: true, code: true } },
+              subsidiaryMaster: { select: { id: true, name: true, code: true } },
+            },
+          },
+        },
+      },
+      items: {
+        include: {
+          purchaseOrderItem: {
+            include: {
+              materialMaster: { select: { id: true, name: true, code: true } },
+              subsidiaryMaster: { select: { id: true, name: true, code: true } },
+              supplierItem: { include: { supplyUnit: true } },
+            },
+          },
+        },
+      },
+      confirmedByUser: { select: { id: true, name: true } },
+      discrepancies: {
+        orderBy: { recordedAt: "desc" },
+        include: {
+          recordedByUser: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * 발주 상세 하단용: 이 PO 에 기록된 모든 ReceivingDiscrepancy.
+ */
+export async function getReceivingDiscrepanciesByPO(
+  companyId: string,
+  purchaseOrderId: string,
+) {
+  return prisma.receivingDiscrepancy.findMany({
+    where: { companyId, purchaseOrderId },
+    orderBy: { recordedAt: "desc" },
+    include: {
+      recordedByUser: { select: { id: true, name: true } },
+      receivingNote: { select: { id: true, receiveNumber: true, status: true } },
+      purchaseOrderItem: {
+        select: {
+          id: true,
+          materialMaster: { select: { id: true, name: true, code: true } },
+          subsidiaryMaster: { select: { id: true, name: true, code: true } },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * 입고서 초안 생성 (D30 C-3-b1).
+ *
+ * 정책:
+ *  - 1 PO = 1 ReceivingNote (동일 PO 에 이미 노트 존재 시 ReceivingNoteAlreadyExistsError)
+ *  - PO 상태는 SUBMITTED 만 허용 (그 외 PurchaseOrderNotEligibleForReceivingError)
+ *  - status = DRAFT 로 생성. 확정은 별도 confirmReceivingNote 액션.
+ *  - receiveNumber 자동 채번: RN-YYYYMMDD-XXX (회사+수령일 시퀀스)
+ */
+export async function createReceivingNoteDraft(
+  companyId: string,
+  input: CreateReceivingNoteDraftInput,
+) {
+  return prisma.$transaction(async (tx) => {
+    // 1) PO 로드 + 검증
+    const po = await tx.purchaseOrder.findFirst({
+      where: { id: input.purchaseOrderId, companyId },
+      select: { id: true, status: true },
+    });
+    if (!po) throw new Error("NOT_FOUND");
+    if (po.status !== "SUBMITTED") {
+      throw new PurchaseOrderNotEligibleForReceivingError(po.id, po.status);
+    }
+
+    // 2) 기존 노트 존재 여부 (1 PO = 1 Note)
+    const existing = await tx.receivingNote.findFirst({
+      where: { purchaseOrderId: po.id },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ReceivingNoteAlreadyExistsError(po.id);
+    }
+
+    // 3) receiveNumber 채번 (RN-YYYYMMDD-XXX)
+    const d = input.receivedDate;
+    const prefix = `RN-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-`;
+    const last = await tx.receivingNote.findFirst({
+      where: { companyId, receiveNumber: { startsWith: prefix } },
+      orderBy: { receiveNumber: "desc" },
+      select: { receiveNumber: true },
+    });
+    let nextSeq = 1;
+    if (last) {
+      const seq = parseInt(last.receiveNumber.slice(prefix.length), 10);
+      if (!Number.isNaN(seq)) nextSeq = seq + 1;
+    }
+    const receiveNumber = `${prefix}${String(nextSeq).padStart(3, "0")}`;
+
+    // 4) 노트 + 아이템 생성
+    return tx.receivingNote.create({
+      data: {
+        companyId,
+        purchaseOrderId: po.id,
+        receiveNumber,
+        status: "DRAFT",
+        receivedDate: input.receivedDate,
+        note: input.note,
+        items: {
+          create: input.items.map((it) => ({
+            purchaseOrderItemId: it.purchaseOrderItemId,
+            receivedQty: it.receivedQty,
+            unitPrice: it.unitPrice,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  });
+}
