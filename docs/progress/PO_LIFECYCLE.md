@@ -18,7 +18,7 @@
 | DRAFT | 작성중 | 자유롭게 수정 가능. 단가 마스터에 영향 없음. | 위저드 생성, 수동 발주 생성 |
 | SUBMITTED | 발주 확정 | **이번 발주의 내용/단가가 확정된 시점.** SupplierItemPriceHistory 적층 + SupplierItem.currentPrice 갱신. (헌법 P9') | 발주 확정 버튼 (개별 또는 일괄) |
 | APPROVED | 결재 승인 | 결재 프로세스 도입 시 활용할 옵션 단계. **현재 운영에서는 사용하지 않는다.** enum/매트릭스에만 보존. | (현재 미사용) |
-| RECEIVED | 입고 완료 | 입고가 더 이상 없을 것으로 운영자가 판단한 시점에 명시 액션으로 전이. 미달·정확·초과 모두 운영자 판단. | markPurchaseOrderAsReceivedAction (개별) 또는 bulkTransitionPOStatusAction (일괄) |
+| RECEIVED | 입고 완료 | 입고가 더 이상 없을 것으로 운영자가 판단한 시점에 명시 액션으로 전이. 미달·정확·초과 모두 운영자 판단. | confirmReceivingNoteAction (입고서 확정과 원자적 통합, §3-A 참조)
 | CANCELLED | 취소 | 종결. cancelReason 필수. | 취소 버튼 (개별 또는 일괄) |
 
 ## 3. 전이 매트릭스
@@ -53,4 +53,4 @@ DRAFT → SUBMITTED, CANCELLED SUBMITTED → APPROVED, DRAFT, CANCELLED, RECEIVE
 
 ## 5. 변경 이력
 
-- 2026-06-30: 초안 작성. 라벨 재정의 (SUBMITTED="발주 확정", APPROVED="결재 승인"), 매트릭스에 SUBMITTED → RECEIVED 직접 전이 추가, **RECEIVED 자동 전이 폐기 → 사용자 명시 액션으로 분리** (안정성 우선).
+- 2026-06-30: 초안 작성. 라벨 재정의 (SUBMITTED="발주 확정", APPROVED="결재 승인"), 매트릭스에 SUBMITTED → RECEIVED 직접 전이 추가, **RECEIVED 자동 전이 채택 — 입고서 확정과 단일 트랜잭션 통합** (P5 재정정 2026-06-30, 이전 "명시 액션 분리" 안은 폐기)
