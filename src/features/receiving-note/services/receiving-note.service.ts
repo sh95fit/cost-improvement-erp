@@ -686,9 +686,8 @@ export async function deleteReceivingNoteDraft(
       throw new ReceivingNoteNotDraftError(note.id, note.status);
     }
 
-    // items 는 CASCADE 로 자동 삭제 (스키마에 onDelete: Cascade 가정)
-    // 만약 스키마에 CASCADE 가 없으면 아래 라인의 주석 해제:
-    // await tx.receivingNoteItem.deleteMany({ where: { receivingNoteId: note.id } });
+    // ★ 스키마에 CASCADE 없음 — 명시적으로 items 먼저 삭제
+    await tx.receivingNoteItem.deleteMany({ where: { receivingNoteId: note.id } });
 
     await tx.receivingNote.delete({ where: { id: note.id } });
 
