@@ -9,7 +9,11 @@ import { z } from "zod";
  */
 export const confirmReceivingNoteSchema = z.object({
   receivingNoteId: z.string().cuid(),
+  /** 입고서 자체에 남길 메모 (ReceivingNote.note 저장, 확정 후에도 상세에서 보임) */
   note: z.string().max(500).optional(),
+  /** 확정 시 발생하는 모든 불일치 스냅샷의 reason 필드에 저장할 사유
+   *  (자동 생성 사유가 있는 타입도 사용자 입력이 우선; 방안 A 통일 사유) */
+  discrepancyReason: z.string().max(500).optional(),
 });
 
 export type ConfirmReceivingNoteInput = z.infer<typeof confirmReceivingNoteSchema>;
@@ -137,3 +141,43 @@ export const deleteReceivingNoteDraftSchema = z.object({
 });
 
 export type DeleteReceivingNoteDraftInput = z.infer<typeof deleteReceivingNoteDraftSchema>;
+
+// ════════════════════════════════════════
+// D30 C-3-d: 불일치 이력 전사 조회 스키마
+// ════════════════════════════════════════
+
+/**
+ * 불일치 이력 전사 조회 쿼리 스키마.
+ *
+ * 필터 정책 (⑦-b-1):
+ *  - month?: YYYY-MM (예: "2026-07"). 지정 시 해당 월의 recordedAt 범위로 필터
+ *  - type?: DiscrepancyType (개별) 또는 "QUANTITY" (SHORT+OVER 묶음)
+ *  - search?: 발주번호(orderNumber) 또는 입고번호(receiveNumber) 부분 일치
+ *  - purchaseOrderId?, receivingNoteId? : 특정 문서로 좁혀서 조회
+ */
+export const receivingDiscrepancyListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, "월 형식은 YYYY-MM 이어야 합니다")
+    .optional(),
+  type: z
+    .enum([
+      "QUANTITY_SHORT",
+      "QUANTITY_OVER",
+      "QUANTITY", // ★ SHORT + OVER 묶음 (UI 편의)
+      "UNIT_PRICE_DIFF",
+      "ITEM_MISSING",
+    ])
+    .optional(),
+  search: z.string().trim().optional(),
+  purchaseOrderId: z.string().cuid().optional(),
+  receivingNoteId: z.string().cuid().optional(),
+  sortBy: z.enum(["recordedAt"]).default("recordedAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export type ReceivingDiscrepancyListQuery = z.infer<
+  typeof receivingDiscrepancyListQuerySchema
+>;

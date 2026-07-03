@@ -64,9 +64,15 @@ export async function confirmReceivingNote(
   companyId: string,
   receivingNoteId: string,
   actorUserId: string,
-  options?: { existingTx?: Tx },
+  options?: {
+    existingTx?: Tx;
+    /** ★ D30 C-3-d2: 사용자 입력 통일 사유 (모든 discrepancy.reason 에 저장) */
+    discrepancyReason?: string;
+    /** ★ D30 C-3-d2: 입고서 자체 메모 (ReceivingNote.note 갱신) */
+    note?: string;
+  },
 ) {
-  return withTransaction(
+  return withTransaction(   
     async (tx) => {
       // 1) 입고서 로드 + 검증
       const note = await tx.receivingNote.findUnique({
@@ -78,6 +84,11 @@ export async function confirmReceivingNote(
           },
         },
       });
+
+      // ★ D30 C-3-d2: 사용자 통일 사유 (있으면 자동 사유를 덮어씀)
+      const userReason = options?.discrepancyReason?.trim() || null;
+      const mergeReason = (autoReason: string | null): string | null =>
+        userReason ?? autoReason;
 
       if (!note) {
         throw new ReceivingNoteNotFoundError(receivingNoteId);
@@ -114,7 +125,7 @@ export async function confirmReceivingNote(
               expectedUnitPrice: null,
               actualUnitPrice: rItem.unitPrice,
               diffValue: receivedQty,
-              reason: "발주에 없는 항목이 입고됨",
+              reason: mergeReason("발주에 없는 항목이 입고됨"),
               recordedByUserId: actorUserId,
             },
           });
@@ -192,7 +203,7 @@ export async function confirmReceivingNote(
               expectedUnitPrice: poItem.unitPrice,
               actualUnitPrice: rItem.unitPrice,
               diffValue: qtyDiff,
-              reason: null,
+              reason: mergeReason(null),
               recordedByUserId: actorUserId,
             },
           });
@@ -214,7 +225,7 @@ export async function confirmReceivingNote(
               expectedUnitPrice: poItem.unitPrice,
               actualUnitPrice: rItem.unitPrice,
               diffValue: priceDiff,
-              reason: "입고 단가가 발주 단가와 다름 (기록 전용, 단가 변경 없음)",
+              reason: mergeReason("입고 단가가 발주 단가와 다름 (기록 전용, 단가 변경 없음)"),
               recordedByUserId: actorUserId,
             },
           });
@@ -237,19 +248,20 @@ export async function confirmReceivingNote(
             expectedUnitPrice: poItem.unitPrice,
             actualUnitPrice: null,
             diffValue: -poItem.quantity,
-            reason: "발주에 있었으나 입고되지 않음",
+            reason: mergeReason("발주에 있었으나 입고되지 않음"),
             recordedByUserId: actorUserId,
           },
         });
       }
 
-      // 4) 입고서 상태 갱신
+      // 4) 입고서 상태 갱신 (D30 C-3-d2: 사용자가 입력한 note 있으면 덮어씀)
       const updatedNote = await tx.receivingNote.update({
         where: { id: note.id },
         data: {
           status: "CONFIRMED",
           confirmedAt: new Date(),
           confirmedByUserId: actorUserId,
+          ...(options?.note != null && { note: options.note }),
         },
       });
 
@@ -295,6 +307,9 @@ export class PurchaseOrderNotEligibleForReceivingError extends Error {
 
 /**
  * 입고서 목록 조회 (페이지네이션 + 필터).
+ *
+ * ★ D30 C-3-d: 각 노트에 items 기반 파생 totalAmount 계산해 첨부.
+ *    (별도 컬럼 저장 없이 편집 시마다 자동 동기화)
  */
 export async function getReceivingNotes(
   companyId: string,
@@ -321,7 +336,7 @@ export async function getReceivingNotes(
     }),
   };
 
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     prisma.receivingNote.findMany({
       where,
       include: {
@@ -333,6 +348,8 @@ export async function getReceivingNotes(
           },
         },
         confirmedByUser: { select: { id: true, name: true } },
+        // ★ D30 C-3-d: totalAmount 파생 계산용 최소 필드만 로드
+        items: { select: { receivedQty: true, unitPrice: true } },
         _count: { select: { items: true } },
       },
       orderBy: { [sortBy]: sortOrder },
@@ -341,6 +358,20 @@ export async function getReceivingNotes(
     }),
     prisma.receivingNote.count({ where }),
   ]);
+
+  // ★ D30 C-3-d: 각 노트에 totalAmount 파생 필드 첨부
+  //    (items 는 파생 계산 후 응답에서 제거하지 않음 — 필요 시 UI 에서 무시)
+  //    n.items 는 include 로 항상 존재하지만, mock 환경 방어를 위해 ?? [] 처리
+  const items = rawItems.map((n) => {
+    const noteItems = n.items ?? [];
+    const totalAmount = Math.round(
+      noteItems.reduce(
+        (acc, it) => acc + Number(it.receivedQty) * Number(it.unitPrice),
+        0,
+      ),
+    );
+    return { ...n, totalAmount };
+  });
 
   return {
     items,
@@ -697,4 +728,150 @@ export async function deleteReceivingNoteDraft(
       purchaseOrderId: note.purchaseOrderId,
     };
   });
+}
+
+// ════════════════════════════════════════
+// D30 C-3-d: 불일치 이력 전사 조회 서비스
+// ════════════════════════════════════════
+
+import type { ReceivingDiscrepancyListQuery } from "../schemas/receiving-note.schema";
+
+/**
+ * 회사 전체 ReceivingDiscrepancy 페이지네이션 조회.
+ *
+ * 정책:
+ *  - ReceivingDiscrepancy 는 스냅샷 격리 원칙에 따라 PurchaseOrderItem 관계를 갖지 않음.
+ *    UI 표시용 품목명을 위해 purchaseOrderItemId 를 수집해 별도 배치 조회 후 합침.
+ *  - purchaseOrder / receivingNote / recordedByUser 는 include 로 join
+ *  - type === "QUANTITY" 은 QUANTITY_SHORT + QUANTITY_OVER 묶음 (UI 편의)
+ *  - month (YYYY-MM) 지정 시 recordedAt 범위로 변환
+ *  - search 는 발주번호 or 입고번호 부분 일치
+ *
+ * 반환: { items, pagination }
+ *   items[i].purchaseOrderItem: 배치 조회로 붙인 파생 필드 (관계 아님)
+ */
+export async function getReceivingDiscrepancies(
+  companyId: string,
+  query: ReceivingDiscrepancyListQuery,
+) {
+  const {
+    page, limit, month, type, search,
+    purchaseOrderId, receivingNoteId,
+    sortBy, sortOrder,
+  } = query;
+  const skip = (page - 1) * limit;
+
+  // month → recordedAt 범위 변환
+  let dateRange: { gte: Date; lt: Date } | undefined;
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    dateRange = {
+      gte: new Date(y, m - 1, 1),
+      lt: new Date(y, m, 1), // 다음 달 1일 미만
+    };
+  }
+
+  // type → Prisma where 변환 (QUANTITY 는 SHORT+OVER 묶음)
+  const typeFilter =
+    type === "QUANTITY"
+      ? { type: { in: [DiscrepancyType.QUANTITY_SHORT, DiscrepancyType.QUANTITY_OVER] } }
+      : type
+        ? { type }
+        : {};
+
+  const where = {
+    companyId,
+    ...typeFilter,
+    ...(purchaseOrderId && { purchaseOrderId }),
+    ...(receivingNoteId && { receivingNoteId }),
+    ...(dateRange && { recordedAt: dateRange }),
+    ...(search && {
+      OR: [
+        { purchaseOrder: { orderNumber: { contains: search, mode: "insensitive" as const } } },
+        { receivingNote: { receiveNumber: { contains: search, mode: "insensitive" as const } } },
+      ],
+    }),
+  };
+
+  const [rawItems, total] = await Promise.all([
+    prisma.receivingDiscrepancy.findMany({
+      where,
+      orderBy: { [sortBy]: sortOrder },
+      skip,
+      take: limit,
+      include: {
+        purchaseOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            supplier: { select: { id: true, name: true } },
+          },
+        },
+        receivingNote: {
+          select: { id: true, receiveNumber: true, status: true },
+        },
+        recordedByUser: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.receivingDiscrepancy.count({ where }),
+  ]);
+
+  // ★ 스냅샷 격리 원칙 유지: purchaseOrderItem 은 관계가 아니라 배치 조회로 파생
+  const poItemIds = rawItems
+    .map((d) => d.purchaseOrderItemId)
+    .filter((id): id is string => id != null);
+
+  const poItemsMap = new Map<
+    string,
+    {
+      id: string;
+      quantity: number;
+      unitPrice: number;
+      materialMaster: { id: string; name: string; code: string } | null;
+      subsidiaryMaster: { id: string; name: string; code: string } | null;
+      supplierItem: {
+        id: string;
+        productName: string;
+        supplyUnit: { code: string } | null;
+      } | null;
+    }
+  >();
+
+  if (poItemIds.length > 0) {
+    const poItems = await prisma.purchaseOrderItem.findMany({
+      where: { id: { in: poItemIds } },
+      select: {
+        id: true,
+        quantity: true,
+        unitPrice: true,
+        materialMaster: { select: { id: true, name: true, code: true } },
+        subsidiaryMaster: { select: { id: true, name: true, code: true } },
+        supplierItem: {
+          select: {
+            id: true,
+            productName: true,
+            supplyUnit: { select: { code: true } },
+          },
+        },
+      },
+    });
+    for (const pi of poItems) {
+      poItemsMap.set(pi.id, pi);
+    }
+  }
+
+  const items = rawItems.map((d) => ({
+    ...d,
+    purchaseOrderItem: d.purchaseOrderItemId
+      ? (poItemsMap.get(d.purchaseOrderItemId) ?? null)
+      : null,
+  }));
+
+  return {
+    items,
+    pagination: {
+      page, limit, total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }

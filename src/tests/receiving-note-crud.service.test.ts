@@ -23,7 +23,17 @@ describe("getReceivingNotes", () => {
   });
 
   it("페이지네이션 + 필터로 목록 반환", async () => {
-    mockPrisma.receivingNote.findMany.mockResolvedValue([{ id: "n-1" }]);
+    mockPrisma.receivingNote.findMany.mockResolvedValue([{
+        id: "note-1",
+        receiveNumber: "RN-20260101-001",
+        // ... 기존 필드들 ...
+        items: [
+          { receivedQty: 10, unitPrice: 1000 },
+          { receivedQty: 5, unitPrice: 2000 },
+        ],
+        _count: { items: 2 },
+      },
+    ]);
     mockPrisma.receivingNote.count.mockResolvedValue(1);
 
     const result = await getReceivingNotes(COMPANY_ID, {

@@ -49,7 +49,9 @@ export async function confirmReceivingNoteAction(
     const session = await requireCompanySession();
     assertPermission(session, "receiving-note", "UPDATE");
 
-    const { receivingNoteId } = confirmReceivingNoteSchema.parse(rawInput);
+    // ★ D30 C-3-d2: note / discrepancyReason 도 함께 추출
+    const { receivingNoteId, note, discrepancyReason } =
+      confirmReceivingNoteSchema.parse(rawInput);
 
     // 스코프 체크를 위해 노트의 PO locationId 얕게 조회
     const noteMeta = await prisma.receivingNote.findFirst({
@@ -68,6 +70,7 @@ export async function confirmReceivingNoteAction(
         session.companyId,
         receivingNoteId,
         session.userId,
+        { note, discrepancyReason }, // ★ D30 C-3-d2
       );
     } catch (err) {
       // 서비스 계층 커스텀 에러를 handleActionError 매핑 규약에 맞춰 재던짐.

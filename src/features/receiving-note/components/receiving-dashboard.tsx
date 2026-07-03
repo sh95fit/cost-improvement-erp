@@ -152,30 +152,35 @@ export function ReceivingDashboard({ summary }: { summary: SummaryData }) {
       </div>
 
       {/* 최근 30일 불일치 요약 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            최근 30일 불일치 요약 (총 {discrepancySummary30d.total}건)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {DISCREPANCY_KEYS.map((k) => (
-              <div
-                key={k}
-                className="rounded-md border bg-gray-50 p-3 text-center"
-              >
-                <div className="text-xs text-gray-500">
-                  {DISCREPANCY_TYPE_LABELS[k]}
+      <Link
+        href="/receiving/discrepancies"
+        className="block transition-shadow hover:shadow-md"
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              최근 30일 불일치 요약 (총 {discrepancySummary30d.total}건)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {DISCREPANCY_KEYS.map((k) => (
+                <div
+                  key={k}
+                  className="rounded-md border bg-gray-50 p-3 text-center"
+                >
+                  <div className="text-xs text-gray-500">
+                    {DISCREPANCY_TYPE_LABELS[k]}
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">
+                    {discrepancySummary30d[k]}
+                  </div>
                 </div>
-                <div className="mt-1 text-2xl font-bold text-gray-900">
-                  {discrepancySummary30d[k]}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   );
 }
