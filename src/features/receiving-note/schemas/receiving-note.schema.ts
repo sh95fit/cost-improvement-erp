@@ -96,3 +96,44 @@ export const DISCREPANCY_TYPE_BADGE_COLOR: Record<DiscrepancyType, string> = {
   UNIT_PRICE_DIFF: "blue",
   ITEM_MISSING: "gray",
 };
+
+// ════════════════════════════════════════
+// D30 C-3-c: DRAFT 수정/삭제 (이슈 B)
+// ════════════════════════════════════════
+
+/**
+ * 입고서 초안 수정 입력.
+ * 정책:
+ *   - DRAFT 상태에서만 허용 (서비스 가드)
+ *   - receivedDate / note / items 편집 가능
+ *   - items 는 초안 생성과 동일한 shape 로 "전체 교체" (부분 수정 아님)
+ *     서비스에서 기존 items 삭제 후 새로 생성 (트랜잭션)
+ *   - purchaseOrderId 는 편집 불가
+ */
+export const updateReceivingNoteDraftSchema = z.object({
+  receivingNoteId: z.string().cuid(),
+  receivedDate: z.coerce.date(),
+  items: z.array(
+    z.object({
+      purchaseOrderItemId: z.string().cuid(),
+      receivedQty: z.coerce.number().nonnegative(),
+      unitPrice: z.coerce.number().nonnegative(),
+    }),
+  ).min(1, "품목이 최소 1건 필요합니다"),
+  note: z.string().max(500).optional(),
+});
+
+export type UpdateReceivingNoteDraftInput = z.infer<typeof updateReceivingNoteDraftSchema>;
+
+/**
+ * 입고서 초안 삭제 입력.
+ * 정책:
+ *   - DRAFT 상태에서만 허용 (CONFIRMED 는 재고 로트/트랜잭션 이미 생성되어 물리 삭제 금지)
+ *   - CASCADE 로 ReceivingNoteItem 자동 삭제
+ *   - ReceivingDiscrepancy 는 확정 시에만 생성되므로 DRAFT 삭제 시 정합성 문제 없음
+ */
+export const deleteReceivingNoteDraftSchema = z.object({
+  receivingNoteId: z.string().cuid(),
+});
+
+export type DeleteReceivingNoteDraftInput = z.infer<typeof deleteReceivingNoteDraftSchema>;

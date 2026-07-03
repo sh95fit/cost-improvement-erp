@@ -7,6 +7,7 @@ import type { getReceivingNoteByIdAction } from "../actions/get-receiving-note.a
 import { ReceivingNoteStatusBadge } from "./receiving-note-status-badge";
 import { ReceivingDiscrepancyBadge } from "./receiving-discrepancy-badge";
 import { ConfirmReceivingNoteDialog } from "./confirm-receiving-note-dialog";
+import { DeleteReceivingNoteDialog } from "./delete-receiving-note-dialog";
 import { PurchaseOrderStatusBadge } from "@/features/purchase-order/components/purchase-order-status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pencil, Trash2 } from "lucide-react";
 
 type ActionData = Extract<
   Awaited<ReturnType<typeof getReceivingNoteByIdAction>>,
@@ -42,6 +44,7 @@ const formatDateTime = (d: Date | string | null | undefined) =>
 export function ReceivingNoteDetail({ note }: { note: NoteData }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isDraft = note.status === "DRAFT";
   const po = note.purchaseOrder;
@@ -67,7 +70,23 @@ export function ReceivingNoteDetail({ note }: { note: NoteData }) {
         </div>
         <div className="flex gap-2">
           {isDraft && (
-            <Button onClick={() => setConfirmOpen(true)}>입고 확정</Button>
+            <>
+              <Button asChild variant="outline">
+                <Link href={`/receiving/notes/${note.id}/edit`}>
+                  <Pencil className="mr-1 h-4 w-4" />
+                  수정
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                className="text-red-600 hover:text-red-700"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="mr-1 h-4 w-4" />
+                삭제
+              </Button>
+              <Button onClick={() => setConfirmOpen(true)}>입고 확정</Button>
+            </>
           )}
           {!isDraft && (
             <span className="text-sm text-gray-400">확정 완료 (잠금)</span>
@@ -261,6 +280,19 @@ export function ReceivingNoteDetail({ note }: { note: NoteData }) {
         receiveNumber={note.receiveNumber}
         onSuccess={() => {
           setConfirmOpen(false);
+          router.refresh();
+        }}
+      />
+
+      {/* 삭제 다이얼로그 */}
+      <DeleteReceivingNoteDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        receivingNoteId={note.id}
+        receiveNumber={note.receiveNumber}
+        onSuccess={() => {
+          setDeleteOpen(false);
+          router.push("/receiving/notes");
           router.refresh();
         }}
       />

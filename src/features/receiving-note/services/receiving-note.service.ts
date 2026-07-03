@@ -608,3 +608,94 @@ export async function listEligiblePOsForReceiving(
     },
   });
 }
+
+// ════════════════════════════════════════
+// D30 C-3-c: DRAFT 수정/삭제 서비스
+// ════════════════════════════════════════
+
+import type {
+  UpdateReceivingNoteDraftInput,
+} from "../schemas/receiving-note.schema";
+
+export class ReceivingNoteNotDraftError extends Error {
+  constructor(id: string, status: string) {
+    super(`ReceivingNote is not DRAFT (status=${status}): ${id}`);
+    this.name = "ReceivingNoteNotDraftError";
+  }
+}
+
+/**
+ * 입고서 초안 수정.
+ * 트랜잭션 안에서 기존 items 를 전체 삭제 후 새 items 로 재생성.
+ * (부분 수정보다 훨씬 단순하고, DRAFT 는 확정 전이므로 이력 손실 부담이 없음)
+ */
+export async function updateReceivingNoteDraft(
+  companyId: string,
+  input: UpdateReceivingNoteDraftInput,
+) {
+  return prisma.$transaction(async (tx) => {
+    // 1) 노트 로드 + 가드
+    const note = await tx.receivingNote.findFirst({
+      where: { id: input.receivingNoteId, companyId },
+      select: { id: true, status: true, purchaseOrderId: true },
+    });
+    if (!note) throw new Error("NOT_FOUND");
+    if (note.status !== "DRAFT") {
+      throw new ReceivingNoteNotDraftError(note.id, note.status);
+    }
+
+    // 2) items 전체 교체 (기존 삭제 → 새로 생성)
+    await tx.receivingNoteItem.deleteMany({
+      where: { receivingNoteId: note.id },
+    });
+
+    // 3) 노트 갱신 + 새 items 삽입
+    return tx.receivingNote.update({
+      where: { id: note.id },
+      data: {
+        receivedDate: input.receivedDate,
+        note: input.note,
+        items: {
+          create: input.items.map((it) => ({
+            purchaseOrderItemId: it.purchaseOrderItemId,
+            receivedQty: it.receivedQty,
+            unitPrice: it.unitPrice,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  });
+}
+
+/**
+ * 입고서 초안 삭제.
+ * DRAFT 만 허용. ReceivingNoteItem 은 CASCADE 로 자동 삭제.
+ */
+export async function deleteReceivingNoteDraft(
+  companyId: string,
+  receivingNoteId: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const note = await tx.receivingNote.findFirst({
+      where: { id: receivingNoteId, companyId },
+      select: { id: true, status: true, purchaseOrderId: true, receiveNumber: true },
+    });
+    if (!note) throw new Error("NOT_FOUND");
+    if (note.status !== "DRAFT") {
+      throw new ReceivingNoteNotDraftError(note.id, note.status);
+    }
+
+    // items 는 CASCADE 로 자동 삭제 (스키마에 onDelete: Cascade 가정)
+    // 만약 스키마에 CASCADE 가 없으면 아래 라인의 주석 해제:
+    // await tx.receivingNoteItem.deleteMany({ where: { receivingNoteId: note.id } });
+
+    await tx.receivingNote.delete({ where: { id: note.id } });
+
+    return {
+      id: note.id,
+      receiveNumber: note.receiveNumber,
+      purchaseOrderId: note.purchaseOrderId,
+    };
+  });
+}

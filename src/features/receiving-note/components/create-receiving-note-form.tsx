@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import type { getPurchaseOrderByIdAction } from "@/features/purchase-order/actions/purchase-order.action";
 import { createReceivingNoteDraftAction } from "../actions/create-receiving-note-draft.action";
+import { updateReceivingNoteDraftAction } from "../actions/update-receiving-note-draft.action";
 
 type POData = NonNullable<
   Extract<
@@ -31,6 +31,26 @@ type LineDraft = {
   receivedQty: string;
   unitPrice: string;
 };
+
+type CreateProps = {
+  mode?: "create";
+  po: POData;
+};
+
+type EditProps = {
+  mode: "edit";
+  po: POData;
+  receivingNoteId: string;
+  initialReceivedDate: string; // YYYY-MM-DD
+  initialNote: string;
+  initialLines: Array<{
+    purchaseOrderItemId: string;
+    receivedQty: number;
+    unitPrice: number;
+  }>;
+};
+
+type Props = CreateProps | EditProps;
 
 const formatCurrency = (v: number | null | undefined) =>
   v == null
@@ -46,38 +66,51 @@ const todayISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export function CreateReceivingNoteForm({ po }: { po: POData }) {
+export function CreateReceivingNoteForm(props: Props) {
   const router = useRouter();
+  const isEdit = props.mode === "edit";
 
-  // 초기값: PO 품목 그대로 복사 (수량/단가)
-  const [lines, setLines] = useState<LineDraft[]>(() =>
-    po.items.map((it) => ({
+  // 초기 라인 계산: edit 이면 initialLines 우선, create 는 PO items 복사
+  const buildInitialLines = (): LineDraft[] => {
+    if (isEdit) {
+      // initialLines 를 purchaseOrderItemId 기준으로 map, PO items 순서에 맞춤
+      const byPoItemId = new Map(
+        props.initialLines.map((l) => [l.purchaseOrderItemId, l]),
+      );
+      return props.po.items.map((it) => {
+        const l = byPoItemId.get(it.id);
+        return {
+          purchaseOrderItemId: it.id,
+          receivedQty: l ? String(l.receivedQty) : String(it.quantity),
+          unitPrice: l ? String(l.unitPrice) : String(it.unitPrice),
+        };
+      });
+    }
+    return props.po.items.map((it) => ({
       purchaseOrderItemId: it.id,
       receivedQty: String(it.quantity),
       unitPrice: String(it.unitPrice),
-    })),
+    }));
+  };
+
+  const [lines, setLines] = useState<LineDraft[]>(buildInitialLines);
+  const [receivedDate, setReceivedDate] = useState<string>(
+    isEdit ? props.initialReceivedDate : todayISO(),
   );
-  const [receivedDate, setReceivedDate] = useState(todayISO());
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState<string>(isEdit ? props.initialNote : "");
   const [submitting, setSubmitting] = useState(false);
 
-  // PO가 바뀌면 라인 재초기화 (동일 페이지에서 재렌더 시 안전장치)
+  // PO 가 바뀌면 재초기화 (create 모드 안전장치)
   useEffect(() => {
-    setLines(
-      po.items.map((it) => ({
-        purchaseOrderItemId: it.id,
-        receivedQty: String(it.quantity),
-        unitPrice: String(it.unitPrice),
-      })),
-    );
-  }, [po.id, po.items]);
+    setLines(buildInitialLines());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.po.id]);
 
   const updateLine = (idx: number, patch: Partial<LineDraft>) => {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   };
 
   const handleSubmit = async () => {
-    // 클라이언트 검증
     if (!receivedDate) {
       toast.error("입고일을 입력하세요");
       return;
@@ -97,22 +130,42 @@ export function CreateReceivingNoteForm({ po }: { po: POData }) {
 
     setSubmitting(true);
     try {
-      const res = await createReceivingNoteDraftAction({
-        purchaseOrderId: po.id,
-        receivedDate: new Date(receivedDate),
-        items: lines.map((l) => ({
-          purchaseOrderItemId: l.purchaseOrderItemId,
-          receivedQty: Number(l.receivedQty),
-          unitPrice: Number(l.unitPrice),
-        })),
-        note: note.trim() || undefined,
-      });
-      if (!res.success) {
-        toast.error(res.error.message);
-        return;
+      if (isEdit) {
+        const res = await updateReceivingNoteDraftAction({
+          receivingNoteId: props.receivingNoteId,
+          receivedDate: new Date(receivedDate),
+          items: lines.map((l) => ({
+            purchaseOrderItemId: l.purchaseOrderItemId,
+            receivedQty: Number(l.receivedQty),
+            unitPrice: Number(l.unitPrice),
+          })),
+          note: note.trim() || undefined,
+        });
+        if (!res.success) {
+          toast.error(res.error.message);
+          return;
+        }
+        toast.success(`${res.data.receiveNumber} 수정 완료`);
+        router.push(`/receiving/notes/${res.data.id}`);
+        router.refresh();
+      } else {
+        const res = await createReceivingNoteDraftAction({
+          purchaseOrderId: props.po.id,
+          receivedDate: new Date(receivedDate),
+          items: lines.map((l) => ({
+            purchaseOrderItemId: l.purchaseOrderItemId,
+            receivedQty: Number(l.receivedQty),
+            unitPrice: Number(l.unitPrice),
+          })),
+          note: note.trim() || undefined,
+        });
+        if (!res.success) {
+          toast.error(res.error.message);
+          return;
+        }
+        toast.success(`${res.data.receiveNumber} 초안 생성 완료`);
+        router.push(`/receiving/notes/${res.data.id}`);
       }
-      toast.success(`${res.data.receiveNumber} 초안 생성 완료`);
-      router.push(`/receiving/notes/${res.data.id}`);
     } finally {
       setSubmitting(false);
     }
@@ -125,17 +178,17 @@ export function CreateReceivingNoteForm({ po }: { po: POData }) {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-semibold">발주 정보</h2>
           <Link
-            href={`/purchase-orders/${po.id}`}
+            href={`/purchase-orders/${props.po.id}`}
             className="text-sm text-blue-600 hover:underline"
           >
             발주서 보기 →
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
-          <Meta label="발주번호" value={po.orderNumber} />
-          <Meta label="공급업체" value={po.supplier?.name ?? "-"} />
-          <Meta label="공장" value={po.location?.name ?? "-"} />
-          <Meta label="품목 수" value={`${po.items.length}건`} />
+          <Meta label="발주번호" value={props.po.orderNumber} />
+          <Meta label="공급업체" value={props.po.supplier?.name ?? "-"} />
+          <Meta label="공장" value={props.po.location?.name ?? "-"} />
+          <Meta label="품목 수" value={`${props.po.items.length}건`} />
         </div>
       </div>
 
@@ -168,7 +221,9 @@ export function CreateReceivingNoteForm({ po }: { po: POData }) {
       <div>
         <h2 className="mb-2 text-lg font-semibold">입고 품목</h2>
         <p className="mb-2 text-xs text-gray-500">
-          초기값은 발주 품목과 동일합니다. 수량·단가에 차이가 있으면 확정 시 자동으로 불일치 이력이 기록됩니다.
+          {isEdit
+            ? "수량·단가를 수정하면 확정 시 자동으로 불일치 이력이 기록됩니다. PO 품목 자체는 변경할 수 없습니다."
+            : "초기값은 발주 품목과 동일합니다. 수량·단가에 차이가 있으면 확정 시 자동으로 불일치 이력이 기록됩니다."}
         </p>
         <div className="rounded-md border bg-white">
           <Table>
@@ -182,7 +237,7 @@ export function CreateReceivingNoteForm({ po }: { po: POData }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {po.items.map((it, idx) => {
+              {props.po.items.map((it, idx) => {
                 const line = lines[idx];
                 const name =
                   it.materialMaster?.name ??
@@ -256,7 +311,13 @@ export function CreateReceivingNoteForm({ po }: { po: POData }) {
           취소
         </Button>
         <Button onClick={handleSubmit} disabled={submitting}>
-          {submitting ? "생성 중..." : "초안 생성"}
+          {submitting
+            ? isEdit
+              ? "저장 중..."
+              : "생성 중..."
+            : isEdit
+              ? "저장"
+              : "초안 생성"}
         </Button>
       </div>
     </div>

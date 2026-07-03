@@ -215,3 +215,131 @@ import {
       expect(call.where.OR).toHaveLength(2);
     });
   });  
+
+  // ════════════════════════════════════════
+// D30 C-3-c: DRAFT 수정/삭제 테스트
+// ════════════════════════════════════════
+
+import {
+  updateReceivingNoteDraft,
+  deleteReceivingNoteDraft,
+  ReceivingNoteNotDraftError,
+} from "@/features/receiving-note/services/receiving-note.service";
+
+describe("updateReceivingNoteDraft", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("DRAFT 상태 입고서를 수정하고 items 를 재생성한다", async () => {
+    mockPrisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
+    mockPrisma.receivingNote.findFirst.mockResolvedValue({
+      id: "note-1",
+      status: "DRAFT",
+      purchaseOrderId: "po-1",
+    });
+    mockPrisma.receivingNoteItem.deleteMany.mockResolvedValue({ count: 2 });
+    mockPrisma.receivingNote.update.mockResolvedValue({
+      id: "note-1",
+      receiveNumber: "RN-20260703-001",
+      receivedDate: new Date("2026-07-03"),
+      note: "수정됨",
+      items: [{ id: "it-a" }, { id: "it-b" }],
+    });
+
+    const result = await updateReceivingNoteDraft(COMPANY_ID, {
+      receivingNoteId: "note-1",
+      receivedDate: new Date("2026-07-03"),
+      note: "수정됨",
+      items: [
+        { purchaseOrderItemId: "poit-1", receivedQty: 10, unitPrice: 1000 },
+        { purchaseOrderItemId: "poit-2", receivedQty: 5, unitPrice: 500 },
+      ],
+    });
+
+    expect(mockPrisma.receivingNoteItem.deleteMany).toHaveBeenCalledWith({
+      where: { receivingNoteId: "note-1" },
+    });
+    expect(mockPrisma.receivingNote.update).toHaveBeenCalled();
+    expect(result.id).toBe("note-1");
+  });
+
+  it("CONFIRMED 상태이면 ReceivingNoteNotDraftError 를 throw 한다", async () => {
+    mockPrisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
+    mockPrisma.receivingNote.findFirst.mockResolvedValue({
+      id: "note-1",
+      status: "CONFIRMED",
+      purchaseOrderId: "po-1",
+    });
+
+    await expect(
+      updateReceivingNoteDraft(COMPANY_ID, {
+        receivingNoteId: "note-1",
+        receivedDate: new Date("2026-07-03"),
+        items: [
+          { purchaseOrderItemId: "poit-1", receivedQty: 10, unitPrice: 1000 },
+        ],
+      }),
+    ).rejects.toThrow(ReceivingNoteNotDraftError);
+  });
+
+  it("노트가 없으면 NOT_FOUND 를 throw 한다", async () => {
+    mockPrisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
+    mockPrisma.receivingNote.findFirst.mockResolvedValue(null);
+
+    await expect(
+      updateReceivingNoteDraft(COMPANY_ID, {
+        receivingNoteId: "note-missing",
+        receivedDate: new Date("2026-07-03"),
+        items: [
+          { purchaseOrderItemId: "poit-1", receivedQty: 10, unitPrice: 1000 },
+        ],
+      }),
+    ).rejects.toThrow("NOT_FOUND");
+  });
+});
+
+describe("deleteReceivingNoteDraft", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("DRAFT 상태 입고서를 삭제한다", async () => {
+    mockPrisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
+    mockPrisma.receivingNote.findFirst.mockResolvedValue({
+      id: "note-1",
+      status: "DRAFT",
+      purchaseOrderId: "po-1",
+      receiveNumber: "RN-20260703-001",
+    });
+    mockPrisma.receivingNote.delete.mockResolvedValue({ id: "note-1" });
+
+    const result = await deleteReceivingNoteDraft(COMPANY_ID, "note-1");
+
+    expect(mockPrisma.receivingNote.delete).toHaveBeenCalledWith({
+      where: { id: "note-1" },
+    });
+    expect(result.id).toBe("note-1");
+    expect(result.receiveNumber).toBe("RN-20260703-001");
+  });
+
+  it("CONFIRMED 상태이면 ReceivingNoteNotDraftError 를 throw 한다", async () => {
+    mockPrisma.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
+    mockPrisma.receivingNote.findFirst.mockResolvedValue({
+      id: "note-1",
+      status: "CONFIRMED",
+      purchaseOrderId: "po-1",
+      receiveNumber: "RN-20260703-001",
+    });
+
+    await expect(
+      deleteReceivingNoteDraft(COMPANY_ID, "note-1"),
+    ).rejects.toThrow(ReceivingNoteNotDraftError);
+  });
+});
