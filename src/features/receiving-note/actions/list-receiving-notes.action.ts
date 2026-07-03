@@ -15,6 +15,10 @@ export async function listReceivingNotesAction(
     const session = await requireCompanySession();
     assertPermission(session, "receiving-note", "READ");
     const query = receivingNoteListQuerySchema.parse(rawQuery);
+    // TODO(D30 C-3-b3): LOCATION 스코프 필터 주입.
+    //   getReceivingNotes 서비스에 locationIds? 옵션 파라미터를 추가하고
+    //   session 의 LOCATION 스코프가 제한적일 경우 그 배열을 전달해야 함.
+    //   현재는 companyId 격리만 적용 (관리자 뷰).
     const result = await getReceivingNotes(session.companyId, query);
     return actionOk(result);
   } catch (error) {
