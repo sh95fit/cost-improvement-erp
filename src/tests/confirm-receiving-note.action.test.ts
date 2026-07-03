@@ -187,4 +187,38 @@ describe("confirmReceivingNoteAction", () => {
     }
     expect(confirmReceivingNote).not.toHaveBeenCalled();
   });
+
+  // ★ D30 C-3-d3: 품목별 사유 (discrepancyReasons) 및 통일 사유(discrepancyReason)
+  // 및 확정 메모(note) 가 서비스 옵션으로 정확히 전달되는지 검증.
+  it("discrepancyReasons / discrepancyReason / note 옵션이 서비스에 전달됨", async () => {
+    (confirmReceivingNote as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: VALID_CUID,
+      status: "CONFIRMED",
+    });
+
+    const discrepancyReasons = {
+      "QUANTITY_SHORT:po_item_A:rn_item_1": "공급사 오배송",
+      "UNIT_PRICE_DIFF:po_item_B:rn_item_2": "단가 인상 반영",
+    };
+
+    const res = await confirmReceivingNoteAction({
+      receivingNoteId: VALID_CUID,
+      note: "확정 메모",
+      discrepancyReason: "공통 사유",
+      discrepancyReasons,
+    });
+
+    expect(res.success).toBe(true);
+    expect(confirmReceivingNote).toHaveBeenCalledWith(
+      "company-1",
+      VALID_CUID,
+      "user-1",
+      {
+        note: "확정 메모",
+        discrepancyReason: "공통 사유",
+        discrepancyReasons,
+      },
+    );
+  });
 });
+

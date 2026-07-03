@@ -49,8 +49,8 @@ export async function confirmReceivingNoteAction(
     const session = await requireCompanySession();
     assertPermission(session, "receiving-note", "UPDATE");
 
-    // ★ D30 C-3-d2: note / discrepancyReason 도 함께 추출
-    const { receivingNoteId, note, discrepancyReason } =
+    // ★ D30 C-3-d3: note / 통일 사유(discrepancyReason) / 품목별 사유(discrepancyReasons) 추출
+    const { receivingNoteId, note, discrepancyReason, discrepancyReasons } =
       confirmReceivingNoteSchema.parse(rawInput);
 
     // 스코프 체크를 위해 노트의 PO locationId 얕게 조회
@@ -70,7 +70,7 @@ export async function confirmReceivingNoteAction(
         session.companyId,
         receivingNoteId,
         session.userId,
-        { note, discrepancyReason }, // ★ D30 C-3-d2
+        { note, discrepancyReason, discrepancyReasons }, // ★ D30 C-3-d3
       );
     } catch (err) {
       // 서비스 계층 커스텀 에러를 handleActionError 매핑 규약에 맞춰 재던짐.

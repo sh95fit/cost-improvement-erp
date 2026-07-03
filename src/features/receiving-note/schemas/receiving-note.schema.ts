@@ -9,10 +9,19 @@ import { z } from "zod";
  */
 export const confirmReceivingNoteSchema = z.object({
   receivingNoteId: z.string().cuid(),
-  /** 입고서 자체에 남길 메모 (ReceivingNote.note 저장, 확정 후에도 상세에서 보임) */
+  /** 입고서 자체에 남길 메모 (ReceivingNote.note) */
   note: z.string().max(500).optional(),
-  /** 확정 시 발생하는 모든 불일치 스냅샷의 reason 필드에 저장할 사유
-   *  (자동 생성 사유가 있는 타입도 사용자 입력이 우선; 방안 A 통일 사유) */
+  /**
+   * ★ D30 C-3-d3: 품목·유형별 사유 map (key → reason).
+   * key 규칙은 buildDiscrepancyKey() 참조.
+   * 최우선 순위로 저장됨.
+   */
+  discrepancyReasons: z.record(z.string(), z.string().max(500)).optional(),
+  /**
+   * 하위호환 (D30 C-3-d2): 통합 사유.
+   * discrepancyReasons 에 해당 key 가 없을 때 폴백으로 적용.
+   * 향후 스프린트에서 제거 예정.
+   */
   discrepancyReason: z.string().max(500).optional(),
 });
 
@@ -180,4 +189,20 @@ export const receivingDiscrepancyListQuerySchema = z.object({
 
 export type ReceivingDiscrepancyListQuery = z.infer<
   typeof receivingDiscrepancyListQuerySchema
+>;
+
+// ════════════════════════════════════════
+// D30 C-3-d3: 확정 다이얼로그용 불일치 프리뷰
+// ════════════════════════════════════════
+
+/**
+ * 확정 시 발생할 불일치 목록을 사전 계산하는 쿼리.
+ * DRAFT / CONFIRMED 둘 다 호출 가능하나 실사용은 DRAFT 프리뷰.
+ */
+export const previewReceivingDiscrepanciesSchema = z.object({
+  receivingNoteId: z.string().cuid(),
+});
+
+export type PreviewReceivingDiscrepanciesInput = z.infer<
+  typeof previewReceivingDiscrepanciesSchema
 >;

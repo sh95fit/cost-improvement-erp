@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { DiscrepancyType, TransactionType } from "@prisma/client";
+import { buildDiscrepancyKey } from "../lib/discrepancy-key";
 
 import { withTransaction } from "@/lib/auth/transaction";
 import { transitionPurchaseOrderStatus } from "@/features/purchase-order/services/purchase-order.service";
@@ -66,7 +67,14 @@ export async function confirmReceivingNote(
   actorUserId: string,
   options?: {
     existingTx?: Tx;
-    /** ★ D30 C-3-d2: 사용자 입력 통일 사유 (모든 discrepancy.reason 에 저장) */
+    /**
+     * ★ D30 C-3-d3: 품목·유형별 사유 map (key → reason).
+     * key 는 buildDiscrepancyKey() 로 생성. 최우선 순위로 저장됨.
+     */
+    discrepancyReasons?: Record<string, string>;
+    /**
+     * ★ D30 C-3-d2: 통일 사유 (map 미지정 항목에 대한 폴백).
+     */
     discrepancyReason?: string;
     /** ★ D30 C-3-d2: 입고서 자체 메모 (ReceivingNote.note 갱신) */
     note?: string;
@@ -85,10 +93,21 @@ export async function confirmReceivingNote(
         },
       });
 
-      // ★ D30 C-3-d2: 사용자 통일 사유 (있으면 자동 사유를 덮어씀)
-      const userReason = options?.discrepancyReason?.trim() || null;
-      const mergeReason = (autoReason: string | null): string | null =>
-        userReason ?? autoReason;
+      // ★ D30 C-3-d3: 사유 해결 우선순위
+      //   1) 품목·유형별 사유 (discrepancyReasons[key])
+      //   2) 통일 사유 (discrepancyReason)
+      //   3) 자동 사유 (호출부에서 넘긴 autoReason)
+      const perKeyReason = options?.discrepancyReasons ?? {};
+      const unifiedReason = options?.discrepancyReason?.trim() || null;
+      const resolveReason = (
+        key: string,
+        autoReason: string | null,
+      ): string | null => {
+        const perKey = perKeyReason[key]?.trim();
+        if (perKey) return perKey;
+        if (unifiedReason) return unifiedReason;
+        return autoReason;
+      };
 
       if (!note) {
         throw new ReceivingNoteNotFoundError(receivingNoteId);
@@ -125,7 +144,10 @@ export async function confirmReceivingNote(
               expectedUnitPrice: null,
               actualUnitPrice: rItem.unitPrice,
               diffValue: receivedQty,
-              reason: mergeReason("발주에 없는 항목이 입고됨"),
+              reason: resolveReason(
+                buildDiscrepancyKey(DiscrepancyType.ITEM_MISSING, null, rItem.id),
+                "발주에 없는 항목이 입고됨",
+              ),
               recordedByUserId: actorUserId,
             },
           });
@@ -203,7 +225,16 @@ export async function confirmReceivingNote(
               expectedUnitPrice: poItem.unitPrice,
               actualUnitPrice: rItem.unitPrice,
               diffValue: qtyDiff,
-              reason: mergeReason(null),
+              reason: resolveReason(
+                buildDiscrepancyKey(
+                  qtyDiff < 0
+                    ? DiscrepancyType.QUANTITY_SHORT
+                    : DiscrepancyType.QUANTITY_OVER,
+                  poItem.id,
+                  rItem.id,
+                ),
+                null,
+              ),
               recordedByUserId: actorUserId,
             },
           });
@@ -225,7 +256,10 @@ export async function confirmReceivingNote(
               expectedUnitPrice: poItem.unitPrice,
               actualUnitPrice: rItem.unitPrice,
               diffValue: priceDiff,
-              reason: mergeReason("입고 단가가 발주 단가와 다름 (기록 전용, 단가 변경 없음)"),
+              reason: resolveReason(
+                buildDiscrepancyKey(DiscrepancyType.UNIT_PRICE_DIFF, poItem.id, rItem.id),
+                "입고 단가가 발주 단가와 다름 (기록 전용, 단가 변경 없음)",
+              ),
               recordedByUserId: actorUserId,
             },
           });
@@ -248,7 +282,10 @@ export async function confirmReceivingNote(
             expectedUnitPrice: poItem.unitPrice,
             actualUnitPrice: null,
             diffValue: -poItem.quantity,
-            reason: mergeReason("발주에 있었으나 입고되지 않음"),
+            reason: resolveReason(
+              buildDiscrepancyKey(DiscrepancyType.ITEM_MISSING, poItem.id, null),
+              "발주에 있었으나 입고되지 않음",
+            ),
             recordedByUserId: actorUserId,
           },
         });
@@ -874,4 +911,175 @@ export async function getReceivingDiscrepancies(
       totalPages: Math.ceil(total / limit),
     },
   };
+}
+
+
+// ════════════════════════════════════════
+// D30 C-3-d3: 확정 시 발생할 불일치 미리 계산 (프리뷰)
+// ════════════════════════════════════════
+
+export type ReceivingDiscrepancyPreview = {
+  /** buildDiscrepancyKey() 결과. 확정 액션에 사유 map 의 key 로 사용 */
+  key: string;
+  type: DiscrepancyType;
+  purchaseOrderItemId: string | null;
+  receivingNoteItemId: string | null;
+  /** 표시용 재료/부자재 명. 없으면 "-" */
+  itemName: string;
+  expectedQty: number | null;
+  actualQty: number | null;
+  expectedUnitPrice: number | null;
+  actualUnitPrice: number | null;
+  diffValue: number;
+  /** 자동 사유 (사용자가 사유를 비워두면 저장될 값). UI 안내용 */
+  autoReason: string | null;
+};
+
+/**
+ * ReceivingNote 확정 시 발생할 불일치 목록을 사전 계산 (읽기 전용).
+ *
+ * confirmReceivingNote 의 discrepancy 생성 로직과 완전히 동일한 판정 규칙을 사용.
+ * (수량 부족/초과, 단가 차이, 품목 누락 양방향)
+ *
+ * DRAFT / CONFIRMED 모두 호출 가능.
+ * - DRAFT: 확정 다이얼로그 프리뷰용 (주 용도)
+ * - CONFIRMED: 감사·재확인용
+ */
+export async function previewReceivingNoteDiscrepancies(
+  companyId: string,
+  receivingNoteId: string,
+): Promise<ReceivingDiscrepancyPreview[]> {
+  const note = await prisma.receivingNote.findUnique({
+    where: { id: receivingNoteId },
+    include: {
+      items: {
+        include: {
+          purchaseOrderItem: {
+            include: {
+              materialMaster: { select: { name: true } },
+              subsidiaryMaster: { select: { name: true } },
+            },
+          },
+        },
+      },
+      purchaseOrder: {
+        include: {
+          items: {
+            include: {
+              materialMaster: { select: { name: true } },
+              subsidiaryMaster: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!note) throw new ReceivingNoteNotFoundError(receivingNoteId);
+  if (note.companyId !== companyId) throw new ReceivingNoteCompanyMismatchError();
+
+  const previews: ReceivingDiscrepancyPreview[] = [];
+  const poItemById = new Map(note.purchaseOrder.items.map((i) => [i.id, i]));
+  const matchedPoItemIds = new Set<string>();
+
+  const nameOfPoItem = (
+    poItem: (typeof note.purchaseOrder.items)[number] | undefined | null,
+  ): string =>
+    poItem?.materialMaster?.name ??
+    poItem?.subsidiaryMaster?.name ??
+    "-";
+
+  // 1) 입고 항목 기준 순회
+  for (const rItem of note.items) {
+    const poItem = rItem.purchaseOrderItemId
+      ? poItemById.get(rItem.purchaseOrderItemId)
+      : undefined;
+
+    // 1-a) 발주에 없는 항목이 입고됨
+    if (!poItem) {
+      previews.push({
+        key: buildDiscrepancyKey(DiscrepancyType.ITEM_MISSING, null, rItem.id),
+        type: DiscrepancyType.ITEM_MISSING,
+        purchaseOrderItemId: null,
+        receivingNoteItemId: rItem.id,
+        itemName:
+          rItem.purchaseOrderItem?.materialMaster?.name ??
+          rItem.purchaseOrderItem?.subsidiaryMaster?.name ??
+          "-",
+        expectedQty: null,
+        actualQty: rItem.receivedQty,
+        expectedUnitPrice: null,
+        actualUnitPrice: rItem.unitPrice,
+        diffValue: rItem.receivedQty,
+        autoReason: "발주에 없는 항목이 입고됨",
+      });
+      continue;
+    }
+
+    matchedPoItemIds.add(poItem.id);
+
+    // 1-b) 수량 불일치
+    const qtyDiff = rItem.receivedQty - poItem.quantity;
+    if (qtyDiff !== 0) {
+      const type =
+        qtyDiff < 0
+          ? DiscrepancyType.QUANTITY_SHORT
+          : DiscrepancyType.QUANTITY_OVER;
+      previews.push({
+        key: buildDiscrepancyKey(type, poItem.id, rItem.id),
+        type,
+        purchaseOrderItemId: poItem.id,
+        receivingNoteItemId: rItem.id,
+        itemName: nameOfPoItem(poItem),
+        expectedQty: poItem.quantity,
+        actualQty: rItem.receivedQty,
+        expectedUnitPrice: poItem.unitPrice,
+        actualUnitPrice: rItem.unitPrice,
+        diffValue: qtyDiff,
+        autoReason: null,
+      });
+    }
+
+    // 1-c) 단가 불일치
+    const priceDiff = Number(rItem.unitPrice) - Number(poItem.unitPrice);
+    if (priceDiff !== 0) {
+      previews.push({
+        key: buildDiscrepancyKey(
+          DiscrepancyType.UNIT_PRICE_DIFF,
+          poItem.id,
+          rItem.id,
+        ),
+        type: DiscrepancyType.UNIT_PRICE_DIFF,
+        purchaseOrderItemId: poItem.id,
+        receivingNoteItemId: rItem.id,
+        itemName: nameOfPoItem(poItem),
+        expectedQty: poItem.quantity,
+        actualQty: rItem.receivedQty,
+        expectedUnitPrice: poItem.unitPrice,
+        actualUnitPrice: rItem.unitPrice,
+        diffValue: priceDiff,
+        autoReason: "입고 단가가 발주 단가와 다름 (기록 전용, 단가 변경 없음)",
+      });
+    }
+  }
+
+  // 2) 발주에 있었으나 입고에 없는 항목
+  for (const poItem of note.purchaseOrder.items) {
+    if (matchedPoItemIds.has(poItem.id)) continue;
+    previews.push({
+      key: buildDiscrepancyKey(DiscrepancyType.ITEM_MISSING, poItem.id, null),
+      type: DiscrepancyType.ITEM_MISSING,
+      purchaseOrderItemId: poItem.id,
+      receivingNoteItemId: null,
+      itemName: nameOfPoItem(poItem),
+      expectedQty: poItem.quantity,
+      actualQty: 0,
+      expectedUnitPrice: poItem.unitPrice,
+      actualUnitPrice: null,
+      diffValue: -poItem.quantity,
+      autoReason: "발주에 있었으나 입고되지 않음",
+    });
+  }
+
+  return previews;
 }
