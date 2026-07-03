@@ -52,6 +52,7 @@ export async function previewReceivingDiscrepanciesAction(
   } catch (error) {
     return handleActionError(error, "불일치 프리뷰 조회에 실패했습니다", {
       NOT_FOUND: "입고서를 찾을 수 없습니다",
+      FORBIDDEN: "이 입고서에 접근할 권한이 없습니다",
     });
   }
 }

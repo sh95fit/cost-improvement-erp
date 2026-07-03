@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-06-30 (P5·P9 재정정 — 입고 확정과 발주 종결을 단일 도메인 이벤트로 통합, 발주 확정 = 거래 단가 확정 원칙 명시, markPurchaseOrderAsReceivedAction 폐기)
+> 마지막 갱신: 2026-07-03 (D30 C-3 완료 — 입고서 CRUD·확정·불일치 이력·품목별 사유 UI 배포, RECEIVING_INVENTORY_POLICY §9 신설)
 
 ---
 
@@ -150,6 +150,23 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
+  - **D30 C-3-d3** (commit `85302dc9`) — 확정 시 품목별 불일치 사유 개별 입력:
+    - 서비스: `previewReceivingNoteDiscrepancies` 신설 (확정 전 DB 무영향 사전 계산), `resolveReason(key, autoReason)` 우선순위 도입 (품목별 > 통일 > 자동)
+    - 유틸: `buildDiscrepancyKey(type, poItemId, rItemId)` 신규 — UI/서비스 간 안정 키 규약
+    - 스키마: `confirmReceivingNoteSchema.discrepancyReasons` (Record) 추가, `previewReceivingDiscrepanciesSchema` 신규. 하위호환 `discrepancyReason` 유지
+    - 액션: `preview-receiving-discrepancies.action.ts` 신규 (READ 권한), `confirm-receiving-note.action.ts` 에 `discrepancyReasons` 전달
+    - UI: `ConfirmReceivingNoteDialog` 재작성 — Dialog 로 전환, 열림 시 preview 로드, 불일치 0/N건 분기, 통일 모드 토글, 항목별 Textarea (autoReason placeholder)
+    - 테스트: `preview-receiving-discrepancies.action.test.ts` 6건 + `confirm-receiving-note.action.test.ts` 에 사유 전달 검증 1건 추가 (총 39건 PASS)
+  - **D30 C-3-d1·d2** (commit `20c7f75b`) — 회사 전사 불일치 이력 페이지 + 확정 시 사유 입력 (통일 모드):
+    - `/receiving/discrepancies` 라우트 + `ReceivingDiscrepancyList` (월/타입/검색 필터 + 페이지네이션)
+    - `getReceivingDiscrepancies` 서비스 (배치 조회, 관계 격리 정책 §7 준수)
+    - `getReceivingNotes` 반환에 `totalAmount` 파생 필드 추가
+    - 대시보드에 불일치 이력 링크 카드 부착
+  - **D30 C-3-c hotfix** (commit `70cb64f5`) — DRAFT 입고서 삭제 시 FK 위반 수정: cascade 미설정 스키마 보호 위해 items 명시 삭제 후 note 삭제
+  - **D30 C-3-b1·c** (commit `d96ad317`) — 입고서 CRUD 완성:
+    - 서비스: `createReceivingNoteDraft`, `updateReceivingNoteDraft`, `deleteReceivingNoteDraft` (DRAFT 가드)
+    - UI: `/receiving/notes/new`, `/receiving/notes/[id]`, `/receiving/notes/[id]/edit`, `DeleteReceivingNoteDialog`
+    - 테스트 5건 추가
   - **PO 라이프사이클 재정의** (commits `14b2d20c`, `13b1d5f8`) — 발주서 도메인 명확화:
     - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
     - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
@@ -205,8 +222,18 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - 서버: `createPurchaseOrdersBatch` 의 idempotent replay 가 batch 내 PO `status` 미검사로, 전량 CANCELLED 인 batch 도 replay 매칭되던 버그 수정. 매칭 시 활성 PO 만 응답에 포함, 전량 취소면 신규 토큰(suffix `_r{timestamp}`) 발급 후 신규 batch 생성. (`idempotencyKey`는 Prisma 스키마상 non-nullable 이므로 null 갱신 대신 신규 토큰 전략 채택)
     - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
     - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
+
 ## 다음 진행 항목 (확정 순서)
   ### Sprint 3 잔여
+  1. **Phase 3-D30-Ex1 — 일자별 입고 통합 뷰 (옵션 α)** [착수 대기]:
+    - 요구: 회사 계층에서 매일 4개 PO(가정식 핫/콜드, 프레시밀, 라이트밀 × 공장별)가 발생. 라인업 다양화에 따라 계속 증가 예정. 일자별로 PO 목록을 모아 한 화면에서 개별/일괄 입고 처리 필요.
+    - 설계: **옵션 α — N개 `CreateReceivingNoteForm` 병렬 렌더**. 1 PO = 1 ReceivingNote 유지(감사 추적성 보존), 스키마 무변경.
+    - 신규 라우트: `/receiving/daily?date=YYYY-MM-DD` (기본 오늘).
+    - 서비스: `getDailyReceivingBundle(companyId, date)` (읽기 전용 집계), `bulkCreateOrUpdateReceivingNoteDrafts` (단일 트랜잭션), `bulkConfirmReceivingNotes` (**All-or-Nothing** — 사용자 확정에 따라 전체 트랜잭션, 실패 시 어떤 노트가 왜 실패했는지 반환하여 재시도).
+    - UI: `DailyReceivingView`(자재 요약 상단 + PO 섹션 아코디언), `BulkConfirmDialog`(실패 노트 하이라이트 + 재시도).
+    - 청크: E(서비스) → F(액션·스키마) → G(UI) → H(테스트) → I(대시보드 링크·문서).
+
+  2. **Phase 4-F-1 — 발주 일괄 상태 전이** (Phase 4-F-1):
   1. **Phase 4-F-1 — 발주 일괄 상태 전이** (Phase 4-F-1):
     - `bulkTransitionPOStatusAction` 신설 (트랜잭션·skip·INVALID_TRANSITION 분류·부분 실패 시 전체 롤백).
     - 발주 목록 페이지에 행 체크박스 + 액션바("선택 발주 확정", "선택 입고 완료", "선택 취소").
@@ -235,13 +262,27 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - 테스트 10/10 PASS (정상/수량부족/수량초과/단가차이/PO외항목/입고누락/중복확정/회사불일치/없음/SUBSIDIARY 차단).
     - **제약**: SUBSIDIARY 입고는 현 스키마(`InventoryTransaction.materialMasterId` NOT NULL, `subsidiaryMasterId` 컬럼 없음)에서 미지원 → `UnsupportedSubsidiaryReceivingError` throw. Sprint 4 Phase 10에서 스키마 보강 예정.
 
-    **C-3 (액션 + UI) ⬜ 미착수**
-    - `confirmReceivingNoteAction(input)` — `assertScope` (A2-min) + `confirmReceivingNote` 호출 + `createAuditLog` + `revalidatePath`.
-    - UI 3종 (구버전 5종에서 축소):
-      - `/receiving/pending` — 입고 대기 PO 목록 (SUBMITTED 상태).
-      - `/receiving/notes/new?poId=...` — 입고서 작성 폼 (1 PO = 1 Note, 부분 입고 미지원).
-      - `/receiving/notes/[id]` — 입고서 상세 + "입고 확정" 버튼 + 확인 모달 (미달/일치/초과 요약, 차단 없음) + 불일치 이력 섹션.
-    - PO 상세 페이지에 "이 발주의 불일치 이력" 섹션 (`ReceivingDiscrepancy` 조회).
+    **C-3 (액션 + UI) ✅ 완료 (2026-07-03, commits `d96ad317` → `70cb64f5` → `20c7f75b` → `85302dc9`)**
+    - `confirmReceivingNoteAction`: `assertScope(LOCATION)` + 서비스 호출 + audit + revalidatePath 3곳 (pending / 노트 상세 / PO 상세) ✅
+    - 실제 배포 UI 5종:
+      - `/receiving` — 대시보드 (초안·확정·발주 대기·최근 노트·불일치 이력 카드)
+      - `/receiving/notes` — 입고서 목록 (상태/기간/검색 필터)
+      - `/receiving/notes/new?poId=...` — 초안 생성
+      - `/receiving/notes/[id]` — 상세 + 확정 다이얼로그 + 불일치 이력 섹션 + 삭제(DRAFT) / 편집 링크
+      - `/receiving/notes/[id]/edit` — DRAFT 수정
+      - `/receiving/discrepancies` — 회사 전사 불일치 이력 (월/타입/검색)
+    - 확정 다이얼로그 확장 (C-3-d3): 열림 시 `previewReceivingDiscrepanciesAction` 호출 → 불일치 목록별 개별 사유 입력 + "전 항목 동일 사유" 토글
+    - 사유 우선순위: 품목별(`discrepancyReasons[key]`) > 통일(`discrepancyReason`) > 자동(`autoReason`)
+    - 하위호환: 통일 사유(`discrepancyReason`) 유지, 기존 32건 테스트 무파괴 (총 39건 PASS)
+
+    **후속 잔여 (D30 범위 밖, 다른 Phase 로 이관)**
+    - "발주 대비 초과·불일치 시 관리자 사유 필수 게이트" → P5 재정정으로 폐기 (모든 불일치는 차단 없이 기록만)
+    - 일자별 입고 통합 뷰 (옵션 α, N개 PO 동시 확정) → **Phase 3-D30-Ex1 신규 (다음 착수)**
+    - SUBSIDIARY 입고 지원 → Sprint 4 Phase 10 스키마 보강 후
+
+    **문서 갱신 완료**
+    - `RECEIVING_INVENTORY_POLICY.md` §9 (사유 해결 우선순위 정책) 추가 — 본 커밋
+    - `SCHEMA_COVERAGE.md` — 모델 #41 상태는 이미 🔄로 갱신됨(C-1·C-2 시점), 별도 조치 불필요
 
     **D30 범위에서 제외된 항목 (의사결정 2026-06-30)**
     - `overReceivedQty / overReceivedReason` 컬럼 추가 — `ReceivingDiscrepancy(QUANTITY_OVER)` 스냅샷으로 통합되므로 불필요.

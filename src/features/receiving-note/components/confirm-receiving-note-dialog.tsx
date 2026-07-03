@@ -235,7 +235,7 @@ export function ConfirmReceivingNoteDialog({
                 <Textarea
                   value={unifiedReason}
                   onChange={(e) => setUnifiedReason(e.target.value)}
-                  placeholder="아래 {previews.length}건의 불일치에 모두 동일 사유로 적용됩니다"
+                  placeholder={`아래 ${previews.length}건의 불일치에 모두 동일 사유로 적용됩니다`}
                   rows={3}
                   maxLength={500}
                 />
