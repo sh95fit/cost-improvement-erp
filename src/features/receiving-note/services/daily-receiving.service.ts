@@ -2,23 +2,22 @@
  * D30 Phase 3-D30-Ex1 — 일자별 입고 통합 뷰 서비스
  *
  * 목적:
- *  - "출고일(outboundDate)" 또는 "예상입고일(expectedReceiveDate)" 기준으로
- *    특정 날짜에 처리해야 할 발주(PO)와 관련 입고서(ReceivingNote)를 통합 조회.
- *  - 미확정 상태 PO는 편집 대상(pending), 이미 RECEIVED된 PO는 읽기 전용(completed)으로 분리.
+ *  - "출고일(outboundDate)" 또는 "예상입고일" 기준으로 특정 날짜에 처리해야 할
+ *    발주(PO)와 관련 입고서(ReceivingNote)를 통합 조회.
+ *  - 미확정 상태 PO는 편집 대상(pending), 이미 RECEIVED된 PO는 읽기 전용(completed).
  *  - Bulk draft 저장·Bulk 확정 처리(모두 원자적).
  *
  * 정책 근거:
- *  - Q1: 출고일 기준 통합 (mode="outbound" 기본), expected는 옵션.
+ *  - Q1: 출고일 기준 통합 (mode="outbound" 기본), expected 는 옵션.
  *  - Q2: RECEIVED PO 는 별도 completed 섹션(수정 불가).
  *  - Q3: 기존 DRAFT ReceivingNote 는 자동 병합 → existingDraft 필드로 전달.
- *  - Q4: bulk 확정은 preview(dry-run) → confirm 2단계, 실제 확정은 all-or-nothing.
- *  - P5: 입고 확정=발주 종결. 각 노트 확정은 confirmReceivingNote(단일 tx)를 재사용.
- *  - P9: 단가는 PO 기준 고정. 이 서비스에서는 InventoryLot/Transaction 을 직접 만들지 않는다.
+ *  - Q4: bulk 확정은 preview(dry-run) → confirm 2단계, all-or-nothing.
  *
- * 스키마 검증(2026-07-06):
- *  - Supplier에 leadTimeDays 필드 없음 → 사용하지 않음(품목별 리드타임은 SupplierItem에 존재).
- *  - MaterialMaster는 unit / unitCategory 만 있음(baseUnit 없음).
- *  - PurchaseOrder.outboundDate 는 nullable — null 가드 필수.
+ * 정정 (2026-07-06, 사용자 검수):
+ *  - D15-3: "예상입고일" 은 발주서 헤더 값이 아니라 품목별 런타임 파생값
+ *           itemExpectedReceiveDate = outboundDate + supplierItem.leadTimeDays.
+ *  - expected 모드는 "선택 날짜에 예상 도착 품목이 하나라도 있는 PO" 를 찾고,
+ *    해당 품목 id 목록을 itemsMatchingDate 로 반환한다.
  */
 
 import type { Prisma } from "@prisma/client";
@@ -33,6 +32,17 @@ import {
   ReceivingNoteNotFoundError,
   UnsupportedSubsidiaryReceivingError,
 } from "./receiving-note.service";
+
+// ============================================================
+// 상수
+// ============================================================
+
+/**
+ * expected 모드에서 후보 PO 를 얼마나 과거까지 살펴볼지.
+ * outboundDate 는 선택 날짜보다 최대 이 값만큼 이전일 수 있다.
+ * (품목 최대 leadTimeDays 를 넉넉히 커버하는 값)
+ */
+const MAX_LEAD_TIME_DAYS_WINDOW = 30;
 
 // ============================================================
 // 타입 정의
@@ -65,8 +75,17 @@ export type DailyPendingPO = {
       orderedQty: number;
       receivedQty: number;
       unitPrice: number;
+      /** 품목별 리드타임 (SupplierItem.leadTimeDays), 미정 시 1 */
+      leadTimeDays: number;
+      /** 품목별 예상입고일 = outboundDate + leadTimeDays (null if outboundDate null) */
+      itemExpectedReceiveDate: Date | null;
     }>;
   };
+  /**
+   * expected 모드에서 선택 날짜에 도착 예정인 PO item id 목록.
+   * outbound 모드에서는 빈 배열 반환.
+   */
+  itemsMatchingDate: string[];
   /** 기존 DRAFT 입고서(있으면 자동 병합용) */
   existingDraft: {
     receivingNoteId: string;
@@ -102,7 +121,6 @@ export type DailyReceivingBundle = {
   completed: DailyCompletedPO[];
 };
 
-/** Bulk draft input — 여러 PO 에 대해 한 번에 저장 */
 export type BulkDraftInput = {
   purchaseOrderId: string;
   receivedDate: Date;
@@ -114,7 +132,6 @@ export type BulkDraftInput = {
   }>;
 };
 
-/** Bulk confirm preview — 각 노트의 확정 가능 여부 */
 export type BulkConfirmPreviewRow = {
   receivingNoteId: string;
   canConfirm: boolean;
@@ -163,35 +180,54 @@ function toDateRange(dateStr: string): { gte: Date; lt: Date } {
   return { gte, lt };
 }
 
+/** UTC 자정 Date - n일 */
+function shiftDaysUTC(base: Date, deltaDays: number): Date {
+  const d = new Date(base);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d;
+}
+
+/**
+ * 두 Date 가 같은 "달력 날짜" 인지 판정 (UTC 기준).
+ * outboundDate 는 DATE 타입이라 항상 UTC 자정으로 저장됨.
+ */
+function isSameUTCDate(a: Date, b: Date): boolean {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
+  );
+}
+
 // ============================================================
 // 1) 일자별 통합 조회
 // ============================================================
 
-/**
- * 지정된 날짜(date)와 기준(mode)에 해당하는 PO 를 pending / completed 로 분리 반환.
- *
- * pending  : status IN (SUBMITTED, APPROVED) — 편집 대상
- * completed: status = RECEIVED               — 읽기 전용
- * 제외     : DRAFT / CANCELLED
- *
- * mode="outbound"  → PurchaseOrder.outboundDate 기준
- * mode="expected"  → PurchaseOrder.expectedReceiveDate 기준
- */
 export async function getDailyReceivingBundle(
   companyId: string,
   date: string,
   mode: DailyReceivingMode = "outbound",
 ): Promise<DailyReceivingBundle> {
   const range = toDateRange(date);
-  const dateField: "outboundDate" | "expectedReceiveDate" =
-    mode === "outbound" ? "outboundDate" : "expectedReceiveDate";
+  const selectedUTC = range.gte; // 선택 날짜의 UTC 자정
 
-  // --- Pending PO 조회 ---
+  // --- Pending PO 조회 조건 (mode 별) ---
+  //   outbound  : outboundDate = 선택일
+  //   expected  : outboundDate ∈ [선택일 - MAX_LEAD_TIME_DAYS_WINDOW, 선택일]
+  //               (후보 확대 후 애플리케이션에서 품목별 예상입고일로 필터)
+  const outboundFilter: Prisma.DateTimeFilter =
+    mode === "outbound"
+      ? { gte: range.gte, lt: range.lt }
+      : {
+          gte: shiftDaysUTC(range.gte, -MAX_LEAD_TIME_DAYS_WINDOW),
+          lte: range.gte, // 선택일 당일 포함
+        };
+
   const pendingPOs = await prisma.purchaseOrder.findMany({
     where: {
       companyId,
       status: { in: [POStatus.SUBMITTED, POStatus.APPROVED] },
-      [dateField]: range,
+      outboundDate: outboundFilter,
     },
     include: {
       supplier: { select: { id: true, name: true } },
@@ -199,11 +235,11 @@ export async function getDailyReceivingBundle(
       productionLine: { select: { id: true, name: true } },
       items: {
         include: {
+          supplierItem: { select: { id: true, leadTimeDays: true } },
           materialMaster: { select: { id: true, name: true, unit: true } },
           subsidiaryMaster: { select: { id: true, name: true, unit: true } },
         },
       },
-      // 최신 ReceivingNote(DRAFT) 를 하나만 로드 (Q3 자동 병합)
       receivingNotes: {
         where: { status: ReceivingNoteStatus.DRAFT },
         orderBy: { createdAt: "desc" },
@@ -211,11 +247,49 @@ export async function getDailyReceivingBundle(
         include: { items: true },
       },
     },
-    orderBy: [{ [dateField]: "asc" }, { orderNumber: "asc" }],
+    orderBy: [{ outboundDate: "asc" }, { orderNumber: "asc" }],
   });
 
-  const pending: DailyPendingPO[] = pendingPOs.map((po) => {
+  // 각 PO 를 DailyPendingPO 로 매핑하면서 품목별 예상입고일 파생
+  const mappedAll: DailyPendingPO[] = pendingPOs.map((po) => {
     const draft = po.receivingNotes[0] ?? null;
+
+    const items = po.items.map((it) => {
+      const leadTimeDays = it.supplierItem?.leadTimeDays ?? 1; // D15-5 default 1
+      let itemExpectedReceiveDate: Date | null = null;
+      if (po.outboundDate) {
+        itemExpectedReceiveDate = shiftDaysUTC(po.outboundDate, leadTimeDays);
+      }
+      return {
+        purchaseOrderItemId: it.id,
+        itemType: it.itemType,
+        materialMasterId: it.materialMasterId ?? null,
+        subsidiaryMasterId: it.subsidiaryMasterId ?? null,
+        itemName:
+          it.materialMaster?.name ??
+          it.subsidiaryMaster?.name ??
+          "(품목 없음)",
+        unit:
+          it.materialMaster?.unit ?? it.subsidiaryMaster?.unit ?? "",
+        orderedQty: it.quantity,
+        receivedQty: it.receivedQty,
+        unitPrice: Number(it.unitPrice),
+        leadTimeDays,
+        itemExpectedReceiveDate,
+      };
+    });
+
+    // expected 모드일 때만 선택일에 도착 예정인 item 필터
+    let itemsMatchingDate: string[] = [];
+    if (mode === "expected") {
+      itemsMatchingDate = items
+        .filter(
+          (it) =>
+            it.itemExpectedReceiveDate != null &&
+            isSameUTCDate(it.itemExpectedReceiveDate, selectedUTC),
+        )
+        .map((it) => it.purchaseOrderItemId);
+    }
 
     return {
       purchaseOrder: {
@@ -231,24 +305,9 @@ export async function getDailyReceivingBundle(
         productionLineId: po.productionLineId ?? null,
         productionLineName: po.productionLine?.name ?? null,
         note: po.note ?? null,
-        items: po.items.map((it) => ({
-          purchaseOrderItemId: it.id,
-          itemType: it.itemType,
-          materialMasterId: it.materialMasterId ?? null,
-          subsidiaryMasterId: it.subsidiaryMasterId ?? null,
-          itemName:
-            it.materialMaster?.name ??
-            it.subsidiaryMaster?.name ??
-            "(품목 없음)",
-          unit:
-            it.materialMaster?.unit ??
-            it.subsidiaryMaster?.unit ??
-            "",
-          orderedQty: it.quantity,
-          receivedQty: it.receivedQty,
-          unitPrice: Number(it.unitPrice),
-        })),
+        items,
       },
+      itemsMatchingDate,
       existingDraft: draft
         ? {
             receivingNoteId: draft.id,
@@ -266,12 +325,20 @@ export async function getDailyReceivingBundle(
     };
   });
 
-  // --- Completed PO 조회 (RECEIVED, 같은 날짜 기준) ---
+  // expected 모드: 매칭 item 이 하나도 없는 PO 는 제외
+  const pending: DailyPendingPO[] =
+    mode === "expected"
+      ? mappedAll.filter((p) => p.itemsMatchingDate.length > 0)
+      : mappedAll;
+
+  // --- Completed PO 조회 ---
+  //   현재 정책상 completed 는 outboundDate = 선택일 기준으로 유지.
+  //   (expected 모드에서의 completed 재정의는 향후 사용자 정책 확정 시 반영)
   const completedPOs = await prisma.purchaseOrder.findMany({
     where: {
       companyId,
       status: POStatus.RECEIVED,
-      [dateField]: range,
+      outboundDate: { gte: range.gte, lt: range.lt },
     },
     include: {
       supplier: { select: { name: true } },
@@ -281,14 +348,10 @@ export async function getDailyReceivingBundle(
         where: { status: ReceivingNoteStatus.CONFIRMED },
         orderBy: { confirmedAt: "desc" },
         take: 1,
-        select: {
-          id: true,
-          receiveNumber: true,
-          confirmedAt: true,
-        },
+        select: { id: true, receiveNumber: true, confirmedAt: true },
       },
     },
-    orderBy: [{ [dateField]: "asc" }, { orderNumber: "asc" }],
+    orderBy: [{ outboundDate: "asc" }, { orderNumber: "asc" }],
   });
 
   const completed: DailyCompletedPO[] = completedPOs.map((po) => {
@@ -297,7 +360,6 @@ export async function getDailyReceivingBundle(
       (sum, it) => sum + it.quantity * Number(it.unitPrice),
       0,
     );
-
     return {
       purchaseOrderId: po.id,
       orderNumber: po.orderNumber,
@@ -315,16 +377,9 @@ export async function getDailyReceivingBundle(
 }
 
 // ============================================================
-// 2) Bulk Draft 저장 (Upsert)
+// 2) Bulk Draft 저장 (기존 로직 유지)
 // ============================================================
 
-/**
- * 여러 PO 에 대해 ReceivingNote(DRAFT) 를 한꺼번에 생성/갱신.
- *  - 각 PO 당 DRAFT 1건만 유지 (기존 DRAFT 있으면 items 를 replace)
- *  - 단일 트랜잭션. 하나라도 실패하면 전체 롤백.
- *
- * 반환: 저장된 (혹은 갱신된) ReceivingNote id 목록.
- */
 export async function bulkCreateOrUpdateReceivingNoteDrafts(
   companyId: string,
   inputs: BulkDraftInput[],
@@ -339,7 +394,6 @@ export async function bulkCreateOrUpdateReceivingNoteDrafts(
     }> = [];
 
     for (const input of inputs) {
-      // PO 소속 검증
       const po = await tx.purchaseOrder.findUnique({
         where: { id: input.purchaseOrderId },
         select: { id: true, companyId: true, status: true },
@@ -358,7 +412,6 @@ export async function bulkCreateOrUpdateReceivingNoteDrafts(
         );
       }
 
-      // 기존 DRAFT 조회
       const existing = await tx.receivingNote.findFirst({
         where: {
           purchaseOrderId: po.id,
@@ -368,7 +421,6 @@ export async function bulkCreateOrUpdateReceivingNoteDrafts(
       });
 
       if (existing) {
-        // items 를 delete-and-recreate (부분 병합보다 명확)
         await tx.receivingNoteItem.deleteMany({
           where: { receivingNoteId: existing.id },
         });
@@ -392,8 +444,6 @@ export async function bulkCreateOrUpdateReceivingNoteDrafts(
           receivingNoteId: updated.id,
         });
       } else {
-        // 신규 생성 — receiveNumber 는 별도 시퀀스 규칙이 있다면 그것으로,
-        // 여기서는 timestamp-based fallback 사용 (기존 규칙과 통일 필요 시 조정).
         const receiveNumber = `RN-${Date.now()}-${po.id.slice(-6)}`;
         const created = await tx.receivingNote.create({
           data: {
@@ -425,13 +475,9 @@ export async function bulkCreateOrUpdateReceivingNoteDrafts(
 }
 
 // ============================================================
-// 3) Bulk Confirm — Preview (Dry-run)
+// 3) Bulk Confirm Preview (기존 유지)
 // ============================================================
 
-/**
- * 벌크 확정 전 검증. 실제 확정은 하지 않는다.
- * 각 note 에 대해 확정 가능 여부 + 사유를 반환.
- */
 export async function previewBulkConfirmReceivingNotes(
   companyId: string,
   receivingNoteIds: string[],
@@ -449,7 +495,6 @@ export async function previewBulkConfirmReceivingNotes(
   const foundIds = new Set(notes.map((n) => n.id));
   const rows: BulkConfirmPreviewRow[] = [];
 
-  // 존재하지 않는 ID
   for (const id of receivingNoteIds) {
     if (!foundIds.has(id)) {
       rows.push({
@@ -460,7 +505,6 @@ export async function previewBulkConfirmReceivingNotes(
     }
   }
 
-  // 실제 검증
   for (const note of notes) {
     let reason: string | null = null;
 
@@ -475,17 +519,6 @@ export async function previewBulkConfirmReceivingNotes(
       note.purchaseOrder.status !== POStatus.APPROVED
     ) {
       reason = `발주 상태(${note.purchaseOrder.status})는 확정 대상이 아닙니다`;
-    } else {
-      // 부자재 항목 사전 감지 (Phase 10 이전이므로 unsupported)
-      const hasSubsidiary = note.items.some(
-        (it) => it.purchaseOrderItemId == null,
-      );
-      // 상세 감지는 confirmReceivingNote 내부에서 수행하지만,
-      // 여기서는 최소 필수 필드만 확인.
-      if (hasSubsidiary) {
-        // items 자체가 PO 매핑 안 된 것 — 정보성 경고
-        // (실제로 SUBSIDIARY 판별은 PO item 조회 필요 — 실행 단계에서 최종 확인)
-      }
     }
 
     rows.push({
@@ -499,32 +532,21 @@ export async function previewBulkConfirmReceivingNotes(
 }
 
 // ============================================================
-// 4) Bulk Confirm — 실행 (All-or-Nothing)
+// 4) Bulk Confirm 실행 (기존 유지)
 // ============================================================
 
-/**
- * 여러 입고서를 한 트랜잭션 안에서 순차적으로 확정.
- * 어느 하나라도 실패하면 전체 롤백.
- *
- * discrepancyReasonsMap: noteId 별로 { key → reason } 형태의 사유 맵.
- *   key 규약은 buildDiscrepancyKey() 기준 (기존 confirm 서비스와 동일).
- */
 export async function bulkConfirmReceivingNotes(
   companyId: string,
   receivingNoteIds: string[],
   actorUserId: string,
   options?: {
-    /** noteId → { key → reason } */
     discrepancyReasonsMap?: Record<string, Record<string, string>>;
-    /** noteId → 통일 사유 */
     unifiedReasonMap?: Record<string, string>;
-    /** noteId → note(메모) */
     noteMap?: Record<string, string>;
   },
 ): Promise<Array<{ receivingNoteId: string; status: "CONFIRMED" }>> {
   if (receivingNoteIds.length === 0) return [];
 
-  // 1) 사전 검증 (트랜잭션 밖에서 한번 더 걸러줌 — 실패시 tx 진입 자체를 안 함)
   const preview = await previewBulkConfirmReceivingNotes(
     companyId,
     receivingNoteIds,
@@ -539,7 +561,6 @@ export async function bulkConfirmReceivingNotes(
     );
   }
 
-  // 2) 단일 트랜잭션에서 순차 확정
   return withTransaction(async (tx: Prisma.TransactionClient) => {
     const results: Array<{ receivingNoteId: string; status: "CONFIRMED" }> =
       [];
@@ -554,7 +575,6 @@ export async function bulkConfirmReceivingNotes(
         });
         results.push({ receivingNoteId: noteId, status: "CONFIRMED" });
       } catch (err) {
-        // 알려진 도메인 에러는 그대로 포장해 상위로 전달 — tx 는 자동 롤백
         if (
           err instanceof ReceivingNoteNotFoundError ||
           err instanceof ReceivingNoteAlreadyConfirmedError ||

@@ -77,6 +77,7 @@ export function DailyReceivingContainer({
         </div>
         <DailyReceivingPendingTable
           date={initialDate}
+          mode={initialMode}
           pending={initialBundle.pending}
           onRequestConfirm={handleRequestConfirm}
         />

@@ -36,6 +36,7 @@ import { bulkCreateOrUpdateReceivingNoteDraftsAction } from "../actions/bulk-cre
 
 type Props = {
   date: string;                    // YYYY-MM-DD (initial receivedDate 값)
+  mode: "outbound" | "expected";
   pending: DailyReceivingBundle["pending"];
   onRequestConfirm: (receivingNoteIds: string[]) => void;
 };
@@ -95,6 +96,7 @@ function toEditable(po: DailyPendingPO, fallbackDate: string): EditableRow {
 
 export function DailyReceivingPendingTable({
   date,
+  mode,
   pending,
   onRequestConfirm,
 }: Props) {
@@ -109,6 +111,11 @@ export function DailyReceivingPendingTable({
     }
     return initial;
   });
+
+  // 확장된 PO id 집합
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // 선택된 PO id 집합
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // pending prop 이 갱신될 때(예: router.refresh 이후) rows 도 재동기화.
   // 편집 중이던 값은 보존하되, 새로 나타난 PO 는 초기값으로 채우고,
@@ -153,11 +160,6 @@ export function DailyReceivingPendingTable({
       return nextSet;
     });
   }, [pending, date]);
-
-  // 확장된 PO id 집합
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // 선택된 PO id 집합
-  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const allSelected = pending.length > 0 && selected.size === pending.length;
   const someSelected = selected.size > 0 && !allSelected;
@@ -426,7 +428,16 @@ export function DailyReceivingPendingTable({
                       {p.purchaseOrder.productionLineName ?? "-"}
                     </TableCell>
                     <TableCell className="text-center text-sm">
-                      {p.purchaseOrder.items.length}
+                      {mode === "expected" && p.itemsMatchingDate.length > 0 ? (
+                        <span
+                          title="이 날짜에 도착 예정 품목 / 전체 품목"
+                          className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-amber-800"
+                        >
+                          {p.itemsMatchingDate.length}/{p.purchaseOrder.items.length}
+                        </span>
+                      ) : (
+                        p.purchaseOrder.items.length
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {fmtNumber(total)}
@@ -499,53 +510,50 @@ export function DailyReceivingPendingTable({
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {row.items.map((it, idx) => (
-                                  <TableRow key={it.purchaseOrderItemId}>
-                                    <TableCell className="text-sm">
-                                      {it.itemName}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-gray-500">
-                                      {it.unit || "-"}
-                                    </TableCell>
-                                    <TableCell className="text-right font-mono text-sm text-gray-500">
-                                      {fmtNumber(it.orderedQty)}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <Input
-                                        type="number"
-                                        step="any"
-                                        min="0"
-                                        value={it.receivedQty}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            poId,
-                                            idx,
-                                            "receivedQty",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="h-8 text-right font-mono"
-                                      />
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <Input
-                                        type="number"
-                                        step="any"
-                                        min="0"
-                                        value={it.unitPrice}
-                                        onChange={(e) =>
-                                          updateItemField(
-                                            poId,
-                                            idx,
-                                            "unitPrice",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="h-8 text-right font-mono"
-                                      />
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                {row.items.map((it, idx) => {
+                                  const isMatching =
+                                    mode === "expected" &&
+                                    p.itemsMatchingDate.includes(it.purchaseOrderItemId);
+                                  return (
+                                    <TableRow
+                                      key={it.purchaseOrderItemId}
+                                      className={isMatching ? "bg-amber-50/60" : undefined}
+                                    >
+                                      <TableCell className="text-sm">
+                                        {isMatching && (
+                                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="이 날짜 도착" />
+                                        )}
+                                        {it.itemName}
+                                      </TableCell>
+                                      <TableCell className="text-sm text-gray-500">
+                                        {it.unit || "-"}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-sm text-gray-500">
+                                        {fmtNumber(it.orderedQty)}
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <Input
+                                          type="number"
+                                          step="any"
+                                          min="0"
+                                          value={it.receivedQty}
+                                          onChange={(e) => updateItemField(poId, idx, "receivedQty", e.target.value)}
+                                          className="h-8 text-right font-mono"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <Input
+                                          type="number"
+                                          step="any"
+                                          min="0"
+                                          value={it.unitPrice}
+                                          onChange={(e) => updateItemField(poId, idx, "unitPrice", e.target.value)}
+                                          className="h-8 text-right font-mono"
+                                        />
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
                               </TableBody>
                             </Table>
                           </div>
