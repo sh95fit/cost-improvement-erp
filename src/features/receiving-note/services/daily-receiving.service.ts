@@ -214,8 +214,9 @@ export async function getDailyReceivingBundle(
 
   // --- Pending PO 조회 조건 (mode 별) ---
   //   outbound  : outboundDate = 선택일
-  //   expected  : outboundDate ∈ [선택일 - MAX_LEAD_TIME_DAYS_WINDOW, 선택일]
-  //               (후보 확대 후 애플리케이션에서 품목별 예상입고일로 필터)
+  //   expected  : outboundDate ∈ [선택일, 선택일 + MAX_LEAD_TIME_DAYS_WINDOW]
+  //               (품목 예상입고일 = outboundDate - leadTimeDays 이므로
+  //                선택일에 도착 예정이려면 outboundDate 는 선택일 이후이어야 함)
   const outboundFilter: Prisma.DateTimeFilter =
     mode === "outbound"
       ? { gte: range.gte, lt: range.lt }
