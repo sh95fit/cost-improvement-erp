@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -347,9 +347,8 @@ export function DailyReceivingPendingTable({
                 0,
               );
               return (
-                <>
+                <Fragment key={poId}>
                   <TableRow
-                    key={poId}
                     className={isSelected ? "bg-blue-50/40" : undefined}
                   >
                     <TableCell className="text-center">
@@ -510,7 +509,7 @@ export function DailyReceivingPendingTable({
                       </TableCell>
                     </TableRow>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </TableBody>
