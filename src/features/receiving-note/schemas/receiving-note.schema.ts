@@ -206,3 +206,86 @@ export const previewReceivingDiscrepanciesSchema = z.object({
 export type PreviewReceivingDiscrepanciesInput = z.infer<
   typeof previewReceivingDiscrepanciesSchema
 >;
+
+// ════════════════════════════════════════
+// D30 Ex1: 일자별 입고 통합 뷰 스키마
+// ════════════════════════════════════════
+
+/**
+ * 일자별 입고 번들 조회.
+ *  - date: YYYY-MM-DD
+ *  - mode: "outbound"(출고일 기준, 기본) | "expected"(예상입고일 기준)
+ */
+export const getDailyReceivingBundleSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식은 YYYY-MM-DD 이어야 합니다"),
+  mode: z.enum(["outbound", "expected"]).default("outbound"),
+});
+
+export type GetDailyReceivingBundleInput = z.infer<
+  typeof getDailyReceivingBundleSchema
+>;
+
+/**
+ * Bulk 초안 저장 (여러 PO 에 대해 DRAFT 를 한 번에 upsert).
+ * items 는 각 PO 당 최소 1건 필요.
+ */
+export const bulkCreateOrUpdateReceivingNoteDraftsSchema = z.object({
+  inputs: z
+    .array(
+      z.object({
+        purchaseOrderId: z.string().cuid(),
+        receivedDate: z.coerce.date(),
+        note: z.string().max(500).nullish(),
+        items: z
+          .array(
+            z.object({
+              purchaseOrderItemId: z.string().cuid(),
+              receivedQty: z.coerce.number().nonnegative(),
+              unitPrice: z.coerce.number().nonnegative(),
+            }),
+          )
+          .min(1, "품목이 최소 1건 필요합니다"),
+      }),
+    )
+    .min(1, "저장할 PO 가 최소 1건 필요합니다"),
+});
+
+export type BulkCreateOrUpdateReceivingNoteDraftsInput = z.infer<
+  typeof bulkCreateOrUpdateReceivingNoteDraftsSchema
+>;
+
+/**
+ * Bulk 확정 프리뷰 — dry-run.
+ */
+export const previewBulkConfirmReceivingNotesSchema = z.object({
+  receivingNoteIds: z
+    .array(z.string().cuid())
+    .min(1, "확정할 입고서가 최소 1건 필요합니다"),
+});
+
+export type PreviewBulkConfirmReceivingNotesInput = z.infer<
+  typeof previewBulkConfirmReceivingNotesSchema
+>;
+
+/**
+ * Bulk 확정 실행 — All-or-Nothing.
+ * discrepancyReasonsMap: noteId → { key → reason } (buildDiscrepancyKey 규칙)
+ * unifiedReasonMap:      noteId → 통일 사유
+ * noteMap:               noteId → 입고서 메모
+ */
+export const bulkConfirmReceivingNotesSchema = z.object({
+  receivingNoteIds: z
+    .array(z.string().cuid())
+    .min(1, "확정할 입고서가 최소 1건 필요합니다"),
+  discrepancyReasonsMap: z
+    .record(z.string(), z.record(z.string(), z.string().max(500)))
+    .optional(),
+  unifiedReasonMap: z.record(z.string(), z.string().max(500)).optional(),
+  noteMap: z.record(z.string(), z.string().max(500)).optional(),
+});
+
+export type BulkConfirmReceivingNotesInput = z.infer<
+  typeof bulkConfirmReceivingNotesSchema
+>;
