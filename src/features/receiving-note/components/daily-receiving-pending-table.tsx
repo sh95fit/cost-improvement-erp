@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -109,6 +109,50 @@ export function DailyReceivingPendingTable({
     }
     return initial;
   });
+
+  // pending prop 이 갱신될 때(예: router.refresh 이후) rows 도 재동기화.
+  // 편집 중이던 값은 보존하되, 새로 나타난 PO 는 초기값으로 채우고,
+  // 사라진 PO 는 제거한다.
+  useEffect(() => {
+    setRows((prev) => {
+      const next: Record<string, EditableRow> = {};
+      for (const p of pending) {
+        const poId = p.purchaseOrder.id;
+        const existed = prev[poId];
+        // 기존 편집값이 있고 items 구조가 동일하면 그대로 유지 (사용자 편집 보존)
+        if (
+          existed &&
+          existed.items.length === p.purchaseOrder.items.length &&
+          existed.items.every(
+            (it, i) =>
+              it.purchaseOrderItemId ===
+              p.purchaseOrder.items[i]?.purchaseOrderItemId,
+          )
+        ) {
+          // po 참조만 최신으로 교체 (이름/공급업체 등 표시용 값 반영)
+          next[poId] = { ...existed, po: p };
+        } else {
+          next[poId] = toEditable(p, date);
+        }
+      }
+      return next;
+    });
+    // 사라진 PO id 는 expanded / selected 에서도 제거
+    setExpanded((prev) => {
+      const nextSet = new Set<string>();
+      for (const id of prev) {
+        if (pending.some((p) => p.purchaseOrder.id === id)) nextSet.add(id);
+      }
+      return nextSet;
+    });
+    setSelected((prev) => {
+      const nextSet = new Set<string>();
+      for (const id of prev) {
+        if (pending.some((p) => p.purchaseOrder.id === id)) nextSet.add(id);
+      }
+      return nextSet;
+    });
+  }, [pending, date]);
 
   // 확장된 PO id 집합
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
