@@ -2,6 +2,7 @@ import { getReceivingDashboardSummaryAction } from "@/features/receiving-note/ac
 import { ReceivingDashboard } from "@/features/receiving-note/components/receiving-dashboard";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 
 export default async function ReceivingDashboardPage() {
   const result = await getReceivingDashboardSummaryAction();
@@ -27,6 +28,12 @@ export default async function ReceivingDashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/receiving/daily">
+              <CalendarDays className="mr-1.5 h-4 w-4" />
+              일자별 입고
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link href="/receiving/notes">입고서 목록</Link>
           </Button>
