@@ -298,7 +298,7 @@ async function calculateExpectedReceiveDateForBatch(
   }
 
   const result = new Date(outboundDate);
-  result.setDate(result.getDate() + maxLeadTimeDays);
+  result.setDate(result.getDate() - maxLeadTimeDays);
   return result;
 }
 

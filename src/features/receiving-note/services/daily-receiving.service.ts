@@ -15,7 +15,8 @@
  *
  * 정정 (2026-07-06, 사용자 검수):
  *  - D15-3: "예상입고일" 은 발주서 헤더 값이 아니라 품목별 런타임 파생값
- *           itemExpectedReceiveDate = outboundDate + supplierItem.leadTimeDays.
+ *           itemExpectedReceiveDate = outboundDate - supplierItem.leadTimeDays.
+ *           (outboundDate 는 실제 사용일=엔드라인, 예상입고일은 그 이전)
  *  - expected 모드는 "선택 날짜에 예상 도착 품목이 하나라도 있는 PO" 를 찾고,
  *    해당 품목 id 목록을 itemsMatchingDate 로 반환한다.
  */
@@ -38,8 +39,8 @@ import {
 // ============================================================
 
 /**
- * expected 모드에서 후보 PO 를 얼마나 과거까지 살펴볼지.
- * outboundDate 는 선택 날짜보다 최대 이 값만큼 이전일 수 있다.
+ * expected 모드에서 후보 PO 를 얼마나 미래까지 살펴볼지.
+ * outboundDate 는 선택 날짜보다 최대 이 값만큼 이후일 수 있다.
  * (품목 최대 leadTimeDays 를 넉넉히 커버하는 값)
  */
 const MAX_LEAD_TIME_DAYS_WINDOW = 30;
@@ -77,7 +78,7 @@ export type DailyPendingPO = {
       unitPrice: number;
       /** 품목별 리드타임 (SupplierItem.leadTimeDays), 미정 시 1 */
       leadTimeDays: number;
-      /** 품목별 예상입고일 = outboundDate + leadTimeDays (null if outboundDate null) */
+      /** 품목별 예상입고일 = outboundDate - leadTimeDays (null if outboundDate null) */
       itemExpectedReceiveDate: Date | null;
     }>;
   };
@@ -219,8 +220,8 @@ export async function getDailyReceivingBundle(
     mode === "outbound"
       ? { gte: range.gte, lt: range.lt }
       : {
-          gte: shiftDaysUTC(range.gte, -MAX_LEAD_TIME_DAYS_WINDOW),
-          lte: range.gte, // 선택일 당일 포함
+          gte: range.gte,                                             // 선택일 당일 포함
+          lte: shiftDaysUTC(range.gte, MAX_LEAD_TIME_DAYS_WINDOW),    // ← 미래로 창 확장
         };
 
   const pendingPOs = await prisma.purchaseOrder.findMany({
@@ -258,7 +259,7 @@ export async function getDailyReceivingBundle(
       const leadTimeDays = it.supplierItem?.leadTimeDays ?? 1; // D15-5 default 1
       let itemExpectedReceiveDate: Date | null = null;
       if (po.outboundDate) {
-        itemExpectedReceiveDate = shiftDaysUTC(po.outboundDate, leadTimeDays);
+        itemExpectedReceiveDate = shiftDaysUTC(po.outboundDate, -leadTimeDays);
       }
       return {
         purchaseOrderItemId: it.id,

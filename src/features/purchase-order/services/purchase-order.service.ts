@@ -43,8 +43,8 @@ async function assertLocationAndLine(
 }
 
 // ★ Phase 1.6 (D15-2): expectedReceiveDate 계산 헬퍼
-// outbound_date + MAX(items.supplierItem.leadTimeDays) — PO 헤더 단위
-// supplierItemIds 가 비어있거나 leadTimeDays 가 전부 0/NULL 인 경우 default 1 사용 (D15-5)
+// outbound_date - MAX(items.supplierItem.leadTimeDays) — PO 헤더 단위
+// outboundDate 는 최종 사용일(엔드라인)이며, 예상입고일은 그보다 리드타임만큼 이전 (D-N)
 async function calculateExpectedReceiveDate(
   tx: Prisma.TransactionClient,
   outboundDate: Date | null | undefined,
@@ -67,7 +67,7 @@ async function calculateExpectedReceiveDate(
 
   // DATE 연산 — 자정 기준 일수 가산
   const result = new Date(outboundDate);
-  result.setDate(result.getDate() + maxLeadTimeDays);
+  result.setDate(result.getDate() - maxLeadTimeDays);
   return result;
 }
 
@@ -194,14 +194,14 @@ export async function getPurchaseOrderById(companyId: string, id: string) {
   if (!po) return null;
 
   // ★ Phase 1.6 (D15-3): 품목별 입고일 런타임 derived
-  //   itemExpectedReceiveDate = outboundDate + item.supplierItem.leadTimeDays
+  //   itemExpectedReceiveDate = outboundDate - item.supplierItem.leadTimeDays
   //   outboundDate 가 null 이면 itemExpectedReceiveDate 도 null
   const itemsWithExpectedDate = po.items.map((item) => {
     let itemExpectedReceiveDate: Date | null = null;
     if (po.outboundDate) {
       const leadTimeDays = item.supplierItem?.leadTimeDays ?? 1;
       const d = new Date(po.outboundDate);
-      d.setDate(d.getDate() + leadTimeDays);
+      d.setDate(d.getDate() - leadTimeDays);
       itemExpectedReceiveDate = d;
     }
     return { ...item, itemExpectedReceiveDate };
