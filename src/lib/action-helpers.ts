@@ -54,6 +54,24 @@ export function handleActionError(
       return actionFail("DEPENDENCY", `삭제할 수 없습니다: ${reason}`);
     }
 
+    // 3-a) VALIDATION_FAILED: 접두사 (bulk 계열 dry-run 실패)
+    if (error.message.startsWith("VALIDATION_FAILED:")) {
+      const reason = error.message.replace("VALIDATION_FAILED:", "").trim();
+      return actionFail(
+        "VALIDATION_FAILED",
+        `일괄 확정 검증 실패: ${reason}`,
+      );
+    }
+
+    // 3-b) EXECUTION_FAILED: 접두사 (bulk 계열 실행 중 롤백)
+    if (error.message.startsWith("EXECUTION_FAILED:")) {
+      const reason = error.message.replace("EXECUTION_FAILED:", "").trim();
+      return actionFail(
+        "EXECUTION_FAILED",
+        `일괄 확정 실행 실패: ${reason}`,
+      );
+    }    
+
     // 4) Prisma unique constraint (unit-master 등)
     if (error.message.includes("Unique constraint")) {
       return actionFail("DUPLICATE", "이미 등록된 항목입니다");
