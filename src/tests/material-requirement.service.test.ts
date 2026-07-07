@@ -816,3 +816,57 @@ describe("getMaterialRequirementById", () => {
     });
   });
 });
+
+// ════════════════════════════════════════════════════════════════
+// Phase 4-G G-1: existingTx 옵션 (상위 트랜잭션 합류)
+// ────────────────────────────────────────────────────────────────
+// generateMaterialRequirements 가 existingTx 를 받으면 신규 트랜잭션을
+// 시작하지 않고 전달된 tx 를 그대로 사용해야 한다. 기본 동작
+// (existingTx 미지정) 은 완전 하위 호환.
+// ════════════════════════════════════════════════════════════════
+describe("Phase 4-G G-1: existingTx 옵션", () => {
+  it("existingTx 미지정 시 prisma.$transaction 을 사용해 신규 트랜잭션 시작", async () => {
+    // 그룹 존재 + IN_PROGRESS
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: "mpg-1",
+      companyId: "company-1",
+      status: "IN_PROGRESS",
+    });
+    // 슬롯 없음 → GROUP_EMPTY 로 종료되지만, 트랜잭션 시작은 검증 가능
+    mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([]);
+    mockPrisma.mealCount.findMany.mockResolvedValueOnce([]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
+
+    await expect(
+      generateMaterialRequirements("company-1", {
+        mealPlanGroupId: "mpg-1",
+        countSource: "ESTIMATED",
+      }),
+    ).rejects.toThrow("MR_GROUP_EMPTY");
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("existingTx 지정 시 prisma.$transaction 을 사용하지 않고 전달된 tx 로 실행", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: "mpg-1",
+      companyId: "company-1",
+      status: "IN_PROGRESS",
+    });
+    mockPrisma.mealPlanSlot.findMany.mockResolvedValueOnce([]);
+    mockPrisma.mealCount.findMany.mockResolvedValueOnce([]);
+    mockPrisma.materialRequirement.findMany.mockResolvedValueOnce([]);
+
+    // mockPrisma 자체를 tx 로 재사용 (mocks/prisma.ts 의 $transaction 동작과 일관)
+    await expect(
+      generateMaterialRequirements(
+        "company-1",
+        { mealPlanGroupId: "mpg-1", countSource: "ESTIMATED" },
+        { existingTx: mockPrisma as never },
+      ),
+    ).rejects.toThrow("MR_GROUP_EMPTY");
+
+    // ★ 핵심 검증: 신규 트랜잭션을 시작하지 않았음
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+});

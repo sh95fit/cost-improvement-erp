@@ -478,3 +478,259 @@ describe("applyMealTemplate", () => {
     );
   });
 });
+
+import { updateMealPlanGroup } from "@/features/meal-plan/services/meal-plan.service";
+import { generateMaterialRequirements } from "@/features/material-requirement/services/material-requirement.service";
+
+// ★ Phase 4-G G-1: MR 자동 산출 훅 검증용 mock
+vi.mock("@/features/material-requirement/services/material-requirement.service", () => ({
+  generateMaterialRequirements: vi.fn(),
+}));
+
+// ════════════════════════════════════════════════════════════════
+// 6. Phase 4-G G-1: updateMealPlanGroup 상태 전이 hook (MR 자동 산출)
+// ────────────────────────────────────────────────────────────────
+// 정책:
+//   - CONFIRMED → IN_PROGRESS: countSource=ESTIMATED 로 MR 자동 산출
+//   - IN_PROGRESS → COMPLETED: countSource=FINAL 로 MR 자동 산출
+//   - 두 경우 모두 existingTx 를 전달하여 상위 트랜잭션에 합류
+//   - MR 산출 실패 시 상태 변경도 롤백 ($transaction 이 rethrow)
+//   - 역행 전이 / note-only 업데이트 는 MR 산출을 호출하지 않음
+// ════════════════════════════════════════════════════════════════
+describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
+  beforeEach(() => {
+    vi.mocked(generateMaterialRequirements).mockReset();
+  });
+
+  /**
+   * 전진 전이 검증 통과용 공통 mock 세팅.
+   * assertAllEstimatedCountsFilled / assertGroupSlotQuantitiesValid 는
+   * 내부에서 tx.mealPlan.findMany / tx.mealCount.findMany 를 호출한다.
+   * 모두 빈 배열이 아니게 mocking하되 슬롯이 없는 최소 케이스로 통과시킨다.
+   */
+  const setupForwardValidationPass = () => {
+    // findFirst: 그룹 존재 + status 반환
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CONFIRMED",
+    });
+    // assertAllEstimatedCountsFilled 통과: mealPlan 1건 + 매칭되는 mealCount 1건
+    mockPrisma.mealPlan.findMany
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+        },
+      ])
+      // assertGroupSlotQuantitiesValid 도 mealPlan.findMany 호출 → 슬롯 0건
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          slots: [], // 슬롯 없음 → 검증 스킵
+        },
+      ]);
+    mockPrisma.mealCount.findMany
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          estimatedCount: 100,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          estimatedCount: 100,
+          finalCount: null,
+        },
+      ]);
+    // 상태 update
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+  };
+
+  it("CONFIRMED → IN_PROGRESS 전진 시 generateMaterialRequirements 를 ESTIMATED + existingTx 로 호출", async () => {
+    setupForwardValidationPass();
+    vi.mocked(generateMaterialRequirements).mockResolvedValueOnce({
+      mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+      countSource: "ESTIMATED",
+      generationVersion: 1,
+      stats: {
+        inserted: 0,
+        updated: 0,
+        undeleted: 0,
+        softDeleted: 0,
+        unchanged: 0,
+        recipeContainerSlots: 0,
+        directSlotsSkipped: 0,
+        slotQuantityMismatchWarnings: 0,
+        mismatchDetails: [],
+      },
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "IN_PROGRESS",
+    });
+
+    expect(generateMaterialRequirements).toHaveBeenCalledTimes(1);
+    expect(generateMaterialRequirements).toHaveBeenCalledWith(
+      COMPANY_ID,
+      { mealPlanGroupId: MEAL_PLAN_GROUP_ID, countSource: "ESTIMATED" },
+      expect.objectContaining({ existingTx: expect.anything() }),
+    );
+    // 상태 update 는 MR 산출보다 먼저 호출되어야 함
+    // (mockPrisma.$transaction 이 콜백을 즉시 실행하므로 순서 검증 가능)
+    expect(mockPrisma.mealPlanGroup.update).toHaveBeenCalled();
+  });
+
+  it("IN_PROGRESS → COMPLETED 전진 시 generateMaterialRequirements 를 FINAL + existingTx 로 호출", async () => {
+    // 그룹 findFirst: IN_PROGRESS 반환
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+    // assertAllFinalCountsFilled + assertGroupSlotQuantitiesValid(FINAL)
+    mockPrisma.mealPlan.findMany
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          slots: [],
+        },
+      ]);
+    mockPrisma.mealCount.findMany
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          finalCount: 95,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          estimatedCount: 100,
+          finalCount: 95,
+        },
+      ]);
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "COMPLETED",
+    });
+    vi.mocked(generateMaterialRequirements).mockResolvedValueOnce({
+      mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+      countSource: "FINAL",
+      generationVersion: 2,
+      stats: {
+        inserted: 0,
+        updated: 0,
+        undeleted: 0,
+        softDeleted: 0,
+        unchanged: 0,
+        recipeContainerSlots: 0,
+        directSlotsSkipped: 0,
+        slotQuantityMismatchWarnings: 0,
+        mismatchDetails: [],
+      },
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "COMPLETED",
+    });
+
+    expect(generateMaterialRequirements).toHaveBeenCalledWith(
+      COMPANY_ID,
+      { mealPlanGroupId: MEAL_PLAN_GROUP_ID, countSource: "FINAL" },
+      expect.objectContaining({ existingTx: expect.anything() }),
+    );
+  });
+
+  it("MR 산출 실패 시 예외가 상위로 전파되어 전체 트랜잭션 롤백", async () => {
+    setupForwardValidationPass();
+    // MR 산출이 도메인 에러 throw
+    vi.mocked(generateMaterialRequirements).mockRejectedValueOnce(
+      new Error("MR_GROUP_EMPTY"),
+    );
+
+    await expect(
+      updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+        status: "IN_PROGRESS",
+      }),
+    ).rejects.toThrow("MR_GROUP_EMPTY");
+
+    // 상태 update 는 트랜잭션 내부에서 호출은 됐지만, 콜백이 throw 되어
+    // 실제 DB 트랜잭션은 롤백된다. (mock 환경에서는 update 호출 자체는 기록됨)
+    expect(generateMaterialRequirements).toHaveBeenCalledTimes(1);
+  });
+
+  it("역행 전이(IN_PROGRESS → CONFIRMED)는 MR 자동 산출을 호출하지 않음", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CONFIRMED",
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "CONFIRMED",
+    });
+
+    expect(generateMaterialRequirements).not.toHaveBeenCalled();
+    // 트랜잭션 미사용 경로임을 간접 확인 (검증 함수 mealPlan.findMany 미호출)
+    expect(mockPrisma.mealPlan.findMany).not.toHaveBeenCalled();
+  });
+
+  it("note-only 업데이트(상태 변경 없음)는 MR 자동 산출을 호출하지 않음", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+      note: "메모 수정",
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      note: "메모 수정",
+    });
+
+    expect(generateMaterialRequirements).not.toHaveBeenCalled();
+  });
+
+  it("CONFIRMED → COMPLETED (단계 건너뛰기) 는 hook 대상이 아님 — MR 산출 미호출", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CONFIRMED",
+    });
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "COMPLETED",
+    });
+
+    // CONFIRMED → COMPLETED 는 isForwardToInProgress/Completed 어느 쪽도 아니므로
+    // 검증 없이 단순 update. (정책: 정상 플로우가 아닌 상태 점프는 별도 규칙 없음)
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "COMPLETED",
+    });
+
+    expect(generateMaterialRequirements).not.toHaveBeenCalled();
+  });
+});
