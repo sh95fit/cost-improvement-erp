@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Search, Filter, ChevronLeft, ChevronRight, Calculator,
+  Search, Filter, ChevronLeft, ChevronRight, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getMealPlanGroupsAction } from "@/features/meal-plan/actions/meal-plan.action";
@@ -141,7 +141,7 @@ export function MaterialRequirementGroupList({ onSelect }: Props) {
               <TableHead className="w-[110px] text-right">식단 수</TableHead>
               <TableHead className="w-[110px] text-right">식수 행 수</TableHead>
               <TableHead>비고</TableHead>
-              <TableHead className="w-[120px] text-right">소요량 산출</TableHead>
+              <TableHead className="w-[120px] text-right">결과 보기</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -198,7 +198,7 @@ export function MaterialRequirementGroupList({ onSelect }: Props) {
                           onSelect(g);
                         }}
                       >
-                        <Calculator className="mr-1.5 h-3.5 w-3.5" />
+                        <Eye className="mr-1.5 h-3.5 w-3.5" />
                         열기
                       </Button>
                     </TableCell>

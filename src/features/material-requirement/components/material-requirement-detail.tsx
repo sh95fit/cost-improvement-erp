@@ -6,13 +6,19 @@ import { Button } from "@/components/ui/button";
 import {
   Tabs, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
-import { Calculator, Loader2, ArrowLeft, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, RefreshCw, Info } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import {
-  generateMaterialRequirementsAction,
-} from "../actions/material-requirement.action";
+// ──────────────────────────────────────────────────────────────
+// Phase 4-G G-3 (2026-07-07): 산출 트리거는 식단 상태 전이(K-2)에서
+// updateMealPlanGroup 내부 트랜잭션으로 자동 실행됨.
+// 본 페이지는 결과 조회 전용(read-only dashboard).
+//
+// generateMaterialRequirementsAction 은 UI에서 더 이상 호출하지 않지만
+// 서버 액션 자체는 유지한다 (감사 로그·향후 관리자 재산출 도구용 여지).
+// 사용처 없음 상태로 두고 Phase 5 이후 재검토.
+// ──────────────────────────────────────────────────────────────
+// import { generateMaterialRequirementsAction } from "../actions/material-requirement.action";
 import { getMealCountsAction } from "@/features/meal-plan/actions/meal-plan.action";
 import { MaterialRequirementResultPanel } from "./material-requirement-result-panel";
 import type { MealPlanGroupRow } from "./material-requirement-group-list";
@@ -31,7 +37,6 @@ type Props = {
 
 export function MaterialRequirementDetail({ group, onBack }: Props) {
   const [countSource, setCountSource] = useState<CountSource>("ESTIMATED");
-  const [generating, setGenerating] = useState<CountSource | null>(null);
 
   // 식수 합계 표시용
   const [estimatedTotal, setEstimatedTotal] = useState<number | null>(null);
@@ -66,65 +71,6 @@ export function MaterialRequirementDetail({ group, onBack }: Props) {
   useEffect(() => {
     loadCounts();
   }, [loadCounts]);
-
-  const handleGenerate = async (source: CountSource) => {
-    setGenerating(source);
-    try {
-      const result = await generateMaterialRequirementsAction({
-        mealPlanGroupId: group.id,
-        countSource: source,
-      });
-
-      if (!result.success) {
-        toast.error(result.error.message || "산출에 실패했습니다");
-        return;
-      }
-
-      const { stats, generationVersion } = result.data;
-      const summary =
-        `v${generationVersion} · ` +
-        `신규 ${stats.inserted} / 갱신 ${stats.updated} / ` +
-        `복원 ${stats.undeleted} / 삭제 ${stats.softDeleted} / ` +
-        `유지 ${stats.unchanged}`;
-
-      toast.success(
-        `${source === "ESTIMATED" ? "예상" : "확정"} 식수 기준 산출 완료`,
-        {
-          description: `${summary}\n(라인×용기 슬롯 ${stats.recipeContainerSlots}건, DIRECT 제외 ${stats.directSlotsSkipped}건)`,
-          duration: 8000,
-        },
-      );
-
-      // 산출한 source 탭으로 자동 전환 + 결과 패널 리프레시
-      setCountSource(source);
-      setRefreshKey((k) => k + 1);
-
-      // // ★ Phase 9-C-Fix-H: 슬롯 수량 미스매치 경고 토스트
-      // if (stats.slotQuantityMismatchWarnings > 0) {
-      //   const sample = stats.mismatchDetails.slice(0, 3);
-      //   const detail = sample
-      //     .map(
-      //       (d) =>
-      //         `· 식수 ${d.mealCount.toLocaleString()} ↔ 슬롯합 ${d.slotsSum.toLocaleString()}`,
-      //     )
-      //     .join("\n");
-      //   toast.warning(
-      //     `슬롯 수량이 식수와 다른 식단 ${stats.slotQuantityMismatchWarnings}건`,
-      //     {
-      //       description:
-      //         `산출은 완료되었으나 수량 검토 권장.\n${detail}` +
-      //         (stats.mismatchDetails.length > 3
-      //           ? `\n외 ${stats.mismatchDetails.length - 3}건`
-      //           : ""),
-      //       duration: 12000,
-      //     },
-      //   );
-      // }
-
-    } finally {
-      setGenerating(null);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -169,32 +115,13 @@ export function MaterialRequirementDetail({ group, onBack }: Props) {
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Button
-              onClick={() => handleGenerate("ESTIMATED")}
-              disabled={generating !== null}
-              className="min-w-[160px]"
-            >
-              {generating === "ESTIMATED" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Calculator className="mr-2 h-4 w-4" />
-              )}
-              예상 식수로 산출
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => handleGenerate("FINAL")}
-              disabled={generating !== null}
-              className="min-w-[160px]"
-            >
-              {generating === "FINAL" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Calculator className="mr-2 h-4 w-4" />
-              )}
-              확정 식수로 산출
-            </Button>
+          {/* ── Phase 4-G G-3: 산출 버튼 제거, 안내 배너로 대체 ── */}
+          <div className="max-w-[260px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 flex items-start gap-1.5">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              식단을 <strong>진행중</strong> 상태로 변경하면
+              자재 소요량이 자동 산출됩니다.
+            </span>
           </div>
         </div>
       </div>

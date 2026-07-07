@@ -212,10 +212,10 @@ export function MaterialRequirementResultPanel({
       ) : total === 0 ? (
         <div className="rounded-md border border-dashed bg-white p-12 text-center">
           <p className="text-sm text-gray-500">
-            해당 source({countSource})로 산출된 결과가 없습니다.
+            아직 산출된 결과가 없습니다.
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            상단 산출 버튼을 눌러 소요량을 생성하세요.
+            식단을 <strong>진행중</strong> 상태로 변경하면 자동으로 산출됩니다.
           </p>
         </div>
       ) : tree.length === 0 ? (

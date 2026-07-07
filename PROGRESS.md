@@ -150,6 +150,14 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
+  ### Phase 4-G G-3 ✅ (2026-07-07)
+
+  - 자재 소요량 페이지를 read-only 대시보드로 전환
+    * `material-requirement-detail.tsx`: 산출 버튼 2개 제거, "식단을 진행중 상태로 변경하면 자동 산출" 안내 배너 추가
+    * `material-requirement-result-panel.tsx`: 빈 상태 안내 문구를 자동 산출 안내로 교체
+    * `material-requirement-group-list.tsx`: 컬럼 라벨 "소요량 산출" → "결과 보기", Calculator 아이콘 → Eye
+- `generateMaterialRequirementsAction` 서버 액션은 유지 (사용처 없음, Phase 5 재검토)
+- 커밋: {G3_C1}, {G3_C2}, {G3_C3}
   - **Phase 3-D30-Ex1** (commits `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2`) — 일자별 입고 통합 뷰 (옵션 α) 구현 완료:
     - 신규 서비스: `daily-receiving.service.ts` — `getDailyReceivingBundle(companyId, date, mode)`, `bulkCreateOrUpdateReceivingNoteDrafts`, `previewBulkConfirmReceivingNotes`, `bulkConfirmReceivingNotes` (all-or-nothing, 실패 시 `BulkConfirmExecutionError`).
     - 리드타임 정합화(D15-2/D15-3/D15-5): 헤더 값(`PurchaseOrder.expectedReceiveDate`)이 아니라 **품목별 런타임 파생값** `itemExpectedReceiveDate = outboundDate − supplierItem.leadTimeDays` 를 SSOT 로 사용. `leadTimeDays` 미정 시 기본 1. `outboundDate` = 실제 사용일(엔드라인), `expectedReceiveDate` 는 그 이전.
@@ -157,7 +165,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - 신규 라우트 `/receiving/daily?date=YYYY-MM-DD&mode=outbound|expected`.
     - UI: `daily-receiving-header.tsx` (날짜 이동 + mode 토글 + pending/completed 카운트 + 모드별 설명 문구), `daily-receiving-pending-table.tsx`, 대시보드 링크.
     - 정정 이력: 초기 구현에서 `expectedReceiveDate = outboundDate + leadTimeDays` 로 부호가 뒤바뀐 회귀가 있어(`format-lead-time.ts` / `purchase-order.service.ts` / `purchase-order-batch.service.ts` / `daily-receiving.service.ts` / 마이그레이션) 5개 지점 전량 `outboundDate − leadTimeDays` 로 정정 완료. `daily-receiving.service.ts` 의 `outboundFilter` 주석도 `[selectedDate, selectedDate + MAX_LEAD_TIME_DAYS_WINDOW]` 로 정정.
-    - **테스트 완료** (commit `{TEST_COMMIT}`): `src/tests/daily-receiving.service.test.ts` 신규 8건 PASS — outbound/expected 필터, 리드타임 기본값, null 안전성, completed 매칭, 다중 아이템 부분 매칭, existingDraft 매핑.
+    - **테스트 완료** (commit `2c4a9cd`): `src/tests/daily-receiving.service.test.ts` 신규 8건 PASS — outbound/expected 필터, 리드타임 기본값, null 안전성, completed 매칭, 다중 아이템 부분 매칭, existingDraft 매핑.
   - **D30 C-3-d3** (commit `85302dc9`) — 확정 시 품목별 불일치 사유 개별 입력:
     - 서비스: `previewReceivingNoteDiscrepancies` 신설 (확정 전 DB 무영향 사전 계산), `resolveReason(key, autoReason)` 우선순위 도입 (품목별 > 통일 > 자동)
     - 유틸: `buildDiscrepancyKey(type, poItemId, rItemId)` 신규 — UI/서비스 간 안정 키 규약
@@ -252,7 +260,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - G-1-b **재산출 트리거는 별도로 두지 않음**. 사용자가 재산출을 원하면 상태를 되돌린 뒤(IN_PROGRESS → CONFIRMED → 다시 IN_PROGRESS) 자연스럽게 재산출됨. 중간에 재산출 버튼을 두면 발주 위저드에서 사용 중인 MR 스냅샷과의 정합성이 깨질 수 있으므로 의도적으로 제외.
     - G-1-c **unmapped 품목(default supplier 미지정 / 단위 환산 누락)이 있어도 MR 산출 자체는 성공 처리**. unmapped 판정·처리는 발주 위저드 Step 2 (`buildPOItemsFromMR`) 의 책임으로 유지 (MAPPED / MAPPED_PARTIAL_STOCK / MAPPED_FULL_STOCK / UNMAPPED 4분류가 이미 존재). MR 산출 단계는 순수 수량 집계에만 관여.
     - G-2 발주 위저드 진입 조건은 기존 그대로 (`IN_PROGRESS` / `COMPLETED`). G-1 정상 동작 시 MR 항상 존재하므로 위저드 진입 시 별도 산출 요구 없음. MR 미존재 시(비정상 상태)에는 명시적 에러 표시.
-    - G-3 자재 소요량 페이지의 상태 변경/산출 버튼 **완전 제거** → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 라인업 × {자재 / 공급사 / PO} 집계 카드 + unmapped/이상치 알림 표시. 향후 활용성이 낮을 것으로 예상되나 진단·감사 목적 페이지로 유지.
+    - G-3 자재 소요량 페이지의 상태 변경/산출 버튼 **완전 제거** → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 라인업 × {자재 / 공급사 / PO} 집계 카드 + unmapped/이상치 알림 표시. 향후 활용성이 낮을 것으로 예상되나 진단·감사 목적 페이지로 유지. ✅ (2026-07-07)
     - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만 (조작 버튼 없음).
     - G-5 문서 갱신: `docs/progress/MEAL_PLAN_LIFECYCLE.md` 에 자동 MR 산출 훅 명시, `docs/progress/PO_LIFECYCLE.md` 에 "MR 항상 존재" 전제 명시.
 
