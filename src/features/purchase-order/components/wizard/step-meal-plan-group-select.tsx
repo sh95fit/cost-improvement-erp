@@ -12,6 +12,13 @@ import {
 } from "./wizard-mode-selector";
 import type { ExistingPOsSummaryResult } from "@/features/purchase-order/actions/purchase-order.action";
 import { clearAllIdempotencyTokensFor } from "./po-wizard";
+// ★ Phase 4-G G-4: features/meal-plan/constants/status-label.ts 공통 상수 재사용.
+//   기존 "산출중/산출완료" 로컬 라벨은 G-1 자동 산출 훅 도입 후 의미가 모호해져
+//   식단 도메인 표준 라벨 "진행중/완료" 로 통일.
+import {
+  STATUS_LABEL,
+  STATUS_COLOR,
+} from "@/features/meal-plan/constants/status-label";
 
 interface Props {
   value: MealPlanGroupOption | null;
@@ -23,11 +30,6 @@ interface Props {
   basedOnPOIds: string[];
   onChangeMode: (mode: WizardMode, basedOnPOIds: string[]) => void;
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  IN_PROGRESS: "산출중",
-  COMPLETED: "산출완료",
-};
 
 export function StepMealPlanGroupSelect({
   value,
@@ -148,7 +150,7 @@ export function StepMealPlanGroupSelect({
       <div>
         <h2 className="text-lg font-semibold">Step 1 — 식단 그룹 선택</h2>
         <p className="mt-1 text-sm text-gray-600">
-          최근 30일 이내 산출중(IN_PROGRESS) · 산출완료(COMPLETED) 상태의 식단
+          최근 30일 이내 진행중(IN_PROGRESS) · 완료(COMPLETED) 상태의 식단
           그룹만 표시됩니다.
         </p>
       </div>
@@ -238,9 +240,7 @@ export function StepMealPlanGroupSelect({
                       <td className="px-3 py-2">
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs ${
-                            g.status === "COMPLETED"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-blue-100 text-blue-800"
+                            STATUS_COLOR[g.status] ?? "bg-gray-100 text-gray-700"
                           }`}
                         >
                           {STATUS_LABEL[g.status] ?? g.status}

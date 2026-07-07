@@ -22,8 +22,8 @@ export const STATUS_LABEL: Record<string, string> = {
   export const STATUS_COLOR: Record<string, string> = {
     DRAFT: "bg-gray-100 text-gray-700",
     CONFIRMED: "bg-blue-100 text-blue-700",
-    IN_PROGRESS: "bg-green-100 text-green-700",
-    COMPLETED: "bg-purple-100 text-purple-700",
+    IN_PROGRESS: "bg-amber-100 text-amber-800",  // ★ green → amber (UX: 진행중 = 주의)
+    COMPLETED: "bg-green-100 text-green-800",    // ★ purple → green (UX: 완료 = 초록 표준)
     CANCELLED: "bg-red-100 text-red-700",
   };
   

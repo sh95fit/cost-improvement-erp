@@ -18,22 +18,15 @@ import { getMealPlanGroupsAction } from "@/features/meal-plan/actions/meal-plan.
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
-// ── meal-plan.schema 의 mealPlanStatusEnum과 동일 ─────────────────
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "작성중",
-  CONFIRMED: "확정",
-  IN_PROGRESS: "진행중",
-  COMPLETED: "완료",
-  CANCELLED: "취소",
-};
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-700",
-  CONFIRMED: "bg-blue-50 text-blue-700",
-  IN_PROGRESS: "bg-amber-50 text-amber-700",
-  COMPLETED: "bg-green-50 text-green-700",
-  CANCELLED: "bg-red-50 text-red-600",
-};
-type StatusFilter = "all" | keyof typeof STATUS_LABELS;
+import {
+  STATUS_LABEL,
+  STATUS_COLOR,
+} from "@/features/meal-plan/constants/status-label";
+
+// ★ Phase 4-G G-4: features/meal-plan/constants/status-label.ts 공통 상수 재사용
+//   - CONFIRMED 라벨: "확정" → "준비중" (Phase 9-D-Sym 결정)
+//   - IN_PROGRESS/COMPLETED 색상: G-4 UX 재배정
+type StatusFilter = "all" | keyof typeof STATUS_LABEL;
 
 // ── Group 행 타입 (getMealPlanGroups 응답 일부) ──────────────────
 export type MealPlanGroupRow = {
@@ -121,7 +114,7 @@ export function MaterialRequirementGroupList({ onSelect }: Props) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체 상태</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([key, label]) => (
+              {Object.entries(STATUS_LABEL).map(([key, label]) => (
                 <SelectItem key={key} value={key}>
                   {label}
                 </SelectItem>
@@ -174,10 +167,10 @@ export function MaterialRequirementGroupList({ onSelect }: Props) {
                     <TableCell className="text-center">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          STATUS_BADGE[g.status] ?? "bg-gray-100 text-gray-600"
+                          STATUS_COLOR[g.status] ?? "bg-gray-100 text-gray-600"
                         }`}
                       >
-                        {STATUS_LABELS[g.status] ?? g.status}
+                        {STATUS_LABEL[g.status] ?? g.status}
                       </span>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
