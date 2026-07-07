@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-07 (Phase 4-G G-1~G-4 ✅ 완료 — 자재 소요량 자동 산출 훅 + 위저드 진입 가드 + 대시보드화 + 상태 라벨/색상 정합화. 인프라 hotfix: EMAXCONNSESSION 조치. 다음: Phase 4-F-1 발주 일괄 상태 전이)
+> 마지막 갱신: 2026-07-07 (Phase 4-G G-1~G-4 ✅ 완료 + Phase 4-F-1 완료 재확인 — 자재 소요량 자동 산출·대시보드화·라벨/색상 정합화, 인프라 hotfix. 다음: Sprint 3 잔여 검토 후 Sprint 종결 준비)
 
 ---
 
@@ -150,6 +150,16 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-G G-1~G-4 (자재 소요량 대시보드화 + 상태 라벨/색상 정합화) + 인프라 hotfix (EMAXCONNSESSION)
 - **최근 완료**:
+  ### Phase 4-F-1 ✅ (2026-06-30) — 발주 일괄 상태 전이
+
+  - `bulkTransitionPOStatusAction` 신설: 트랜잭션·skip·INVALID_TRANSITION 분류, 부분 실패 시 전체 롤백, 성공 건별 감사 로그 적층.
+  - 발주 목록에 체크박스 컬럼 + `BulkActionBar` (선택 발주 확정 / 선택 취소). "선택 입고 완료" 는 P5 재정정으로 제거 — RECEIVED 는 ReceivingNote confirm 단일 트랜잭션 내 자동 전이로만 도달.
+  - `bulkTransitionInputSchema.toStatus` 를 SUBMITTED / CANCELLED 화이트리스트로 제한 (RECEIVED / APPROVED 요청은 ZodError 로 거부).
+  - 결재 미도입 상태에서 APPROVED 액션 미노출.
+  - 단가 이력 적층(P9') 은 단건 `transitionPurchaseOrderStatus` 위임으로 자동 보존.
+  - 커밋: `82279c17` (feat) → `645890cd` (P5 정합 범위 축소) 
+  - 헌법 P5·P9 재정정 정합 (`81ac3807`, `f18c481b`).
+
   ### Phase 4-G G-4 ✅ (2026-07-07) — 식단 상태 라벨/색상 정합화
 
   - 공통 상수 재사용: `src/features/meal-plan/constants/status-label.ts` 를 SSOT 로 지정.
@@ -244,7 +254,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - `NewModePreview` 에 라인업 · 기준량(g) 컬럼 추가 + 다축 집계 뷰 섹션 부착
     - `WizardPreviewPanel` 에 `scopeLevel` prop 전파, `po-wizard.tsx` 임시 `scopeLevel="COMPANY"` (TODO: 세션 userScope 연결)
     - 쓰기 경로 무수정 (PC2/DC4 보존), 읽기 전용 뷰만 추가 (DC5)
-  - **D25-4** (commit `{Stage1_SHA}`) — 레거시 `StepSplitPreview` 정리: D25-3 에서 `WizardPreviewPanel` 경유로 사용처가 모두 교체된 이후 deprecated 상태이던 `step-split-preview.tsx` 삭제. `NewModePreview` 가 단일 SSOT. `po-wizard.tsx` / `new-mode-preview.tsx` 의 D25-3/D25-4 주석 갱신.
+  - **D25-4** (commit `dafb5785`) — 레거시 `StepSplitPreview` 정리: D25-3 에서 `WizardPreviewPanel` 경유로 사용처가 모두 교체된 이후 deprecated 상태이던 `step-split-preview.tsx` 삭제. `NewModePreview` 가 단일 SSOT. `po-wizard.tsx` / `new-mode-preview.tsx` 의 D25-3/D25-4 주석 갱신.
   - **Phase 4-C2 pre / GAP-1** (commits `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`) — 원가 ↔ 라인업 차원 정합성:
     - 스키마: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` (S1)
     - 서비스: `AggregatedRequirement.lineupId` + `makeKey` 3-arg + BOM 전개 시 `mealPlan.lineupId` 전파 + INSERT 영속화 + list include/filter (S2). 테스트 +3 (S3, 22/22 PASS)
@@ -286,13 +296,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 
 ## 다음 진행 항목 (확정 순서)
   ### Sprint 3 잔여
-  1. **Phase 4-F-1 — 발주 일괄 상태 전이**:
-    - `bulkTransitionPOStatusAction` 신설 (트랜잭션·skip·INVALID_TRANSITION 분류·부분 실패 시 전체 롤백).
-    - 발주 목록 페이지에 행 체크박스 + 액션바("선택 발주 확정", "선택 입고 완료", "선택 취소").
-    - 결재 미도입 상태에서 APPROVED 관련 액션 미노출.
-    - 단가 이력 적층(P9') 은 단건 transition 위임으로 자동 보존.
-
-  2. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
+  1. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
 
     **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
     - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
@@ -441,7 +445,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 | **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | ✅ | `{D28 커밋해시들}` |
 | **4-C2 (pre)** | GAP-1 해소 (MR.lineupId) + `getLineupBreakdownAction` 백엔드 3종 집계 (D29 백엔드) | ✅ | `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88` |
 | **4-C2 (UI)** | Step 4 라인업 다축 집계 뷰 UI (D29 프런트) — `GroupByTabs` 4축 탭 + 라인업/기준량(g) 컬럼 + `scopeLevel` prop 체인 | ✅ | `bf103b1a` |
-| **D25-4** | 레거시 `StepSplitPreview` 삭제 — D25-3 에서 사용처 교체 완료 후 정리. `NewModePreview` 단일 SSOT 확정 | ✅ | `{Stage1_SHA}` |
+| **D25-4** | 레거시 `StepSplitPreview` 삭제 — D25-3 에서 사용처 교체 완료 후 정리. `NewModePreview` 단일 SSOT 확정 | ✅ | `dafb5785` |
 | 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
 | 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
 | 4-F | PO 목록 다축 뷰 (출고일/공급사/라인업, D21-A) — D29와 일부 중첩, 통합 검토 | ⬜ | - |
