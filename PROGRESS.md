@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-07 (Phase 3-D30-Ex1 ✅ 완료 — 일자별 입고 통합 뷰 + 리드타임 정합화 + 테스트 8건, 다음: Phase 4-G 자재 소요량 대시보드화)
+> 마지막 갱신: 2026-07-07 (Phase 4-G G-1~G-4 ✅ 완료 — 자재 소요량 자동 산출 훅 + 위저드 진입 가드 + 대시보드화 + 상태 라벨/색상 정합화. 인프라 hotfix: EMAXCONNSESSION 조치. 다음: Phase 4-F-1 발주 일괄 상태 전이)
 
 ---
 
@@ -148,16 +148,61 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 ## 📍 현재 상태 요약
 
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
+- **현재 기준 완료 지점**: Sprint 3 Phase 4-G G-1~G-4 (자재 소요량 대시보드화 + 상태 라벨/색상 정합화) + 인프라 hotfix (EMAXCONNSESSION)
 - **최근 완료**:
-  ### Phase 4-G G-3 ✅ (2026-07-07)
+  ### Phase 4-G G-4 ✅ (2026-07-07) — 식단 상태 라벨/색상 정합화
 
-  - 자재 소요량 페이지를 read-only 대시보드로 전환
-    * `material-requirement-detail.tsx`: 산출 버튼 2개 제거, "식단을 진행중 상태로 변경하면 자동 산출" 안내 배너 추가
-    * `material-requirement-result-panel.tsx`: 빈 상태 안내 문구를 자동 산출 안내로 교체
-    * `material-requirement-group-list.tsx`: 컬럼 라벨 "소요량 산출" → "결과 보기", Calculator 아이콘 → Eye
-- `generateMaterialRequirementsAction` 서버 액션은 유지 (사용처 없음, Phase 5 재검토)
-- 커밋: {G3_C1}, {G3_C2}, {G3_C3}
+  - 공통 상수 재사용: `src/features/meal-plan/constants/status-label.ts` 를 SSOT 로 지정.
+    * `material-requirement-group-list.tsx`: 로컬 `STATUS_LABELS` / `STATUS_BADGE` / `StatusFilter` 삭제, 공통 `STATUS_LABEL` / `STATUS_COLOR` 사용. CONFIRMED 라벨 "확정" → "준비중" 자동 정합.
+    * `step-meal-plan-group-select.tsx`: 로컬 `STATUS_LABEL` 2건 삭제, 공통 상수 사용. "산출중" / "산출완료" → "진행중" / "완료" 로 통일.
+  - `STATUS_COLOR` UX 재배정 (사용자 경험 정합성 우선):
+    * DRAFT → gray, CONFIRMED → blue, IN_PROGRESS → **amber** (green→변경, 진행=주의 색), COMPLETED → **green** (purple→변경, 완료=초록 표준), CANCELLED → red.
+    * enum 값 · DB · 마이그레이션 무변경. UI 표시 문자열/Tailwind 클래스만 조정.
+  - CONFIRMED 라벨은 현행 "준비중" 유지 (Phase 9-D-Sym 2026-06-11 결정 존중). 추후 사용자 혼선 발생 시 재조정.
+  - 커밋: `575a17c5`
+
+  ### Phase 4-G G-3 ✅ (2026-07-07) — 자재 소요량 페이지 read-only 대시보드화
+
+  - `material-requirement-detail.tsx`: "예상수량으로 산출" / "확정수량으로 산출" 버튼 2개 제거, "식단을 진행중 상태로 변경하면 자동 산출됩니다" 안내 배너 추가.
+  - `material-requirement-result-panel.tsx`: 빈 상태 안내 문구를 자동 산출 안내로 교체.
+  - `material-requirement-group-list.tsx`: 컬럼 라벨 "소요량 산출" → "결과 보기", Calculator 아이콘 → Eye 아이콘.
+  - `generateMaterialRequirementsAction` 서버 액션은 유지 (외부 트리거 부재, Phase 5 재검토 대상으로 보류).
+  - 커밋: `f768c902`
+
+  ### Phase 4-G G-2 ✅ (2026-07-07) — 발주 위저드 진입 가드 (미산출 그룹)
+
+  - 서버 액션 (`purchase-order.action.ts`): 
+    * `getMealPlanGroupsForOrderAction` 응답에 `materialRequirementCount` (active MR only) 추가.
+    * `loadPOWizardDataAction` 사전 검증에서 MR=0 인 그룹은 `MR_NOT_GENERATED` 오류 throw.
+  - 타입 (`po-wizard.ts`): 그룹 옵션 타입에 `materialRequirementCount` 추가.
+  - UI (`step-meal-plan-group-select.tsx`): "자재 산출" 컬럼 신설. count=0 인 행은 disabled + "미산출" 배지 + 툴팁. count=0 그룹 선택 시 안내 배너 노출 ("식단 관리에서 자동 산출을 활성화하세요").
+  - 정책: 정상 흐름에서 미산출 그룹은 발생하지 않지만(G-1 훅이 원자적으로 생성) 레거시/DB 직접 조작 대비 이중 방어.
+  - 커밋: `82baf37b`
+
+  ### Phase 4-G G-1 ✅ (2026-07-07) — 식단 전진 전이 시 MR 자동 산출
+
+  - `updateMealPlanGroup` 의 CONFIRMED → IN_PROGRESS / IN_PROGRESS → COMPLETED 전진 전이 hook 에서 `generateMaterialRequirements(companyId, { mealPlanGroupId, countSource })` 를 **동일 트랜잭션 내** 자동 호출.
+    * IN_PROGRESS 전이 → `countSource: 'ESTIMATED'`
+    * COMPLETED 전이 → `countSource: 'FINAL'`
+  - 실패 시 상태 전이도 함께 롤백 (부분 상태 방지).
+  - `material-requirement.service.ts` 에 `existingTx` 파라미터 지원 추가 — 외부 트랜잭션에서 재사용 시 `prisma.$transaction` 미호출 (커넥션 핸드오프).
+  - 역행 전이 시 재산출 트리거 두지 않음 — 다시 전진 시 자연 재산출.
+  - `unmapped` 판정은 발주 위저드 Step 2 (`buildPOItemsFromMR`) 책임 유지 (경계 명확화).
+  - 테스트: `meal-plan.service.test.ts` +6건 (전진/역행/노트만 변경/상태 점프/실패 롤백), `material-requirement.service.test.ts` +2건 (existingTx 유무 분기). 총 8건 신규.
+  - 커밋: `0f051a30` (existingTx 지원) → `6d583486` (auto-generate hook) → `e68bbbbc` (tests)
+
+  ### Infra hotfix — EMAXCONNSESSION 커넥션 이슈 ✅ (2026-07-07)
+
+  - 증상: 식단 그룹 생성 후 상세 진입 단계에서 `prisma:error (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15` 발생.
+  - 원인: Prisma 7 + `@prisma/adapter-pg` 조합에서 `pg.Pool` 기본 max(10) + Next.js HMR 로 인한 pool 재생성 누적이 Supabase Supavisor session-mode 15 슬롯을 초과.
+  - 조치 (`src/lib/prisma.ts`, 커밋 `2091092b`):
+    * `pg.Pool` 옵션 명시화: `max: prod 10 / dev 5`, `idleTimeoutMillis: 10_000`, `connectionTimeoutMillis: 5_000`, `allowExitOnIdle: !prod`.
+    * PrismaClient `log` 에서 `"query"` 제거 (dev 노이즈 감소).
+    * `globalForPrisma` 로 pool/prisma 재사용 (HMR 안전).
+    * Soft-delete extension `createValue` 삼항식으로 간소화.
+  - Prisma 7 스키마 정책 반영: `.env` 에 `DATABASE_URL` (`pooler.supabase.com:6543?pgbouncer=true`) / `DIRECT_URL` (`:5432`) 분리. `prisma.config.ts` 의 `datasource.url` 은 `DIRECT_URL` (CLI/마이그레이션 전용). `schema.prisma` 의 `datasource db` 블록은 `provider = "postgresql"` 단일 라인 유지 (P1012 회피).
+  - 결과: 신규 식단 생성 · 상세 조회 · IN_PROGRESS 전이 정상 동작 확인.
+
   - **Phase 3-D30-Ex1** (commits `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2`) — 일자별 입고 통합 뷰 (옵션 α) 구현 완료:
     - 신규 서비스: `daily-receiving.service.ts` — `getDailyReceivingBundle(companyId, date, mode)`, `bulkCreateOrUpdateReceivingNoteDrafts`, `previewBulkConfirmReceivingNotes`, `bulkConfirmReceivingNotes` (all-or-nothing, 실패 시 `BulkConfirmExecutionError`).
     - 리드타임 정합화(D15-2/D15-3/D15-5): 헤더 값(`PurchaseOrder.expectedReceiveDate`)이 아니라 **품목별 런타임 파생값** `itemExpectedReceiveDate = outboundDate − supplierItem.leadTimeDays` 를 SSOT 로 사용. `leadTimeDays` 미정 시 기본 1. `outboundDate` = 실제 사용일(엔드라인), `expectedReceiveDate` 는 그 이전.
@@ -247,28 +292,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - 결재 미도입 상태에서 APPROVED 관련 액션 미노출.
     - 단가 이력 적층(P9') 은 단건 transition 위임으로 자동 보존.
 
-  2. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화 + 프로세스 단축)**:
-
-    **배경 및 결정 근거 (2026-07-07 확정)**:
-    - 기존 플로우: 식단 등록 → IN_PROGRESS 전이 → 자재 소요량 페이지 이동 → "예상수량으로 산출" 버튼 클릭 → 발주 관리 이동 → 발주 생성 → 식단 선택 → PO 생성. **버튼 클릭 2회, 페이지 이동 3회의 비효율.**
-    - 자재 소요량 페이지의 "예상수량으로 산출" 버튼은 `generateMaterialRequirements` 를 호출하는 것 외에 아무 결정 로직도 없음(현행 `material-requirement.service.ts` 확인). 실제 발주량 결정·unmapped 판정·재고 차감·단위 환산은 모두 발주 위저드 Step 2 (`buildPOItemsFromMR`) 에서 수행됨. **즉 산출 버튼은 순수한 "트리거" 역할만 하고 있어 자동화 대상.**
-    - 개선 후 플로우: 식단 등록 → IN_PROGRESS 전이(**MR 자동 산출**) → 발주 관리 → 발주 생성. **자재 소요량 페이지는 읽기 전용 대시보드로 격하.**
-
-    **세부 결정**:
-    - G-1 `updateMealPlanGroup` 의 CONFIRMED → IN_PROGRESS 전이 hook 에서 `generateMaterialRequirements(companyId, { mealPlanGroupId, countSource: 'ESTIMATED' })` 를 **동일 트랜잭션 내 동기 호출**. MR 산출 실패 시 상태 전이도 함께 롤백 (부분 상태 방지).
-    - G-1-a IN_PROGRESS → COMPLETED 전이 시 `countSource: 'FINAL'` 로 재산출 (동일 트랜잭션).
-    - G-1-b **재산출 트리거는 별도로 두지 않음**. 사용자가 재산출을 원하면 상태를 되돌린 뒤(IN_PROGRESS → CONFIRMED → 다시 IN_PROGRESS) 자연스럽게 재산출됨. 중간에 재산출 버튼을 두면 발주 위저드에서 사용 중인 MR 스냅샷과의 정합성이 깨질 수 있으므로 의도적으로 제외.
-    - G-1-c **unmapped 품목(default supplier 미지정 / 단위 환산 누락)이 있어도 MR 산출 자체는 성공 처리**. unmapped 판정·처리는 발주 위저드 Step 2 (`buildPOItemsFromMR`) 의 책임으로 유지 (MAPPED / MAPPED_PARTIAL_STOCK / MAPPED_FULL_STOCK / UNMAPPED 4분류가 이미 존재). MR 산출 단계는 순수 수량 집계에만 관여.
-    - G-2 발주 위저드 진입 조건은 기존 그대로 (`IN_PROGRESS` / `COMPLETED`). G-1 정상 동작 시 MR 항상 존재하므로 위저드 진입 시 별도 산출 요구 없음. MR 미존재 시(비정상 상태)에는 명시적 에러 표시.
-    - G-3 자재 소요량 페이지의 상태 변경/산출 버튼 **완전 제거** → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 라인업 × {자재 / 공급사 / PO} 집계 카드 + unmapped/이상치 알림 표시. 향후 활용성이 낮을 것으로 예상되나 진단·감사 목적 페이지로 유지. ✅ (2026-07-07)
-    - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만 (조작 버튼 없음).
-    - G-5 문서 갱신: `docs/progress/MEAL_PLAN_LIFECYCLE.md` 에 자동 MR 산출 훅 명시, `docs/progress/PO_LIFECYCLE.md` 에 "MR 항상 존재" 전제 명시.
-
-    **구현 순서**: G-1 (서비스 hook) → G-1 테스트 → G-3 (UI 정리) → G-4 (라벨) → G-2 검증 → G-5 (문서) → 4-G 종결.
-
-    **선행 조건**: Phase 3-D30-Ex1 종결 후 착수 (사용자 지시 2026-07-07).
-
-  3. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
+  2. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
 
     **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
     - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
