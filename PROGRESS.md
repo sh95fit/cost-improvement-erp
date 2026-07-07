@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-03 (D30 C-3 완료 — 입고서 CRUD·확정·불일치 이력·품목별 사유 UI 배포, RECEIVING_INVENTORY_POLICY §9 신설)
+> 마지막 갱신: 2026-07-07 (Phase 3-D30-Ex1 구현 완료 — 일자별 입고 통합 뷰 + 리드타임 정합화, Phase 4-G 세부 결정 반영)
 
 ---
 
@@ -150,6 +150,14 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 - **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
 - **현재 기준 완료 지점**: Sprint 3 Phase 4-C2 (UI) + D25-4 (Step 4 라인업 다축 집계 뷰 + 레거시 StepSplitPreview 정리)
 - **최근 완료**:
+  - **Phase 3-D30-Ex1** (commits `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2`) — 일자별 입고 통합 뷰 (옵션 α) 구현 완료:
+    - 신규 서비스: `daily-receiving.service.ts` — `getDailyReceivingBundle(companyId, date, mode)`, `bulkCreateOrUpdateReceivingNoteDrafts`, `previewBulkConfirmReceivingNotes`, `bulkConfirmReceivingNotes` (all-or-nothing, 실패 시 `BulkConfirmExecutionError`).
+    - 리드타임 정합화(D15-2/D15-3/D15-5): 헤더 값(`PurchaseOrder.expectedReceiveDate`)이 아니라 **품목별 런타임 파생값** `itemExpectedReceiveDate = outboundDate − supplierItem.leadTimeDays` 를 SSOT 로 사용. `leadTimeDays` 미정 시 기본 1. `outboundDate` = 실제 사용일(엔드라인), `expectedReceiveDate` 는 그 이전.
+    - 두 가지 모드: `outbound` (기본, outboundDate = 선택일) / `expected` (선택일에 도착 예정 품목이 하나라도 있는 PO만 표시). expected 창 크기: `MAX_LEAD_TIME_DAYS_WINDOW = 30`.
+    - 신규 라우트 `/receiving/daily?date=YYYY-MM-DD&mode=outbound|expected`.
+    - UI: `daily-receiving-header.tsx` (날짜 이동 + mode 토글 + pending/completed 카운트 + 모드별 설명 문구), `daily-receiving-pending-table.tsx`, 대시보드 링크.
+    - 정정 이력: 초기 구현에서 `expectedReceiveDate = outboundDate + leadTimeDays` 로 부호가 뒤바뀐 회귀가 있어(`format-lead-time.ts` / `purchase-order.service.ts` / `purchase-order-batch.service.ts` / `daily-receiving.service.ts` / 마이그레이션) 5개 지점 전량 `outboundDate − leadTimeDays` 로 정정 완료. `daily-receiving.service.ts` 의 `outboundFilter` 주석도 `[selectedDate, selectedDate + MAX_LEAD_TIME_DAYS_WINDOW]` 로 정정.
+    - **테스트 대기**: `src/tests/daily-receiving.service.test.ts` 는 Commit 2 에서 추가.
   - **D30 C-3-d3** (commit `85302dc9`) — 확정 시 품목별 불일치 사유 개별 입력:
     - 서비스: `previewReceivingNoteDiscrepancies` 신설 (확정 전 DB 무영향 사전 계산), `resolveReason(key, autoReason)` 우선순위 도입 (품목별 > 통일 > 자동)
     - 유틸: `buildDiscrepancyKey(type, poItemId, rItemId)` 신규 — UI/서비스 간 안정 키 규약
@@ -225,28 +233,46 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 
 ## 다음 진행 항목 (확정 순서)
   ### Sprint 3 잔여
-  1. **Phase 3-D30-Ex1 — 일자별 입고 통합 뷰 (옵션 α)** [착수 대기]:
-    - 요구: 회사 계층에서 매일 4개 PO(가정식 핫/콜드, 프레시밀, 라이트밀 × 공장별)가 발생. 라인업 다양화에 따라 계속 증가 예정. 일자별로 PO 목록을 모아 한 화면에서 개별/일괄 입고 처리 필요.
-    - 설계: **옵션 α — N개 `CreateReceivingNoteForm` 병렬 렌더**. 1 PO = 1 ReceivingNote 유지(감사 추적성 보존), 스키마 무변경.
-    - 신규 라우트: `/receiving/daily?date=YYYY-MM-DD` (기본 오늘).
-    - 서비스: `getDailyReceivingBundle(companyId, date)` (읽기 전용 집계), `bulkCreateOrUpdateReceivingNoteDrafts` (단일 트랜잭션), `bulkConfirmReceivingNotes` (**All-or-Nothing** — 사용자 확정에 따라 전체 트랜잭션, 실패 시 어떤 노트가 왜 실패했는지 반환하여 재시도).
-    - UI: `DailyReceivingView`(자재 요약 상단 + PO 섹션 아코디언), `BulkConfirmDialog`(실패 노트 하이라이트 + 재시도).
-    - 청크: E(서비스) → F(액션·스키마) → G(UI) → H(테스트) → I(대시보드 링크·문서).
+  1. **Phase 3-D30-Ex1 — 일자별 입고 통합 뷰 (옵션 α)** [구현 완료 / 테스트 대기]:
+    - 구현·리드타임 정합화 모두 완료 (커밋: `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2` — "최근 완료" 섹션 참조).
+    - **잔여**: `src/tests/daily-receiving.service.test.ts` 신규 파일로 6~7건 케이스 추가 → `npx vitest run daily-receiving` PASS + `npx tsc --noEmit` 통과 확인 → 본 항목 ✅ 처리.
+    - **필수 커버 케이스**:
+      (a) outbound 모드가 선택일과 정확히 일치하는 outboundDate 만 반환
+      (b) expected 모드가 `[selectedDate, selectedDate + 30d]` 범위 내 PO 중 `outboundDate − leadTimeDays === selectedDate` 인 품목을 가진 것만 반환
+      (c) expected 모드에서 매칭 품목 0건 PO 는 pending 에서 제외
+      (d) `supplierItem.leadTimeDays === null` 이면 기본값 1 로 계산
+      (e) `outboundDate === null` 이면 `itemExpectedReceiveDate === null`
+      (f) RECEIVED PO 는 선택일 outboundDate 기준으로만 completed 목록에 포함
+      (g) 여러 아이템 PO 에서 일부만 매칭 시 `itemsMatchingDate` 배열이 올바른 PO item id 만 담음
 
-  2. **Phase 4-F-1 — 발주 일괄 상태 전이** (Phase 4-F-1):
-  1. **Phase 4-F-1 — 발주 일괄 상태 전이** (Phase 4-F-1):
+  2. **Phase 4-F-1 — 발주 일괄 상태 전이**:
     - `bulkTransitionPOStatusAction` 신설 (트랜잭션·skip·INVALID_TRANSITION 분류·부분 실패 시 전체 롤백).
     - 발주 목록 페이지에 행 체크박스 + 액션바("선택 발주 확정", "선택 입고 완료", "선택 취소").
     - 결재 미도입 상태에서 APPROVED 관련 액션 미노출.
     - 단가 이력 적층(P9') 은 단건 transition 위임으로 자동 보존.
 
-  2. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화)**:
-    - G-1 식단 IN_PROGRESS 전환 hook 에 MR 자동 산출 동기 호출. 실패 시 식단 IN_PROGRESS 차단(부분 상태 방지).
-    - G-2 발주 위저드 진입 조건은 기존 그대로 (`IN_PROGRESS / COMPLETED`). G-1 정상 동작 시 MR 항상 존재.
-    - G-3 자재 소요량 페이지의 상태 변경 버튼 일체 제거 → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 집계 카드 + unmapped/이상치 알림.
-    - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만.
+  3. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화 + 프로세스 단축)**:
 
-  3. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
+    **배경 및 결정 근거 (2026-07-07 확정)**:
+    - 기존 플로우: 식단 등록 → IN_PROGRESS 전이 → 자재 소요량 페이지 이동 → "예상수량으로 산출" 버튼 클릭 → 발주 관리 이동 → 발주 생성 → 식단 선택 → PO 생성. **버튼 클릭 2회, 페이지 이동 3회의 비효율.**
+    - 자재 소요량 페이지의 "예상수량으로 산출" 버튼은 `generateMaterialRequirements` 를 호출하는 것 외에 아무 결정 로직도 없음(현행 `material-requirement.service.ts` 확인). 실제 발주량 결정·unmapped 판정·재고 차감·단위 환산은 모두 발주 위저드 Step 2 (`buildPOItemsFromMR`) 에서 수행됨. **즉 산출 버튼은 순수한 "트리거" 역할만 하고 있어 자동화 대상.**
+    - 개선 후 플로우: 식단 등록 → IN_PROGRESS 전이(**MR 자동 산출**) → 발주 관리 → 발주 생성. **자재 소요량 페이지는 읽기 전용 대시보드로 격하.**
+
+    **세부 결정**:
+    - G-1 `updateMealPlanGroup` 의 CONFIRMED → IN_PROGRESS 전이 hook 에서 `generateMaterialRequirements(companyId, { mealPlanGroupId, countSource: 'ESTIMATED' })` 를 **동일 트랜잭션 내 동기 호출**. MR 산출 실패 시 상태 전이도 함께 롤백 (부분 상태 방지).
+    - G-1-a IN_PROGRESS → COMPLETED 전이 시 `countSource: 'FINAL'` 로 재산출 (동일 트랜잭션).
+    - G-1-b **재산출 트리거는 별도로 두지 않음**. 사용자가 재산출을 원하면 상태를 되돌린 뒤(IN_PROGRESS → CONFIRMED → 다시 IN_PROGRESS) 자연스럽게 재산출됨. 중간에 재산출 버튼을 두면 발주 위저드에서 사용 중인 MR 스냅샷과의 정합성이 깨질 수 있으므로 의도적으로 제외.
+    - G-1-c **unmapped 품목(default supplier 미지정 / 단위 환산 누락)이 있어도 MR 산출 자체는 성공 처리**. unmapped 판정·처리는 발주 위저드 Step 2 (`buildPOItemsFromMR`) 의 책임으로 유지 (MAPPED / MAPPED_PARTIAL_STOCK / MAPPED_FULL_STOCK / UNMAPPED 4분류가 이미 존재). MR 산출 단계는 순수 수량 집계에만 관여.
+    - G-2 발주 위저드 진입 조건은 기존 그대로 (`IN_PROGRESS` / `COMPLETED`). G-1 정상 동작 시 MR 항상 존재하므로 위저드 진입 시 별도 산출 요구 없음. MR 미존재 시(비정상 상태)에는 명시적 에러 표시.
+    - G-3 자재 소요량 페이지의 상태 변경/산출 버튼 **완전 제거** → 읽기 전용 대시보드. `getLineupBreakdownAction` 활용 라인업 × {자재 / 공급사 / PO} 집계 카드 + unmapped/이상치 알림 표시. 향후 활용성이 낮을 것으로 예상되나 진단·감사 목적 페이지로 유지.
+    - G-4 라벨 일원화: 식단 IN_PROGRESS = "식단 진행중", MR 측은 정보 라벨만 (조작 버튼 없음).
+    - G-5 문서 갱신: `docs/progress/MEAL_PLAN_LIFECYCLE.md` 에 자동 MR 산출 훅 명시, `docs/progress/PO_LIFECYCLE.md` 에 "MR 항상 존재" 전제 명시.
+
+    **구현 순서**: G-1 (서비스 hook) → G-1 테스트 → G-3 (UI 정리) → G-4 (라벨) → G-2 검증 → G-5 (문서) → 4-G 종결.
+
+    **선행 조건**: Phase 3-D30-Ex1 종결 후 착수 (사용자 지시 2026-07-07).
+
+  4. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
 
     **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
     - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
