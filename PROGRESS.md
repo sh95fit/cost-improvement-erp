@@ -4,7 +4,7 @@
 > 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-07 (Phase 3-D30-Ex1 구현 완료 — 일자별 입고 통합 뷰 + 리드타임 정합화, Phase 4-G 세부 결정 반영)
+> 마지막 갱신: 2026-07-07 (Phase 3-D30-Ex1 ✅ 완료 — 일자별 입고 통합 뷰 + 리드타임 정합화 + 테스트 8건, 다음: Phase 4-G 자재 소요량 대시보드화)
 
 ---
 
@@ -157,7 +157,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
     - 신규 라우트 `/receiving/daily?date=YYYY-MM-DD&mode=outbound|expected`.
     - UI: `daily-receiving-header.tsx` (날짜 이동 + mode 토글 + pending/completed 카운트 + 모드별 설명 문구), `daily-receiving-pending-table.tsx`, 대시보드 링크.
     - 정정 이력: 초기 구현에서 `expectedReceiveDate = outboundDate + leadTimeDays` 로 부호가 뒤바뀐 회귀가 있어(`format-lead-time.ts` / `purchase-order.service.ts` / `purchase-order-batch.service.ts` / `daily-receiving.service.ts` / 마이그레이션) 5개 지점 전량 `outboundDate − leadTimeDays` 로 정정 완료. `daily-receiving.service.ts` 의 `outboundFilter` 주석도 `[selectedDate, selectedDate + MAX_LEAD_TIME_DAYS_WINDOW]` 로 정정.
-    - **테스트 대기**: `src/tests/daily-receiving.service.test.ts` 는 Commit 2 에서 추가.
+    - **테스트 완료** (commit `{TEST_COMMIT}`): `src/tests/daily-receiving.service.test.ts` 신규 8건 PASS — outbound/expected 필터, 리드타임 기본값, null 안전성, completed 매칭, 다중 아이템 부분 매칭, existingDraft 매핑.
   - **D30 C-3-d3** (commit `85302dc9`) — 확정 시 품목별 불일치 사유 개별 입력:
     - 서비스: `previewReceivingNoteDiscrepancies` 신설 (확정 전 DB 무영향 사전 계산), `resolveReason(key, autoReason)` 우선순위 도입 (품목별 > 통일 > 자동)
     - 유틸: `buildDiscrepancyKey(type, poItemId, rItemId)` 신규 — UI/서비스 간 안정 키 규약
@@ -233,25 +233,13 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 
 ## 다음 진행 항목 (확정 순서)
   ### Sprint 3 잔여
-  1. **Phase 3-D30-Ex1 — 일자별 입고 통합 뷰 (옵션 α)** [구현 완료 / 테스트 대기]:
-    - 구현·리드타임 정합화 모두 완료 (커밋: `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2` — "최근 완료" 섹션 참조).
-    - **잔여**: `src/tests/daily-receiving.service.test.ts` 신규 파일로 6~7건 케이스 추가 → `npx vitest run daily-receiving` PASS + `npx tsc --noEmit` 통과 확인 → 본 항목 ✅ 처리.
-    - **필수 커버 케이스**:
-      (a) outbound 모드가 선택일과 정확히 일치하는 outboundDate 만 반환
-      (b) expected 모드가 `[selectedDate, selectedDate + 30d]` 범위 내 PO 중 `outboundDate − leadTimeDays === selectedDate` 인 품목을 가진 것만 반환
-      (c) expected 모드에서 매칭 품목 0건 PO 는 pending 에서 제외
-      (d) `supplierItem.leadTimeDays === null` 이면 기본값 1 로 계산
-      (e) `outboundDate === null` 이면 `itemExpectedReceiveDate === null`
-      (f) RECEIVED PO 는 선택일 outboundDate 기준으로만 completed 목록에 포함
-      (g) 여러 아이템 PO 에서 일부만 매칭 시 `itemsMatchingDate` 배열이 올바른 PO item id 만 담음
-
-  2. **Phase 4-F-1 — 발주 일괄 상태 전이**:
+  1. **Phase 4-F-1 — 발주 일괄 상태 전이**:
     - `bulkTransitionPOStatusAction` 신설 (트랜잭션·skip·INVALID_TRANSITION 분류·부분 실패 시 전체 롤백).
     - 발주 목록 페이지에 행 체크박스 + 액션바("선택 발주 확정", "선택 입고 완료", "선택 취소").
     - 결재 미도입 상태에서 APPROVED 관련 액션 미노출.
     - 단가 이력 적층(P9') 은 단건 transition 위임으로 자동 보존.
 
-  3. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화 + 프로세스 단축)**:
+  2. **Phase 4-G — 자재 소요량 페이지 재정의 (대시보드화 + 프로세스 단축)**:
 
     **배경 및 결정 근거 (2026-07-07 확정)**:
     - 기존 플로우: 식단 등록 → IN_PROGRESS 전이 → 자재 소요량 페이지 이동 → "예상수량으로 산출" 버튼 클릭 → 발주 관리 이동 → 발주 생성 → 식단 선택 → PO 생성. **버튼 클릭 2회, 페이지 이동 3회의 비효율.**
@@ -272,7 +260,7 @@ ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음
 
     **선행 조건**: Phase 3-D30-Ex1 종결 후 착수 (사용자 지시 2026-07-07).
 
-  4. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
+  3. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
 
     **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
     - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
