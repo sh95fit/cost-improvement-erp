@@ -24,7 +24,9 @@ import {
   diagnoseBomMatch,
 } from "@/features/recipe/services/recipe-bom.service";
 
-import { MealPlanStatus } from "@prisma/client";
+import { MealPlanStatus, MealCountSource } from "@prisma/client";
+
+import { generateMaterialRequirements } from "@/features/material-requirement/services/material-requirement.service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -681,34 +683,63 @@ export async function updateMealPlanGroup(
   });
   if (!existing) throw new Error("NOT_FOUND");
 
-  // ★ Phase 9-C-Fix-R1-6: 상태 전환 가드 (책임 단일 포인트)
-  //    정책:
-  //      - DRAFT → CONFIRMED: 자동 승격 경로(promoteDraftToConfirmedIfNeeded)
-  //        에서만 발생하므로 본 분기에서 검증 면제 (수동 호출 시도 시도 면제)
-  //      - CONFIRMED → IN_PROGRESS (전진): 예상식수 전체 입력 + 슬롯 수량 검증
-  //      - IN_PROGRESS → COMPLETED (전진): 확정식수 전체 입력
-  //      - 그 외(역행, CANCELLED, 동일 상태): 검증 면제
-  //        (사용자가 명시적으로 되돌려 수정하는 케이스 허용)
-  if (input.status && input.status !== existing.status) {
-    const isForwardToInProgress =
-      existing.status === MealPlanStatus.CONFIRMED &&
-      input.status === MealPlanStatus.IN_PROGRESS;
-    const isForwardToCompleted =
-      existing.status === MealPlanStatus.IN_PROGRESS &&
-      input.status === MealPlanStatus.COMPLETED;
+  const isStatusChange = input.status && input.status !== existing.status;
+  const isForwardToInProgress =
+    isStatusChange &&
+    existing.status === MealPlanStatus.CONFIRMED &&
+    input.status === MealPlanStatus.IN_PROGRESS;
+  const isForwardToCompleted =
+    isStatusChange &&
+    existing.status === MealPlanStatus.IN_PROGRESS &&
+    input.status === MealPlanStatus.COMPLETED;
 
-    if (isForwardToInProgress) {
-      // CONFIRMED → IN_PROGRESS: 예상식수 + 예상수량 검증
-      await assertAllEstimatedCountsFilled(prisma, id);
-      await assertGroupSlotQuantitiesValid(prisma, id, "ESTIMATED");
-    } else if (isForwardToCompleted) {
-      // IN_PROGRESS → COMPLETED: 확정식수 + 확정수량 검증 (Phase 9-D-Sym)
-      await assertAllFinalCountsFilled(prisma, id);
-      await assertGroupSlotQuantitiesValid(prisma, id, "FINAL");
-    }
-    // 그 외 전환은 검증 없이 통과
+  // ★ Phase 4-G G-1: 전진 전이는 [검증 → 상태 update → MR 자동 산출] 을
+  //   단일 트랜잭션에 묶어 부분 상태 방지.
+  //   그 외 전이(역행 / 취소 / note-only)는 기존처럼 단순 update.
+  //
+  //   재산출 트리거는 별도로 두지 않음 (G-1-b) — 사용자가 재산출을 원하면
+  //   상태를 되돌린 뒤 다시 전진하면 자연 재산출된다.
+  //
+  //   unmapped 품목(default supplier 미지정 등)이 있어도 MR 산출 자체는
+  //   성공한다 (G-1-c). unmapped 판정은 발주 위저드 Step 2 책임.
+  if (isForwardToInProgress || isForwardToCompleted) {
+    return await prisma.$transaction(async (tx) => {
+      // 1) 검증 (tx 사용)
+      if (isForwardToInProgress) {
+        await assertAllEstimatedCountsFilled(tx, id);
+        await assertGroupSlotQuantitiesValid(tx, id, "ESTIMATED");
+      } else {
+        await assertAllFinalCountsFilled(tx, id);
+        await assertGroupSlotQuantitiesValid(tx, id, "FINAL");
+      }
+
+      // 2) 상태 update 를 먼저 커밋 — generateMaterialRequirements 의
+      //    상태 가드(INVALID_STATUS_FOR_ESTIMATED/FINAL) 통과 조건
+      const updated = await tx.mealPlanGroup.update({
+        where: { id },
+        data: {
+          status: input.status,
+          note: input.note,
+        },
+        include: GROUP_DETAIL_INCLUDE,
+      });
+
+      // 3) MR 자동 산출 (동일 트랜잭션 합류)
+      //    실패 시 전체 롤백 → status 도 원복
+      const countSource = isForwardToInProgress
+        ? MealCountSource.ESTIMATED
+        : MealCountSource.FINAL;
+      await generateMaterialRequirements(
+        companyId,
+        { mealPlanGroupId: id, countSource },
+        { existingTx: tx },
+      );
+
+      return updated;
+    });
   }
 
+  // 그 외 전이 (역행 / 취소 / note-only): 기존 그대로
   return prisma.mealPlanGroup.update({
     where: { id },
     data: {
