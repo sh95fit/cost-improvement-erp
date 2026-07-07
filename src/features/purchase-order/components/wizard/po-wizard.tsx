@@ -29,6 +29,7 @@ export type MealPlanGroupOption = {
   planDate: Date;
   status: string;
   mealPlanCount: number;
+  materialRequirementCount: number; // ★ Phase 4-G G-2
 };
 
 export interface WizardState {

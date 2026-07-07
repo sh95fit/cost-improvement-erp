@@ -59,6 +59,7 @@ export function StepMealPlanGroupSelect({
             planDate: new Date(g.planDate),
             status: g.status,
             mealPlanCount: g.mealPlanCount,
+            materialRequirementCount: g.materialRequirementCount, // ★ G-2
           })),
         );
       })
@@ -200,24 +201,34 @@ export function StepMealPlanGroupSelect({
                   <th className="px-3 py-2">기준일</th>
                   <th className="px-3 py-2">상태</th>
                   <th className="px-3 py-2">식단 수</th>
+                  <th className="px-3 py-2">자재 산출</th>
                 </tr>
               </thead>
               <tbody>
                 {options.map((g) => {
                   const selected = value?.id === g.id;
+                  const hasRequirements = g.materialRequirementCount > 0;
                   return (
                     <tr
                       key={g.id}
-                      onClick={() => onChange(g)}
-                      className={`cursor-pointer border-t border-gray-100 hover:bg-blue-50 ${
-                        selected ? "bg-blue-50" : ""
-                      }`}
+                      onClick={() => hasRequirements && onChange(g)}
+                      className={`border-t border-gray-100 ${
+                        hasRequirements
+                          ? "cursor-pointer hover:bg-blue-50"
+                          : "cursor-not-allowed opacity-60"
+                      } ${selected ? "bg-blue-50" : ""}`}
+                      title={
+                        hasRequirements
+                          ? undefined
+                          : "자재 소요량이 산출되지 않았습니다. 식단을 진행중 상태로 다시 전환해주세요."
+                      }
                     >
                       <td className="px-3 py-2">
                         <input
                           type="radio"
                           checked={selected}
-                          onChange={() => onChange(g)}
+                          onChange={() => hasRequirements && onChange(g)}
+                          disabled={!hasRequirements}
                           className="h-4 w-4"
                         />
                       </td>
@@ -235,20 +246,48 @@ export function StepMealPlanGroupSelect({
                           {STATUS_LABEL[g.status] ?? g.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-gray-600">
-                        {g.mealPlanCount}
+                      <td className="px-3 py-2 text-gray-600">{g.mealPlanCount}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {hasRequirements ? (
+                          <span className="text-gray-600 tabular-nums">
+                            {g.materialRequirementCount.toLocaleString()}건
+                          </span>
+                        ) : (
+                          <span className="rounded-md bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+                            미산출
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              </table>
+            </table>
           </div>
         )}
       </div>
 
+      {/* ★ Phase 4-G G-2: 선택 그룹이 미산출인 경우 안내 배너 */}
+      {value && value.materialRequirementCount === 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            자재 소요량이 산출되지 않은 그룹입니다
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            식단 화면에서 해당 그룹을 <strong>진행중</strong> 상태로 전환하면
+            자동으로 자재 소요량이 산출됩니다.
+          </p>
+          <a
+            href="/meal-plans"
+            className="mt-2 inline-block text-xs text-amber-900 underline hover:text-amber-950"
+          >
+            식단 화면으로 이동 →
+          </a>
+        </div>
+      )}
+
       {/* ★ R1-b1: 선택된 식단그룹의 기존 활성 PO 사전 안내 */}
-      {value && (
+      {value && value.materialRequirementCount > 0 && (
         <>
           <ExistingPONotice
             mealPlanGroupId={value.id}

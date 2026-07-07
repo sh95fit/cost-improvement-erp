@@ -225,6 +225,7 @@ export async function deletePurchaseOrderAction(
  * Step 1: 위저드에서 선택 가능한 식단 그룹 목록 조회
  * - 정책: status가 IN_PROGRESS 또는 COMPLETED인 그룹만 (산출 가능 상태)
  * - 최근 30일 + planDate 최신순
+ * - ★ Phase 4-G G-2: 각 그룹의 활성 MR 개수 반환 → 미산출 그룹 disabled 처리용
  */
 export async function getMealPlanGroupsForOrderAction(): Promise<
   ActionResult<
@@ -233,6 +234,7 @@ export async function getMealPlanGroupsForOrderAction(): Promise<
       planDate: Date;
       status: string;
       mealPlanCount: number;
+      materialRequirementCount: number;
     }>
   >
 > {
@@ -243,7 +245,6 @@ export async function getMealPlanGroupsForOrderAction(): Promise<
     const since = new Date();
     since.setDate(since.getDate() - 30);
 
-    // Prisma 직접 호출 (얇은 액션 — 별도 서비스 필요 없음)
     const { prisma } = await import("@/lib/prisma");
     const groups = await prisma.mealPlanGroup.findMany({
       where: {
@@ -256,7 +257,13 @@ export async function getMealPlanGroupsForOrderAction(): Promise<
         id: true,
         planDate: true,
         status: true,
-        _count: { select: { mealPlans: true } },
+        _count: {
+          select: {
+            mealPlans: true,
+            // ★ Phase 4-G G-2: 활성 MR 개수 (soft-delete 제외)
+            materialRequirements: { where: { deletedAt: null } },
+          },
+        },
       },
       orderBy: { planDate: "desc" },
       take: 100,
@@ -268,6 +275,7 @@ export async function getMealPlanGroupsForOrderAction(): Promise<
         planDate: g.planDate,
         status: g.status,
         mealPlanCount: g._count.mealPlans,
+        materialRequirementCount: g._count.materialRequirements,
       })),
     );
   } catch (error) {
@@ -313,6 +321,16 @@ export async function loadPOWizardDataAction(
         lineup: { select: { name: true } },
       },
     });
+
+    // ★ Phase 4-G G-2: MR 미산출 그룹에 대한 서버측 이중 방어
+    //   Step 1 UI 가드가 우회되거나 (직접 액션 호출 / 상태 stale) status는
+    //   IN_PROGRESS/COMPLETED 이지만 MR이 없는 이례 상황을 명확한 에러로 처리.
+    if (mrs.length === 0) {
+      return handleActionError(
+        new Error("MR_NOT_GENERATED"),
+        "선택한 식단 그룹에 자재 소요량이 산출되지 않았습니다. 식단 화면에서 그룹을 진행중 상태로 전환한 후 다시 시도해주세요.",
+      );
+    }
 
     const result = await buildPOItemsFromMR({
       companyId: session.companyId,
