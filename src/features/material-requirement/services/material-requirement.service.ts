@@ -79,13 +79,24 @@ const EPSILON = 1e-6;
 // 1. generateMaterialRequirements
 // ============================================================
 
+/**
+ * ★ Phase 4-G G-1: 옵션 인자 추가.
+ * 상위 서비스(예: updateMealPlanGroup 상태 전이 hook)가 자체 트랜잭션을
+ * 소유한 경우 existingTx 를 전달하면 신규 트랜잭션을 시작하지 않고
+ * 해당 tx 에 합류한다. 기본 동작(단독 트랜잭션)은 완전 하위 호환.
+ */
+export type GenerateMaterialRequirementsOptions = {
+  existingTx?: Prisma.TransactionClient;
+};
+
 export async function generateMaterialRequirements(
-  companyId: string,                                       
+  companyId: string,
   input: GenerateMaterialRequirementsInput,
+  options?: GenerateMaterialRequirementsOptions,
 ): Promise<GenerateResult> {
   const { mealPlanGroupId, countSource } = input;
 
-  return await prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient): Promise<GenerateResult> => {
     // ---- Step 1-1. 그룹 조회 (회사 가드 포함) ----
     const group = await tx.mealPlanGroup.findFirst({
       where: { id: mealPlanGroupId, companyId, deletedAt: null },
@@ -252,7 +263,12 @@ export async function generateMaterialRequirements(
         mismatchDetails: stats.mismatchDetails,
       },
     };
-  });
+  };
+
+  if (options?.existingTx) {
+    return await run(options.existingTx);
+  }
+  return await prisma.$transaction(run);  
 }
 
 // ============================================================
