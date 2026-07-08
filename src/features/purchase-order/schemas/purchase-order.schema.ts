@@ -95,6 +95,10 @@ export const createPurchaseOrderSchema = z.object({
   supplierId: z.string().min(1, '공급업체를 선택하세요'),
   locationId: z.string().min(1, '공장/창고를 선택하세요'),              // ★ 추가
   productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
+  // ★ Sprint 3.5 Phase S3.5-1 — 라인업 귀속 축 (P1' 준수)
+  //   식단 기반 발주: nullable (MR 을 통해 lineup 추적 가능)
+  //   수동 발주(isManual=true): 서비스 레이어에서 NOT NULL 강제
+  lineupId: z.string().min(1).nullable().optional(),
   orderDate: z.coerce.date(),
   // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
   outboundDate: z.coerce.date().optional(),
@@ -117,6 +121,8 @@ export const updatePurchaseOrderSchema = z.object({
   supplierId: z.string().min(1).optional(),
   locationId: z.string().min(1).optional(),                             // ★ 추가
   productionLineId: z.string().min(1).nullable().optional(),            // ★ 추가
+  // ★ Sprint 3.5 Phase S3.5-1
+  lineupId: z.string().min(1).nullable().optional(),
   orderDate: z.coerce.date().optional(),
   // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
   outboundDate: z.coerce.date().nullable().optional(),

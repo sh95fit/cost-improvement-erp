@@ -101,6 +101,11 @@ export async function createPurchaseOrderAction(
       LOCATION_NOT_FOUND: "지정한 공장/창고를 찾을 수 없습니다",
       PRODUCTION_LINE_NOT_FOUND: "지정한 생산 라인을 찾을 수 없습니다",
       LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
+      // ★ Sprint 3.5 Phase S3.5-1 — 라인업 에러
+      LINEUP_REQUIRED_FOR_MANUAL: "수동 발주는 라인업 지정이 필수입니다",
+      LINEUP_NOT_FOUND: "지정한 라인업을 찾을 수 없습니다",
+      LINEUP_COMPANY_MISMATCH: "라인업이 현재 회사에 속하지 않습니다",
+      LINEUP_INACTIVE: "비활성 라인업은 사용할 수 없습니다",
     });
   }
 }
@@ -134,7 +139,17 @@ export async function updatePurchaseOrderAction(
 
     return actionOk(po);
   } catch (error) {
-    return handleActionError(error, "발주서 수정에 실패했습니다", PO_DOMAIN_ERRORS);
+    return handleActionError(error, "발주서 수정에 실패했습니다", {
+      ...PO_DOMAIN_ERRORS,
+      LOCATION_NOT_FOUND: "지정한 공장/창고를 찾을 수 없습니다",
+      PRODUCTION_LINE_NOT_FOUND: "지정한 생산 라인을 찾을 수 없습니다",
+      LINE_LOCATION_MISMATCH: "생산 라인의 공장과 발주의 공장이 일치하지 않습니다",
+      // ★ Sprint 3.5 Phase S3.5-1 — 라인업 에러
+      LINEUP_REQUIRED_FOR_MANUAL: "수동 발주는 라인업 지정이 필수입니다",
+      LINEUP_NOT_FOUND: "지정한 라인업을 찾을 수 없습니다",
+      LINEUP_COMPANY_MISMATCH: "라인업이 현재 회사에 속하지 않습니다",
+      LINEUP_INACTIVE: "비활성 라인업은 사용할 수 없습니다",
+    });
   }
 }
 

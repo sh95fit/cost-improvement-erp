@@ -19,6 +19,14 @@ export const PO_LOCATION_ERRORS = {
   LINE_LOCATION_MISMATCH: "LINE_LOCATION_MISMATCH",
 } as const;
 
+// ★ Sprint 3.5 Phase S3.5-1 — 라인업 관련 도메인 에러 키
+export const PO_LINEUP_ERRORS = {
+  LINEUP_REQUIRED_FOR_MANUAL: "LINEUP_REQUIRED_FOR_MANUAL",
+  LINEUP_NOT_FOUND: "LINEUP_NOT_FOUND",
+  LINEUP_COMPANY_MISMATCH: "LINEUP_COMPANY_MISMATCH",
+  LINEUP_INACTIVE: "LINEUP_INACTIVE",
+} as const;
+
 // ── 라인/공장 정합성 검증 헬퍼 ──
 async function assertLocationAndLine(
   tx: Prisma.TransactionClient,
@@ -39,6 +47,33 @@ async function assertLocationAndLine(
     });
     if (!line) throw new Error("PRODUCTION_LINE_NOT_FOUND");
     if (line.locationId !== locationId) throw new Error("LINE_LOCATION_MISMATCH");
+  }
+}
+
+// ★ Sprint 3.5 Phase S3.5-1 — 라인업 정합성 검증 헬퍼
+// 정책 (P1'):
+//   - 수동 발주(isManual=true): lineupId NOT NULL + Lineup 존재 + companyId 일치 + isActive=true 필수
+//   - 식단 기반 발주(isManual=false): lineupId 지정 시에만 정합성 검증 (nullable 허용)
+async function assertLineupForPO(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  isManual: boolean,
+  lineupId: string | null | undefined,
+) {
+  // 수동 발주는 lineupId 필수 (P1')
+  if (isManual && !lineupId) {
+    throw new Error("LINEUP_REQUIRED_FOR_MANUAL");
+  }
+
+  // lineupId 가 지정되었다면 (수동/식단 무관) 정합성 검증
+  if (lineupId) {
+    const lineup = await tx.lineup.findFirst({
+      where: { id: lineupId, deletedAt: null },
+      select: { id: true, companyId: true, isActive: true },
+    });
+    if (!lineup) throw new Error("LINEUP_NOT_FOUND");
+    if (lineup.companyId !== companyId) throw new Error("LINEUP_COMPANY_MISMATCH");
+    if (!lineup.isActive) throw new Error("LINEUP_INACTIVE");
   }
 }
 
@@ -218,6 +253,8 @@ export async function createPurchaseOrder(
   return prisma.$transaction(async (tx) => {
     // ★ Phase 1.5: location/productionLine 정합성 검증
     await assertLocationAndLine(tx, companyId, input.locationId, input.productionLineId);
+    // ★ Sprint 3.5 Phase S3.5-1: lineup 정합성 + 수동 발주 필수 검증 (P1')
+    await assertLineupForPO(tx, companyId, input.isManual, input.lineupId);
 
     const orderNumber = await generatePurchaseOrderNumber(
       companyId,
@@ -244,6 +281,7 @@ export async function createPurchaseOrder(
         supplierId: input.supplierId,
         locationId: input.locationId,                              // ★ Phase 1.5
         productionLineId: input.productionLineId ?? null,          // ★ Phase 1.5
+        lineupId: input.lineupId ?? null,                          // ★ Sprint 3.5 Phase S3.5-1
         orderNumber,
         status: "DRAFT",
         orderDate: input.orderDate,
@@ -290,6 +328,8 @@ export async function updatePurchaseOrder(
         status: true,
         locationId: true,                                          // ★ Phase 1.5
         outboundDate: true,                                        // ★ Phase 1.6 (재계산 필요시 사용)
+        isManual: true,                                            // ★ Sprint 3.5 Phase S3.5-1
+        lineupId: true,                                            // ★ Sprint 3.5 Phase S3.5-1
       },
     });
     if (!existing) throw new Error("NOT_FOUND");
@@ -305,6 +345,17 @@ export async function updatePurchaseOrder(
         companyId,
         effectiveLocationId,
         input.productionLineId,
+      );
+    }
+
+    // ★ Sprint 3.5 Phase S3.5-1: lineup 변경 시 정합성 검증 (수동 발주는 NOT NULL 강제 유지)
+    if (input.lineupId !== undefined) {
+      const effectiveLineupId = input.lineupId ?? null;
+      await assertLineupForPO(
+        tx,
+        companyId,
+        existing.isManual,
+        effectiveLineupId,
       );
     }
 
@@ -348,6 +399,7 @@ export async function updatePurchaseOrder(
         ...(input.supplierId && { supplierId: input.supplierId }),
         ...(input.locationId && { locationId: input.locationId }),                       // ★ Phase 1.5
         ...(input.productionLineId !== undefined && { productionLineId: input.productionLineId }),  // ★ Phase 1.5
+        ...(input.lineupId !== undefined && { lineupId: input.lineupId }),                          // ★ Sprint 3.5 Phase S3.5-1
         ...(input.orderDate && { orderDate: input.orderDate }),
         ...(input.outboundDate !== undefined && { outboundDate: input.outboundDate }),   // ★ Phase 1.6
         ...(expectedReceiveDate !== undefined && { expectedReceiveDate }),               // ★ Phase 1.6

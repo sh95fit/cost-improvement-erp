@@ -104,7 +104,6 @@ describe("purchase-order.service", () => {
         supplierId: "s1",
         locationId: "loc_1",                 
         orderDate: new Date("2026-06-15T00:00:00"),
-        isManual: true,
         items: [
           {
             supplierItemId: "si1",
@@ -130,7 +129,6 @@ describe("purchase-order.service", () => {
       await createPurchaseOrder("c1", {
         supplierId: "s1",
         orderDate: new Date("2026-06-15T00:00:00"),
-        isManual: true,
         items: [
           {
             supplierItemId: "si1",
@@ -153,7 +151,6 @@ describe("purchase-order.service", () => {
       await createPurchaseOrder("c1", {
         supplierId: "s1",
         orderDate: new Date("2026-06-15T00:00:00"),
-        isManual: true,
         items: [
           {
             supplierItemId: "si1",
