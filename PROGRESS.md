@@ -1,28 +1,28 @@
 # LunchLab ERP — 프로젝트 진행 현황
 
-> 본 문서는 **현재 진행 상황과 앞으로 할 일**을 관리하는 SSOT(단일 진실 공급원)이다.
-> 종결된 Sprint의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
+> 본 문서는 **현재 진행 상황과 앞으로 할 일** 을 관리하는 SSOT(단일 진실 공급원)이다.
+> 종결된 Sprint 의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-07 (Phase 4-G G-1~G-4 ✅ 완료 + Phase 4-F-1 완료 재확인 — 자재 소요량 자동 산출·대시보드화·라벨/색상 정합화, 인프라 hotfix. 다음: Sprint 3 잔여 검토 후 Sprint 종결 준비)
+> 마지막 갱신: 2026-07-08 (Sprint 3 종결 완료 — 상세 이력 → `docs/progress/SPRINT3.md`. 다음: Sprint 3.5 수동 발주 보완 → Sprint 4 착수)
 
 ---
 
 ## 📌 작업 프로세스 규칙
 
-모든 Phase는 아래 7단계를 순서대로 따른다. 단계를 건너뛰지 않는다.
+모든 Phase 는 아래 7단계를 순서대로 따른다. 단계를 건너뛰지 않는다.
 
 | 순서 | 단계 | 설명 | 완료 기준 |
 |------|------|------|-----------|
-| 1 | **깃 배포** | 코드 수정 → `npx tsc --noEmit` → `git commit` → `git push origin main` | push 성공, GitHub에서 커밋 확인 |
+| 1 | **깃 배포** | 코드 수정 → `npx tsc --noEmit` → `git commit` → `git push origin main` | push 성공, GitHub 에서 커밋 확인 |
 | 2 | **레포 검증** | GitHub 레포에서 변경 파일 목록·diff 확인 | 변경 파일이 계획과 일치 |
-| 3 | **프로세스 검증** | `npm run dev` → 해당 Phase 기능을 UI에서 직접 조작 | 모든 시나리오 통과 |
+| 3 | **프로세스 검증** | `npm run dev` → 해당 Phase 기능을 UI 에서 직접 조작 | 모든 시나리오 통과 |
 | 4 | **테스트** | `npm run test` → 관련 테스트 통과 확인, 필요 시 새 테스트 작성 | 전체 테스트 PASS |
 | 5 | **보완** | 검증에서 발견된 버그·누락 수정 → 1~4 반복 | 재검증 통과 |
-| 6 | **PROGRESS.md 갱신** | 본 문서의 해당 Phase 상태를 ✅로 변경하고 커밋 해시·변경 파일·이슈를 기록 | 본 문서 커밋·푸시 완료 |
-| 7 | **다음 단계 진행 또는 Sprint 종결** | Phase가 Sprint 내부면 다음 Phase로. 마지막 Phase면 아래 "Sprint 종결 절차" 수행 | 다음 Phase 착수 또는 Sprint 아카이브 커밋 완료 |
+| 6 | **PROGRESS.md 갱신** | 본 문서의 해당 Phase 상태를 ✅ 로 변경하고 커밋 해시·변경 파일·이슈 기록 | 본 문서 커밋·푸시 완료 |
+| 7 | **다음 단계 진행 또는 Sprint 종결** | Phase 가 Sprint 내부면 다음 Phase 로. 마지막 Phase 면 아래 "Sprint 종결 절차" 수행 | 다음 Phase 착수 또는 Sprint 아카이브 커밋 완료 |
 
-### 📁 문서 책임 매트릭스
+### 문서 책임 매트릭스
 
 | 문서 | 역할 | 갱신 시점 |
 |------|------|-----------|
@@ -30,17 +30,17 @@
 | `docs/progress/SPRINT{n}.md` | **종결된 Sprint 아카이브** | Sprint 종결 시 일괄 이관 |
 | `docs/progress/SCHEMA_COVERAGE.md` | 모델 구현 현황 트래커 | 모델 상태 변동 시마다 |
 
-**원칙**:
+**원칙**
 - Sprint 진행 중 이력은 PROGRESS.md 본문에만 기록. `SPRINT{n}.md` 에 미리 이중 기록 금지.
 - Sprint 종결 시 해당 Sprint 섹션 전체를 `SPRINT{n}.md` 로 이동 후 PROGRESS.md 에는 한 줄 요약 + 링크만 남긴다.
 - 종결된 Sprint 의 Phase 결정사항·이력은 PROGRESS.md 본문에 잔류시키지 않는다.
 
 ### Sprint 종결 절차 (체크리스트)
 
-1. Sprint 통계 확정 (총 Phase, 커밋, 변경 파일, 테스트, TS 오류, any 사용 수)
+1. Sprint 통계 확정 (총 Phase, 커밋, 변경 파일, 테스트, TS 오류, any 사용 수, 신규 마이그레이션)
 2. PROGRESS.md 의 해당 Sprint 상세 이력 → `docs/progress/SPRINT{n}.md` 로 이동 (컷·앤·페이스트)
 3. PROGRESS.md 본문에는 한 줄 요약 + `> 상세 이력 → docs/progress/SPRINT{n}.md` 링크만 남김
-4. `SCHEMA_COVERAGE.md` 변경 이력에 "Sprint {n} 종결" 라인 추가
+4. `SCHEMA_COVERAGE.md` 변경 이력에 "Sprint {n} 종결" 라인 추가 + 관련 모델 상태 갱신
 5. 커밋 메시지: `docs(progress): close sprint {n} — archive history to SPRINT{n}.md`
 6. 다음 Sprint 의 "현재 상태 요약" 갱신
 
@@ -52,1596 +52,737 @@
 
 ## 🎯 SOLUTION CORE — 절대 잊지 말 것
 
-### 풀려는 진짜 문제
-식단 기반으로 발주·입고·사용을 정확히 추적하여 일자별 라인업 원가를 신뢰성 있게 산출하고,
-폐기·재고 누수를 추적하여 BOM·운영의 적정성을 진단한다.
+### 이 솔루션의 초기 목적 (2026-07-08 재확인)
+
+**최우선 목적**: **재고 관리 + 원가 관리**.
+
+1. **사용량 기반의 데일리 원가 도출** — 매일 라인업별 원가를 산출하여 경영지표로 활용. 잘못 기입된 데이터(BOM 오류·수량 오기입·손실 누락 등)를 식별하는 근거.
+2. **회계 기반 원가 산출 병행** — `기초재고 + 당월매입 − 기말재고 = 회계원가` 로 사용량 기반 원가를 **검증**하고 재고 관리와 연결. 두 원가의 편차가 곧 데이터 신뢰도 지표.
+3. **예상 식수 원가 ↔ 확정 식수 원가 비교** — MealPlan 확정 전후의 원가 시뮬레이션 및 실제 원가와의 편차 검토.
+4. **예상/확정 식수 대비 실제 사용량 비교 → BOM 적정성 판단** — 3축 비교(예상수량·확정수량·실사용량)로 BOM(레시피) 의 현실 정합성 진단.
+5. **재고 현황 실시간 파악** — 다음 발주 시 참고, 악성 재고(장기 미사용·유효기간 임박) 판단.
+6. **재고 실사(StockTake)로 이론재고 ↔ 실재고 정합화** — 회계 기반 원가 산출의 정확도 담보 축.
 
 ### 산출물 (목적)
-- 일별 라인업 원가 (실시간 경영지표)
+- **일별 라인업 원가** (최우선 경영지표)
+- 공장별·제조라인별 원가 (레퍼런스·이상치 추적축)
 - 폐기율 / 원가 편차 / 재고 잔존 (운영 진단)
 - 월말 재무회계 원가 (크로스체크용)
 
 ### 도구 (수단, 목적 아님)
-발주서 · 입고서 · 작업지시서 · 재고 트랜잭션 · 실사
+발주서 · 입고서 · 재고이동 · 작업지시서(CookingPlan) · 재고 트랜잭션 · 실사 · 폐기
 
-### 헌법 (P1 ~ P10)
+### 원가 흐름 (대시보드 축)
+
+대시보드는 다음 흐름을 **한눈에** 보여주어야 한다:
+
+```
+발주 금액 → 입고 금액 → 총 사용 금액 → 라인업별 사용 금액 → (예상 수량 기반 원가 vs 확정 수량 기반 원가)
+```
+
+각 단계 간 편차가 곧 이상치 탐지 지점이다. 예: `입고 금액 ≠ 발주 금액` → `ReceivingDiscrepancy` 원인, `총 사용 금액 ≠ 라인업별 사용 금액 합계` → 미귀속 소비 존재 등.
+
+### 재고 등급 관리 (ABC 분류) — 상시 관리 프로세스
+
+**목적**: 사용량·비용 기여도가 큰 자재는 촘촘히, 낮은 자재는 성기게 관리하여 실사 부담과 정확도를 균형화한다. 등급은 **일회성 부여가 아니라 상시 재평가되는 관리 대상**이다.
+
+**등급 정의**:
+- **가(A) 등급**: 사용량이 많고 단가/총액 비중이 큰 핵심 자재. **사용 시마다 실사 촉구** (Consumption 확정 시 배너).
+- **나(B) 등급**: 중간 비중 자재. **주 1회 실사 도래**.
+- **다(C) 등급**: 저비중·소모성 자재. **월 1회 실사 도래**.
+
+**적용 대상**: 원자재(`MaterialMaster.stockGrade`) 와 부자재(`SubsidiaryMaster.stockGrade`) **모두**. `StockGrade` enum(A/B/C) 은 스키마에 이미 정의됨.
+
+**관리 원칙 (정본 = 사용자 결정)**:
+1. **직접 편집이 최우선 정본**: 사용자가 자재 마스터에서 등급을 직접 부여·수정할 수 있다.
+2. **주기적 재평가 (상시)**: 시스템이 정기 배치(초기 안: 매월 1일)로 최근 N개월(초기 안: 3개월) 사용액을 파레토 분석(80/15/5)하여 **"현재 등급과 다르게 판정되는 자재"** 를 "변경 후보 목록"에 지속적으로 노출한다.
+3. **변경/유지는 사용자 결정**: 후보 목록의 각 자재에 대해 사용자가 **변경 승인** 또는 **현행 유지** 를 명시적으로 선택한다. 시스템은 절대로 자동 변경하지 않는다.
+4. **결정 이력 축적**: 변경·유지 결정은 `StockGradeReviewLog`(신규, S6-7 스키마 보강) 에 이력으로 남아 향후 재평가 판정에서 "최근 유지 결정된 자재"는 재추천 우선순위를 낮춘다.
+
+**흐름 요약**:
+1. 등급 편집: Sprint 6 S6-7 (`/settings/stock-grades`) — 자재별 등급 직접 부여·수정
+2. 자동 재평가: S6-7 배치(월 1회) — 후보 목록 자동 갱신
+3. 리뷰 UI: S6-7 (`/settings/stock-grades/review`) — 후보 리스트 + 각 자재별 [변경] / [유지] 액션
+4. 실사 대상 산출: Sprint 4 S4-4 — 현재 등급 기준으로 실사 도래 자재 자동 추출
+5. 도래 알림: Sprint 5 S5-5 — `STOCK_TAKE_DUE_{A|B|C}` 태그로 발송
+6. 리뷰 도래 알림: Sprint 5 S5-5 — `STOCK_GRADE_REVIEW_PENDING` 태그로 미결 후보 알림
+
+### 헌법 (P1 ~ P11)
 
 | # | 원칙 | 비고 |
 |---|------|------|
-| P1 | **발주는 식단(MealPlan) 기반**. 공급사 선두 선택 흐름 금지 | 수동 발주는 `isManual=true` 로 분리 |
-| P2 | **Roll-up**: Company → Location(공장/창고) → ProductionLine | 모든 운영 도메인 |
-| P3 | **재고는 공장/창고에만 존재**. Company 는 무재고 | 회계 단위는 Company |
-| P4 | **사용(Consumption)은 공장에서만** 발생 | ProductionLine 단위 추적 |
-| P5 | 입고 확정 시 예약(Reservation) 생성 → 사용/폐기/재고전환으로 소진 | |
+| P1 | **발주는 식단(MealPlan) 기반이 원칙이되, 독립(수동) 발주도 지원**. 수동 발주는 `PurchaseOrder.isManual=true` 로 분리 | 수동 발주도 **입고지 Location NOT NULL + 라인업(Lineup) NOT NULL** — 원가 귀속 누락 방지 (P1' 참조) |
+| P1' | **수동 발주의 필수 지정 항목**: 공장(Location), 라인업(Lineup). 선택: ProductionLine. | 식단 기반 발주는 MealPlan 이 계층을 지정하지만, 수동 발주는 사용자가 명시해야 원가 산정 축이 확보됨 |
+| P2 | **Roll-up**: Company → Location(FACTORY/WAREHOUSE/HYBRID) → ProductionLine | 계층 분리 원칙 (아래 보강) |
+| P3 | **재고는 `LocationType ∈ {FACTORY, WAREHOUSE, HYBRID}` 인 Location 에만 존재**. Company·ProductionLine 은 재고를 갖지 않는다 | 스키마 강제: `InventoryLot.locationId` NOT NULL. `ProductionLine.locationId` 는 FK 로 소속만 표현, 자체 Lot 소유 금지 (아래 보강) |
+| P4 | **사용(Consumption)은 `LocationType=FACTORY` 소속 ProductionLine 에서만** 발생 | ProductionLine 단위 추적. Lot 은 그 ProductionLine 이 속한 Location(FACTORY) 의 것을 소비. 스키마: `CookingPlan.productionLineId` NOT NULL |
+| P5 | 입고 확정 시 InventoryLot 생성 + PO 자동 종결 (단일 트랜잭션) | 재정정 있음 (아래) |
 | P6 | **BOM / MealPlan 은 Company 레벨에서만** 관리 | 공장은 받아서 실행만 |
-| P7 | 비용 계산 = (일별 사용 기반 운영원가) + (월말 스냅샷 회계원가) 하이브리드 | |
-| P8 | 발주 PK 추적 키 = `outboundDate` (실제 출고일), 회계 키 = `snapshotDate` | |
-| P9 | 단가 변경 이력은 **확정 시점**에 `SupplierItemPriceHistory` 적층 (자동) | Sprint 3 결정: 발주 DRAFT→SUBMITTED 시점 적층 (P9' 와 함께 작동) |
-| P9' | 발주서 작성/수정 단계의 `unitPrice` 편집은 `PurchaseOrderItem.unitPrice` 에만 영향 — `SupplierItem.currentPrice` 불변 | DRAFT 단계에서는 마스터 갱신 없음. SUBMITTED 전환 시 변경분만 적층 + 마스터 갱신 |
-| P10 | 모든 레벨이 발주→입고→사용→재고→폐기 전체 라이프사이클 지원 | |
+| P7 | 비용 계산 = (일별 사용 기반 운영원가) + (월말 스냅샷 회계원가) 하이브리드 | 두 원가의 편차가 데이터 신뢰도 지표 |
+| P8 | 발주 PK 추적 키 = `outboundDate` (실제 출고일=엔드라인 사용일), 회계 키 = `MonthEndSnapshot.closingMonth` | |
+| P9 | 단가 마스터 갱신은 **DRAFT → SUBMITTED** 시점에만 (자동) | `SupplierItemPriceHistory` 적층 + `SupplierItem.currentPrice` 갱신 |
+| P9' | 발주서 작성/수정 단계의 `unitPrice` 편집은 `PurchaseOrderItem.unitPrice` 에만 영향 — `SupplierItem.currentPrice` 불변 | DRAFT 단계 마스터 갱신 없음. SUBMITTED 전환 시 변경분 적층 + 마스터 갱신 |
+| P10 | 모든 레벨이 발주→입고→(이동)→사용→재고→폐기 전체 라이프사이클 지원 | |
+| P11 | **마이너스 재고 절대 금지 (Pre-flight 필수)** | 사용은 반드시 잔량 확보 후에만 가능. 잔량 부족 시 `INSUFFICIENT_STOCK` 로 차단 (P11 보강) |
 
 ### 헌법 보강
 
-**P5 재정정 (2026-06-30)**
+#### P1'/P1 보강 — 발주 두 경로 (2026-07-08 명시)
 
-[도메인 이벤트: "입고 확정"]
-ReceivingNote.status = CONFIRMED 시점에 **단일 트랜잭션** 으로 다음을 원자적으로 수행한다:
-1. InventoryLot 생성·InventoryTransaction(PURCHASE) 적층
+발주는 두 경로가 있으며, 두 경로 모두 **입고지·원가 귀속 축을 반드시 확보한다**.
+
+| 경로 | 트리거 | 계층 지정 | 라인업 지정 | `isManual` |
+|---|---|---|---|---|
+| 식단 기반 발주 | `MaterialRequirement` 자동 산출 → 위저드 확정 | MealPlan 이 자동 결정 (Company → Location → ProductionLine) | MealPlan 슬롯을 통해 자동 연결 (`MaterialRequirement.lineupId`) | `false` |
+| 수동(독립) 발주 | 사용자가 자재·수량·공급사 직접 선택 | **사용자가 명시 필수** (Location NOT NULL, ProductionLine 선택) | **사용자가 명시 필수** (Lineup NOT NULL) — 원가 귀속 축 확보 | `true` |
+
+- 수동 발주가 원가 산정에 누락되지 않도록, `PurchaseOrder.lineupId` 를 필수화한다 (수동 발주에 한하여). 식단 기반 발주는 MR 을 통해 이미 lineup 연결이 보장됨.
+- Sprint 3.5(보완 Phase) 에서 수동 발주 UI/서비스를 신설한다 (아래 "다음 진행 항목" 참조).
+
+#### P2 보강 — 계층 분리 원칙 (2026-07-08 명시)
+
+`Company → Location → ProductionLine` 3계층은 모든 운영·권한·원가 도메인의 기본축이다. 스키마 실측 근거를 함께 명시한다.
+
+| 계층 | LocationType | 성격 | 주 책임 | 무엇을 하지 않는가 |
+|---|---|---|---|---|
+| Company (회사) | — | 회계·마스터 | BOM, MealPlan, SupplierItem 마스터, Lineup 마스터, 원가 롤업, 월말 스냅샷 | **재고 직접 보유 금지** (P3) |
+| Location (거점) | FACTORY / WAREHOUSE / HYBRID | 물류·재고 | **InventoryLot, InventoryTransaction, InventoryTransfer, ReceivingNote, StockTake 의 소유 주체** | BOM 편집·MealPlan 편집 금지 |
+| ProductionLine (제조라인) | — | 실행·소비 | ConsumptionItem, CookingPlan, MealPlanSlot 배정 | **재고 소유 금지** — 소속 Location(FACTORY) 의 재고를 소비만 함 |
+
+- 발주(PO)는 Company 에서 발생하지만 **Location 도착지 필수 + (nullable) ProductionLine** 을 지정한다 (D1/D5). 스키마: `PurchaseOrder.locationId` NOT NULL, `productionLineId` nullable.
+- 사용자·권한·초대는 Company 아래 계층에 종속. 스키마: `UserScope(userId, companyId, role, permissionSetId?)`. Sprint 7 에서 UI 완성.
+- `LocationType.FACTORY` 만 사용/조리 대상. `WAREHOUSE` 는 보관 전용. `HYBRID` 는 겸용.
+
+#### P3 보강 — 재고 보유 주체 명문화 (2026-07-08)
+
+**재고를 보유할 수 있는 유일한 주체는 `Location` 이며, 그 중에서도 `LocationType ∈ {FACTORY, WAREHOUSE, HYBRID}` 인 Location 만이다.**
+
+- **Company 는 재고를 갖지 않는다** — Company 는 회계 롤업 축일 뿐. `InventoryLot.companyId` 는 조회 편의를 위한 denormalized 컬럼이며, 소유 주체가 아니다 (`locationId` 가 소유의 유일 판정 키).
+- **ProductionLine 은 재고를 갖지 않는다** — 제조라인은 소속 FACTORY 의 Lot 을 "소비만" 한다. 스키마상 `InventoryLot.productionLineId` 컬럼은 존재하지 않으며, 존재해서도 안 된다.
+- **Lot 의 회사 귀속은 불변**: `InventoryLot` 은 반드시 하나의 Company 내에서만 존재·이동한다. **Cross-Company 이동은 금지**된다. 이동 시 출발지·도착지 Location 의 `companyId` 가 동일해야 하며, 불일치 시 서비스 레벨에서 `CROSS_COMPANY_TRANSFER_FORBIDDEN` 로 차단한다.
+- **재고 이동의 유일한 형태**: **동일 Company 내** 재고 보유 주체(Location) ↔ 재고 보유 주체(Location). 출발지·도착지가 모두 `LocationType ∈ {FACTORY, WAREHOUSE, HYBRID}` 이기만 하면 조합 제약이 없다.
+  - WAREHOUSE → FACTORY (중앙창고 → 공장 보급)
+  - WAREHOUSE → WAREHOUSE (창고 간 재배치)
+  - **FACTORY → FACTORY (공장 간 재고 이관 — 잉여·긴급 지원)**
+  - FACTORY → WAREHOUSE (공장 잔여 재고를 창고로 반납)
+  - HYBRID 는 위 모든 조합의 출발·도착지로 참여 가능
+  - `출발지 == 도착지` 자기 이동은 금지 (서비스 레벨 검증)
+- Location → ProductionLine 이동은 개념적으로 존재하지 않으며, 실체는 "해당 ProductionLine 이 속한 Location 에서의 Consumption" 이다.
+- 다지점 운영 시의 물류(중앙 창고 → 지점 등)는 위 조합 중 하나로 자연스럽게 표현된다.
+
+#### P4 보강 — 사용 위치의 정합성 (2026-07-08)
+
+- `ConsumptionItem.productionLineId` NOT NULL. 이 ProductionLine 의 `locationId` 는 반드시 `LocationType ∈ {FACTORY, HYBRID}` 여야 한다.
+- 서비스 레이어에서 진입 시점에 검증 (`WAREHOUSE` 소속 ProductionLine 은 존재해서는 안 되지만 방어적으로 차단).
+- Consumption 은 자기 Location 의 `InventoryLot` 만 차감할 수 있다. 타 Location 의 Lot 을 소비하려면 먼저 `InventoryTransfer` 를 CONFIRMED 시켜야 한다.
+
+#### P5 재정정 (2026-06-30)
+
+**도메인 이벤트: "입고 확정" = 재고 생성 + PO 종결 (단일 트랜잭션)**
+
+`ReceivingNote.status = CONFIRMED` 시점에 단일 트랜잭션으로 다음을 원자적으로 수행한다:
+1. `InventoryLot` 생성 + `InventoryTransaction(type=PURCHASE)` 적층
 2. 발주↔입고 차이 발생 시 `ReceivingDiscrepancy` 스냅샷 기록
-   - QUANTITY_SHORT / QUANTITY_OVER / UNIT_PRICE_DIFF / ITEM_MISSING
-3. PurchaseOrder.status → RECEIVED **자동 전이** (발주 종결)
+   - 4가지 타입: `QUANTITY_SHORT` / `QUANTITY_OVER` / `UNIT_PRICE_DIFF` / `ITEM_MISSING`
+3. `PurchaseOrder.status → RECEIVED` **자동 전이** (발주 종결)
 
-[설계 원칙]
-- 입고 확정과 발주 종결은 "하나의 사용자 의사결정" 으로 묶인다. 별도 버튼·별도 액션 없음.
-- 수량 미달·초과·단가 차이는 **입고를 막지 않는다**. 대신 `ReceivingDiscrepancy` 에 스냅샷으로 기록하여 추후 재고 실사(D39~D41) 및 원인 분석의 근거로 활용한다.
-- "발주 목록의 입고 완료 버튼" 은 존재하지 않는다. RECEIVED 는 오직 입고서 확정의 원자적 결과로만 도달한다.
-- 폐기된 안:
-  - 누적 수량 기반 자동 트리거 (부동소수 오차·시점 모호성)
-  - `markPurchaseOrderAsReceivedAction` (P5 를 두 도메인 이벤트로 분리한 잘못된 정정)
+**설계 원칙**
+- 입고 확정과 발주 종결은 "하나의 사용자 의사결정"으로 묶인다. 별도 버튼·별도 액션 없음.
+- 수량 미달·초과·단가 차이는 **입고를 막지 않는다**. `ReceivingDiscrepancy` 에 스냅샷으로 기록하여 추후 재고 실사(Sprint 4) 및 원인 분석의 근거로 활용한다.
+- "발주 목록의 입고 완료 버튼"은 존재하지 않는다. RECEIVED 는 오직 입고서 확정의 원자적 결과로만 도달한다.
 
-[분할 입고 정책 — Sprint 4 이후 검토]
+**폐기된 안**
+- 누적 수량 기반 자동 트리거 (부동소수 오차·시점 모호성)
+- `markPurchaseOrderAsReceivedAction` (P5 를 두 도메인 이벤트로 분리한 잘못된 정정)
+
+**분할 입고 정책 — Sprint 4 이후 검토**
 현재 설계는 "1 발주 = 1 입고서" 단순 케이스 기준. N건 분할 입고 요구가 발생하면 별도 의사결정으로 확장한다.
 
----
+#### P9 재정정 (2026-06-30)
 
-**P9 재정정 (2026-06-30)**
-
-[원칙: 발주 확정 = 거래 단가 확정]
+**원칙: 발주 확정 = 거래 단가 확정**
 - 단가 마스터 갱신은 **DRAFT → SUBMITTED 전이 시점에만** 발생한다.
   - `SupplierItemPriceHistory` 적층
   - `SupplierItem.currentPrice` 갱신
 - 입고 확정 시점에는 단가 마스터를 **일절 갱신하지 않는다**.
-  - `InventoryLot.unitPrice = POItem.unitPrice` 를 그대로 사용 (PO 단가가 정본)
+  - `InventoryLot.unitPrice = PurchaseOrderItem.unitPrice` 를 그대로 사용 (PO 단가가 정본)
   - 입고 실 단가가 PO 와 다르면 `ReceivingDiscrepancy(UNIT_PRICE_DIFF)` 스냅샷만 기록
-- 사유: 발주 확정 = 공급업체와의 거래 단가 합의 완료(계약 성립). 입고 시점의 단가 불일치는 "거래 단가의 변경" 이 아니라 "송장/실물 검증 실패" 이며, 마스터를 갱신하면 동일 공급품의 다른 진행 중 발주에 영향을 주어 거래 단가 확정 원칙이 깨진다.
+- **사유**: 발주 확정 = 공급업체와의 거래 단가 합의 완료(계약 성립). 입고 시점의 단가 불일치는 "거래 단가의 변경"이 아니라 "송장/실물 검증 실패"이며, 마스터를 갱신하면 동일 공급품의 다른 진행 중 PO 에 파급되어 거래 단가 확정 원칙이 깨진다.
 
----
+#### P11 보강 — 마이너스 재고 금지 및 Pre-flight (2026-07-08)
 
-**불일치 추적 도메인 분리 (2026-06-30, D30/D39 결정)**
+**원칙**: 사용(Consumption)은 반드시 **잔량이 확보된 상태에서만** 가능하다. 마이너스 재고는 어떠한 경우에도 허용되지 않는다.
+
+**결과**: 사용 처리를 하려면 반드시 아래 둘 중 하나가 선행되어야 한다.
+1. **입고를 통해 재고 생성** — 발주 → 입고 확정 → InventoryLot 생성
+2. **재고 이동을 통해 해당 Location 으로 재고 확보** — 다른 Location(예: WAREHOUSE) → 대상 FACTORY 로 `InventoryTransfer` CONFIRMED
+
+**Pre-flight 검증** (`confirmConsumptionItem` 서비스 진입 시점):
+1. 대상 ProductionLine 의 소속 Location 조회
+2. 해당 Location 의 대상 자재 `InventoryLot` 중 `remainingQty > 0` 인 Lot 을 **FIFO 정렬** (`receivedAt ASC, lotId ASC`) 로 나열
+3. 합계 잔량 `< consumptionQty` 이면 즉시 `INSUFFICIENT_STOCK` throw — 트랜잭션 진입 자체를 차단
+4. 통과 시 순차 차감 + `ConsumptionLotDetail` 분할 기록
+
+**예외**: `disposition = DISPOSED` (폐기) 는 이미 출고된 Lot 에 대한 상태 전환이므로 Pre-flight 재계산 없이 대상 Lot 잔량만 재확인.
+
+#### 예약 (InventoryReservation) 정책 (2026-07-08 확정)
+
+**결정: 예약 도입 (Sprint 4 Phase S4-2 CookingPlan 확정 시점에 예약 생성)**
+
+이유: 마이너스 재고 금지(P11) 원칙 하에서, 조리 계획 확정과 실제 소비 사이의 시간 gap 동안 다른 조리 계획이 같은 재고를 이중 소비하는 것을 막아야 한다. 예약이 없으면 CookingPlan A 확정 → CookingPlan B 확정 시점에는 Lot 이 있어 보이지만, 실제 소비 시점에 A 가 먼저 차감하여 B 가 실패하는 상황이 발생.
+
+**흐름**:
+1. `CookingPlan.status → CONFIRMED` — 해당 CookingPlan 의 자재 요구량만큼 대상 Lot 을 FIFO 로 골라 `InventoryReservation` 생성. Lot 별 `reservedQty` 증가 (또는 별도 Reservation 레코드에 기록).
+2. `ConsumptionItem.status → CONFIRMED` (disposition=USED) — 해당 Reservation 을 해제(`ReservationReleaseReason=CONSUMED`) 하면서 실제 Lot 차감(`InventoryTransaction(type=CONSUMPTION)`).
+3. `ConsumptionItem` 이 취소/폐기되면 Reservation 도 해제(`MANUAL_CANCEL`).
+4. `CookingPlanStatus → REPLACED` 또는 만료 시 Reservation 자동 해제(`AUTO_EXPIRED`) — 배치 작업(Vercel Cron).
+
+**잔량 계산식**:
+```
+availableQty(Lot) = Lot.remainingQty − Σ(active Reservation.qty on this Lot)
+```
+Pre-flight 시 `availableQty` 로 판정. `remainingQty` 는 Lot 실물 기준.
+
+#### 불일치 추적 도메인 분리 (2026-06-30)
 
 본 시스템은 두 종류의 불일치를 별도 도메인으로 추적한다. 혼동하지 않는다.
 
 | 도메인 | 시점 | 비교 대상 | 기록 모델 | 트랜잭션 영향 |
 |---|---|---|---|---|
-| **발주 ↔ 입고** | 입고 확정 (동시에 발주 종결) | PO 발주량 vs 입고량 / PO 단가 vs 입고 단가 | `ReceivingDiscrepancy` (D30) | 없음 (기록만, 마스터 무영향) |
-| **이론재고 ↔ 실재고** | 재고 실사 완료 | InventoryLot 합계 vs 실측치 | `StockTake / StockTakeItem` (D39~D41) | `InventoryTransaction(type=ADJUSTMENT)` |
+| **발주 ↔ 입고** | 입고 확정 (동시에 발주 종결) | PO 발주량 vs 입고량 / PO 단가 vs 입고 단가 | `ReceivingDiscrepancy` | 없음 (기록만, 마스터 무영향) |
+| **이론재고 ↔ 실재고** | 재고 실사 완료 | InventoryLot 합계 vs 실측치 | `StockTake / StockTakeItem` | `InventoryTransaction(type=ADJUSTMENT)` |
 
 - 발주↔입고 불일치는 **공급사·구매 프로세스** 원인 추적용.
 - 이론재고↔실재고 불일치는 **현장 운영·재고 관리** 원인 추적용.
-- 두 도메인은 서로의 트리거가 되지 않는다. 입고 단가 차이가 있어도 SupplierItem 마스터는 갱신하지 않으며(P9 보존), 실사 차이가 있어도 PO 상태에 영향을 주지 않는다.
+- 두 도메인은 서로의 트리거가 되지 않는다.
 
----
+#### Lot 소진 정책 (2026-07-08 확정)
 
-**변경 이력**
-- 2026-06-30 — P5·P9 **재정정**: 이전 보강(입고 확정 ↔ 발주 종결 분리, markPurchaseOrderAsReceivedAction 신설)을 폐기하고, 입고 확정 시 PO 자동 종결로 통합. 발주 확정 = 거래 단가 확정 원칙을 P9 에 명시.
-- 2026-06-30 — 초기 P5/P9 보강 (현재 재정정으로 대체됨)
+**결정: FIFO (선입선출법)**
+
+- **정렬 키**: `InventoryLot.receivedAt ASC, lotId ASC` (동시 입고 tiebreaker)
+- 여러 Lot 에 걸치는 소비는 `ConsumptionLotDetail` 로 자동 분할 기록.
+- 유효기간(`expirationDate`) 은 실사·경고 지표로만 사용 (임박 알림 등). 자동 소진 순서에는 영향 없음.
+- 원가 계산은 각 `ConsumptionLotDetail.unitPrice`(= 소진된 Lot 의 unitPrice) 를 기준.
+
+**폐기된 안**: FEFO(유효기간 우선). FIFO 가 회계 관행과 일치하고, 유효기간 관리는 별도 알림 도메인(Sprint 5 S5-5) 으로 분리하는 것이 명확하다는 판단.
+
+#### 원가 구성 정책 (2026-07-08 확정)
+
+**원칙**: 초기 원가 산출은 **재료비 (원자재 + 부자재) 로 완결**된다. 간접비(인건비·물류비·유틸리티·감가 등)는 **추후 입력 가능한 구조**로 인프라만 마련한다.
+
+**계산식**:
+```
+직접재료비 = Σ ConsumptionLotDetail.quantity × ConsumptionLotDetail.unitPrice
+             (itemType ∈ {MATERIAL, SUBSIDIARY} 모두 포함)
+
+총원가 (레퍼런스) = 직접재료비 + Σ OverheadCost.amount (배부 후)
+```
+
+- 데일리 라인업 원가의 **주 지표**는 **직접재료비**. 인건비 등이 시스템에 입력되지 않아도 원가 관리는 성립.
+- `OverheadCost` 는 월별 입력받아 **가산 표시**. 배부 정책(D60)은 조리량 비례를 초기 안으로 채택하되, 데이터가 없으면 배부 자체가 비활성.
+- 대시보드는 "직접재료비만" 뷰와 "직접재료비+간접비" 뷰를 토글로 전환 가능하게 구현.
+
+#### 변경 이력
+- 2026-07-08 — **P1'/P3/P4/P11 보강, 예약 도입 확정, FIFO 확정, 원가 구성 정책 확정, 수동 발주 경로 명문화.** 계층 분리 원칙(P2 보강) 명문화. Sprint 4 이후 도메인은 반드시 계층 축을 명시하여 설계한다.
+- 2026-06-30 — P5·P9 **재정정**: 이전 보강(입고 확정 ↔ 발주 종결 분리, `markPurchaseOrderAsReceivedAction` 신설) 폐기하고, 입고 확정 시 PO 자동 종결로 통합. 발주 확정 = 거래 단가 확정 원칙을 P9 에 명시.
+- 2026-06-30 — 초기 P5/P9 보강 (재정정으로 대체됨)
 
 ### 작업 전 체크리스트
 새 Phase 시작 전 반드시 자문:
 - [ ] 이 작업이 "실시간 원가" 또는 "재무 원가" 산출에 어떻게 기여하는가?
-- [ ] 회사 / 공장 / 제조라인 어느 계층에서 작동하는가?
-- [ ] 헌법 P1 ~ P10 중 어느 것도 위반하지 않는가?
-- [ ] 식단(회사) → 발주(롤업) → 입고(Location) → 사용(FACTORY) 흐름의 어느 위치인가?
+- [ ] Company / Location(FACTORY|WAREHOUSE|HYBRID) / ProductionLine 어느 계층에서 작동하는가?
+- [ ] 재고를 다루는가? 다룬다면 소유 주체가 반드시 Location 인가? (P3)
+- [ ] 사용을 다루는가? 다룬다면 Pre-flight(P11)가 구현되어 있는가?
+- [ ] 헌법 P1 ~ P11 중 어느 것도 위반하지 않는가? (특히 P3 재고 위치, P4 사용 위치, P11 마이너스 재고 금지)
+- [ ] 식단(Company) → 발주(롤업) → 입고(Location) → (이동) → 사용(FACTORY, ProductionLine) 흐름의 어느 위치인가?
+- [ ] 원가 귀속 축(`lineupId`, `productionLineId`, `outboundDate`) 이 확보되는가?
+- [ ] 신규 모델이 있다면 `SCHEMA_COVERAGE.md` 에 항목이 추가·갱신되었는가?
+- [ ] 트랜잭션 서비스라면 `existingTx?: PrismaTransactionClient` 파라미터를 받는가?
+- [ ] 감사가 필요한 액션이라면 `AuditLog` 기록 지점이 있는가? (부분 도입 중, Sprint 8 전면 표준화)
+- [ ] 재고 도메인이라면 `StockGrade` 를 참조/편집하는가? 편집·유지 결정은 `AuditLog` 와 `StockGradeReviewLog` 에 이중 기록되는가?
 
 ---
 
 ## 📍 현재 상태 요약
 
-- **현재 진행 중 Sprint**: Sprint 3 (발주 + 입고)
-- **현재 기준 완료 지점**: Sprint 3 Phase 4-G G-1~G-4 (자재 소요량 대시보드화 + 상태 라벨/색상 정합화) + 인프라 hotfix (EMAXCONNSESSION)
-- **최근 완료**:
-  ### Phase 4-F-1 ✅ (2026-06-30) — 발주 일괄 상태 전이
-
-  - `bulkTransitionPOStatusAction` 신설: 트랜잭션·skip·INVALID_TRANSITION 분류, 부분 실패 시 전체 롤백, 성공 건별 감사 로그 적층.
-  - 발주 목록에 체크박스 컬럼 + `BulkActionBar` (선택 발주 확정 / 선택 취소). "선택 입고 완료" 는 P5 재정정으로 제거 — RECEIVED 는 ReceivingNote confirm 단일 트랜잭션 내 자동 전이로만 도달.
-  - `bulkTransitionInputSchema.toStatus` 를 SUBMITTED / CANCELLED 화이트리스트로 제한 (RECEIVED / APPROVED 요청은 ZodError 로 거부).
-  - 결재 미도입 상태에서 APPROVED 액션 미노출.
-  - 단가 이력 적층(P9') 은 단건 `transitionPurchaseOrderStatus` 위임으로 자동 보존.
-  - 커밋: `82279c17` (feat) → `645890cd` (P5 정합 범위 축소) 
-  - 헌법 P5·P9 재정정 정합 (`81ac3807`, `f18c481b`).
-
-  ### Phase 4-G G-4 ✅ (2026-07-07) — 식단 상태 라벨/색상 정합화
-
-  - 공통 상수 재사용: `src/features/meal-plan/constants/status-label.ts` 를 SSOT 로 지정.
-    * `material-requirement-group-list.tsx`: 로컬 `STATUS_LABELS` / `STATUS_BADGE` / `StatusFilter` 삭제, 공통 `STATUS_LABEL` / `STATUS_COLOR` 사용. CONFIRMED 라벨 "확정" → "준비중" 자동 정합.
-    * `step-meal-plan-group-select.tsx`: 로컬 `STATUS_LABEL` 2건 삭제, 공통 상수 사용. "산출중" / "산출완료" → "진행중" / "완료" 로 통일.
-  - `STATUS_COLOR` UX 재배정 (사용자 경험 정합성 우선):
-    * DRAFT → gray, CONFIRMED → blue, IN_PROGRESS → **amber** (green→변경, 진행=주의 색), COMPLETED → **green** (purple→변경, 완료=초록 표준), CANCELLED → red.
-    * enum 값 · DB · 마이그레이션 무변경. UI 표시 문자열/Tailwind 클래스만 조정.
-  - CONFIRMED 라벨은 현행 "준비중" 유지 (Phase 9-D-Sym 2026-06-11 결정 존중). 추후 사용자 혼선 발생 시 재조정.
-  - 커밋: `575a17c5`
-
-  ### Phase 4-G G-3 ✅ (2026-07-07) — 자재 소요량 페이지 read-only 대시보드화
-
-  - `material-requirement-detail.tsx`: "예상수량으로 산출" / "확정수량으로 산출" 버튼 2개 제거, "식단을 진행중 상태로 변경하면 자동 산출됩니다" 안내 배너 추가.
-  - `material-requirement-result-panel.tsx`: 빈 상태 안내 문구를 자동 산출 안내로 교체.
-  - `material-requirement-group-list.tsx`: 컬럼 라벨 "소요량 산출" → "결과 보기", Calculator 아이콘 → Eye 아이콘.
-  - `generateMaterialRequirementsAction` 서버 액션은 유지 (외부 트리거 부재, Phase 5 재검토 대상으로 보류).
-  - 커밋: `f768c902`
-
-  ### Phase 4-G G-2 ✅ (2026-07-07) — 발주 위저드 진입 가드 (미산출 그룹)
-
-  - 서버 액션 (`purchase-order.action.ts`): 
-    * `getMealPlanGroupsForOrderAction` 응답에 `materialRequirementCount` (active MR only) 추가.
-    * `loadPOWizardDataAction` 사전 검증에서 MR=0 인 그룹은 `MR_NOT_GENERATED` 오류 throw.
-  - 타입 (`po-wizard.ts`): 그룹 옵션 타입에 `materialRequirementCount` 추가.
-  - UI (`step-meal-plan-group-select.tsx`): "자재 산출" 컬럼 신설. count=0 인 행은 disabled + "미산출" 배지 + 툴팁. count=0 그룹 선택 시 안내 배너 노출 ("식단 관리에서 자동 산출을 활성화하세요").
-  - 정책: 정상 흐름에서 미산출 그룹은 발생하지 않지만(G-1 훅이 원자적으로 생성) 레거시/DB 직접 조작 대비 이중 방어.
-  - 커밋: `82baf37b`
-
-  ### Phase 4-G G-1 ✅ (2026-07-07) — 식단 전진 전이 시 MR 자동 산출
-
-  - `updateMealPlanGroup` 의 CONFIRMED → IN_PROGRESS / IN_PROGRESS → COMPLETED 전진 전이 hook 에서 `generateMaterialRequirements(companyId, { mealPlanGroupId, countSource })` 를 **동일 트랜잭션 내** 자동 호출.
-    * IN_PROGRESS 전이 → `countSource: 'ESTIMATED'`
-    * COMPLETED 전이 → `countSource: 'FINAL'`
-  - 실패 시 상태 전이도 함께 롤백 (부분 상태 방지).
-  - `material-requirement.service.ts` 에 `existingTx` 파라미터 지원 추가 — 외부 트랜잭션에서 재사용 시 `prisma.$transaction` 미호출 (커넥션 핸드오프).
-  - 역행 전이 시 재산출 트리거 두지 않음 — 다시 전진 시 자연 재산출.
-  - `unmapped` 판정은 발주 위저드 Step 2 (`buildPOItemsFromMR`) 책임 유지 (경계 명확화).
-  - 테스트: `meal-plan.service.test.ts` +6건 (전진/역행/노트만 변경/상태 점프/실패 롤백), `material-requirement.service.test.ts` +2건 (existingTx 유무 분기). 총 8건 신규.
-  - 커밋: `0f051a30` (existingTx 지원) → `6d583486` (auto-generate hook) → `e68bbbbc` (tests)
-
-  ### Infra hotfix — EMAXCONNSESSION 커넥션 이슈 ✅ (2026-07-07)
-
-  - 증상: 식단 그룹 생성 후 상세 진입 단계에서 `prisma:error (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15` 발생.
-  - 원인: Prisma 7 + `@prisma/adapter-pg` 조합에서 `pg.Pool` 기본 max(10) + Next.js HMR 로 인한 pool 재생성 누적이 Supabase Supavisor session-mode 15 슬롯을 초과.
-  - 조치 (`src/lib/prisma.ts`, 커밋 `2091092b`):
-    * `pg.Pool` 옵션 명시화: `max: prod 10 / dev 5`, `idleTimeoutMillis: 10_000`, `connectionTimeoutMillis: 5_000`, `allowExitOnIdle: !prod`.
-    * PrismaClient `log` 에서 `"query"` 제거 (dev 노이즈 감소).
-    * `globalForPrisma` 로 pool/prisma 재사용 (HMR 안전).
-    * Soft-delete extension `createValue` 삼항식으로 간소화.
-  - Prisma 7 스키마 정책 반영: `.env` 에 `DATABASE_URL` (`pooler.supabase.com:6543?pgbouncer=true`) / `DIRECT_URL` (`:5432`) 분리. `prisma.config.ts` 의 `datasource.url` 은 `DIRECT_URL` (CLI/마이그레이션 전용). `schema.prisma` 의 `datasource db` 블록은 `provider = "postgresql"` 단일 라인 유지 (P1012 회피).
-  - 결과: 신규 식단 생성 · 상세 조회 · IN_PROGRESS 전이 정상 동작 확인.
-
-  - **Phase 3-D30-Ex1** (commits `a44e6cc2`, `1d3a69cd`, `54cb734`, `132d1f4`, `0b4e1c2`) — 일자별 입고 통합 뷰 (옵션 α) 구현 완료:
-    - 신규 서비스: `daily-receiving.service.ts` — `getDailyReceivingBundle(companyId, date, mode)`, `bulkCreateOrUpdateReceivingNoteDrafts`, `previewBulkConfirmReceivingNotes`, `bulkConfirmReceivingNotes` (all-or-nothing, 실패 시 `BulkConfirmExecutionError`).
-    - 리드타임 정합화(D15-2/D15-3/D15-5): 헤더 값(`PurchaseOrder.expectedReceiveDate`)이 아니라 **품목별 런타임 파생값** `itemExpectedReceiveDate = outboundDate − supplierItem.leadTimeDays` 를 SSOT 로 사용. `leadTimeDays` 미정 시 기본 1. `outboundDate` = 실제 사용일(엔드라인), `expectedReceiveDate` 는 그 이전.
-    - 두 가지 모드: `outbound` (기본, outboundDate = 선택일) / `expected` (선택일에 도착 예정 품목이 하나라도 있는 PO만 표시). expected 창 크기: `MAX_LEAD_TIME_DAYS_WINDOW = 30`.
-    - 신규 라우트 `/receiving/daily?date=YYYY-MM-DD&mode=outbound|expected`.
-    - UI: `daily-receiving-header.tsx` (날짜 이동 + mode 토글 + pending/completed 카운트 + 모드별 설명 문구), `daily-receiving-pending-table.tsx`, 대시보드 링크.
-    - 정정 이력: 초기 구현에서 `expectedReceiveDate = outboundDate + leadTimeDays` 로 부호가 뒤바뀐 회귀가 있어(`format-lead-time.ts` / `purchase-order.service.ts` / `purchase-order-batch.service.ts` / `daily-receiving.service.ts` / 마이그레이션) 5개 지점 전량 `outboundDate − leadTimeDays` 로 정정 완료. `daily-receiving.service.ts` 의 `outboundFilter` 주석도 `[selectedDate, selectedDate + MAX_LEAD_TIME_DAYS_WINDOW]` 로 정정.
-    - **테스트 완료** (commit `2c4a9cd`): `src/tests/daily-receiving.service.test.ts` 신규 8건 PASS — outbound/expected 필터, 리드타임 기본값, null 안전성, completed 매칭, 다중 아이템 부분 매칭, existingDraft 매핑.
-  - **D30 C-3-d3** (commit `85302dc9`) — 확정 시 품목별 불일치 사유 개별 입력:
-    - 서비스: `previewReceivingNoteDiscrepancies` 신설 (확정 전 DB 무영향 사전 계산), `resolveReason(key, autoReason)` 우선순위 도입 (품목별 > 통일 > 자동)
-    - 유틸: `buildDiscrepancyKey(type, poItemId, rItemId)` 신규 — UI/서비스 간 안정 키 규약
-    - 스키마: `confirmReceivingNoteSchema.discrepancyReasons` (Record) 추가, `previewReceivingDiscrepanciesSchema` 신규. 하위호환 `discrepancyReason` 유지
-    - 액션: `preview-receiving-discrepancies.action.ts` 신규 (READ 권한), `confirm-receiving-note.action.ts` 에 `discrepancyReasons` 전달
-    - UI: `ConfirmReceivingNoteDialog` 재작성 — Dialog 로 전환, 열림 시 preview 로드, 불일치 0/N건 분기, 통일 모드 토글, 항목별 Textarea (autoReason placeholder)
-    - 테스트: `preview-receiving-discrepancies.action.test.ts` 6건 + `confirm-receiving-note.action.test.ts` 에 사유 전달 검증 1건 추가 (총 39건 PASS)
-  - **D30 C-3-d1·d2** (commit `20c7f75b`) — 회사 전사 불일치 이력 페이지 + 확정 시 사유 입력 (통일 모드):
-    - `/receiving/discrepancies` 라우트 + `ReceivingDiscrepancyList` (월/타입/검색 필터 + 페이지네이션)
-    - `getReceivingDiscrepancies` 서비스 (배치 조회, 관계 격리 정책 §7 준수)
-    - `getReceivingNotes` 반환에 `totalAmount` 파생 필드 추가
-    - 대시보드에 불일치 이력 링크 카드 부착
-  - **D30 C-3-c hotfix** (commit `70cb64f5`) — DRAFT 입고서 삭제 시 FK 위반 수정: cascade 미설정 스키마 보호 위해 items 명시 삭제 후 note 삭제
-  - **D30 C-3-b1·c** (commit `d96ad317`) — 입고서 CRUD 완성:
-    - 서비스: `createReceivingNoteDraft`, `updateReceivingNoteDraft`, `deleteReceivingNoteDraft` (DRAFT 가드)
-    - UI: `/receiving/notes/new`, `/receiving/notes/[id]`, `/receiving/notes/[id]/edit`, `DeleteReceivingNoteDialog`
-    - 테스트 5건 추가
-  - **PO 라이프사이클 재정의** (commits `14b2d20c`, `13b1d5f8`) — 발주서 도메인 명확화:
-    - **도메인 정의**: 발주서는 공급사에 전송되는 공식 문서가 아니라 "이번 발주에서 어떤 자재를 얼마에 받기로 했는가"를 사내에서 관리·추적하는 **내부 관리 문서**. 실제 발주는 카톡·SMS·공급사 웹사이트 등 외부 채널.
-    - **POStatus 라벨 재정의**: SUBMITTED="발주 확정"(단가 이력 적층 시점, P9'와 정합), APPROVED="결재 승인"(현재 미사용, 결재 도입 시 활성화), RECEIVED="입고 완료". 라벨만 변경, enum/마이그레이션 무변경.
-    - **전이 매트릭스 보강**: `SUBMITTED → RECEIVED` 직접 전이 허용. APPROVED 단계는 결재 도입 전까지 우회 가능. 결재 도입 시 매트릭스 좁히면 됨.
-    - **RECEIVED 트리거 — 수량 자동 폐기, 입고 확정 시 통합**: 누적 수량 도달 기반 자동 트리거는 폐기(부동소수 오차·시점 모호성). 대신 **입고서 확정(ReceivingNote CONFIRMED) 시 동일 트랜잭션 내에서 PO를 RECEIVED로 자동 종결**한다. 미달/초과/단가 차이는 입고를 막지 않고 `ReceivingDiscrepancy` 스냅샷으로 기록.
-    - **책임 통합**: `ReceivingNoteService.confirm` 단일 트랜잭션이 (a) InventoryLot/InventoryTransaction 생성 (b) ReceivingDiscrepancy 기록 (c) PO RECEIVED 전이 까지 원자적으로 수행. 별도 `markPurchaseOrderAsReceivedAction` 은 **폐기** (UI 버튼 없음).
-    - **하드코딩 라벨 정합화**: 7개 파일 안내문·에러 메시지 정합화 (`14b2d20c`). 후속 공백 정정 2개 파일 보강 (`13b1d5f8`).
-    - **신규 문서**: `docs/progress/PO_LIFECYCLE.md` — 5단계 정의, 전이 매트릭스, APPROVED 보존 정책, RECEIVED 트리거 결정 기록.
-    - **헌법 P5·P9 재정정 (2026-06-30 정정)**: 입고 확정과 발주 종결을 **단일 도메인 이벤트** 로 재통합. 발주 확정 = 거래 단가 확정 원칙을 P9 에 명시. 상세는 `### 헌법 보강` 섹션 참조.
-  - **Phase 4-C2 (UI)** (commit `bf103b1a`) — Step 4 라인업 다축 집계 뷰 (D29 프런트):
-    - `POItemCandidate` 에 `lineupId` / `lineupName` 전파 (`build-po-items-from-mr.ts`)
-    - `loadPOWizardDataAction`: MR select 에 `lineupId` + `lineup.name` 포함 후 평탄화
-    - 신규 `GroupByTabs` 컴포넌트 (4축 탭: 공장 / 제조라인 / 공급업체 / 라인업) — `scopeLevel` 별 기본 축 차등
-    - `NewModePreview` 에 라인업 · 기준량(g) 컬럼 추가 + 다축 집계 뷰 섹션 부착
-    - `WizardPreviewPanel` 에 `scopeLevel` prop 전파, `po-wizard.tsx` 임시 `scopeLevel="COMPANY"` (TODO: 세션 userScope 연결)
-    - 쓰기 경로 무수정 (PC2/DC4 보존), 읽기 전용 뷰만 추가 (DC5)
-  - **D25-4** (commit `dafb5785`) — 레거시 `StepSplitPreview` 정리: D25-3 에서 `WizardPreviewPanel` 경유로 사용처가 모두 교체된 이후 deprecated 상태이던 `step-split-preview.tsx` 삭제. `NewModePreview` 가 단일 SSOT. `po-wizard.tsx` / `new-mode-preview.tsx` 의 D25-3/D25-4 주석 갱신.
-  - **Phase 4-C2 pre / GAP-1** (commits `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88`) — 원가 ↔ 라인업 차원 정합성:
-    - 스키마: `MaterialRequirement.lineupId` 추가 + 5컬럼 unique (`uq_mr_group_line_lineup_material_source`) + 마이그레이션 `20260629024328_phase_4_c2_pre_mr_lineup_id` (S1)
-    - 서비스: `AggregatedRequirement.lineupId` + `makeKey` 3-arg + BOM 전개 시 `mealPlan.lineupId` 전파 + INSERT 영속화 + list include/filter (S2). 테스트 +3 (S3, 22/22 PASS)
-    - 신규 read-only 액션 `getLineupBreakdownAction` (S5+S5-A) — 라인업 × {자재 / 공급사 / PO} 3종 집계. PO 역추적은 `PurchaseOrderItem.materialRequirementId`, CANCELLED PO 제외, 같은 PO 가 여러 라인업에 contributedAmount 로 분배
-    - 쓰기 경로(PO 그룹핑 키, 재고 차감) 무수정 (PC2/DC4 보존)
-    - 근거: `docs/progress/COST_LINEUP_ALIGNMENT.md` PC1~5 / DC1~5 / DoD1~7
-  - R1-a (commit `5afb0113`) — 위저드 4분류 (mapped / partial / full / unmapped)
-  - R1-a-fix-2 — `stockOffsetAmount` raw 기준 + `Math.round` 정수 안정화
-  - **R1-b1** (commit `a32e255`) — 멱등성 키 (`PurchaseOrderBatch.idempotencyKey`) + Step 1·5 기존 PO 사전 안내 카드 (`ExistingPONotice`)
-  - **R1-b2** (commit `6e1afb5` + `a32e255`) — 위저드 모드 선택 UI (`WizardModeSelector`) — NEW/DELTA/REPLACE 라디오 + PO 상태별 활성화 로직
-  - **R1-b3** (commit `a32e255`, `a952a95`, `ee1f47b`, `32544bb`, `f65c582`) — DELTA 모드 완전 구현:
-    - 백엔드: `po-delta.service.ts` 순수 함수 + `executeDeltaMode` 분기 (`POAdjustmentLog` 적층)
-    - 프리뷰: `previewDeltaPlanAction` (DB 부수효과 없음) + `DeltaPreviewCard` Step 2/5 통합
-    - 수동 조정 가시화: Step 3 매핑 테이블에 시스템 권장값 표시 + 수동 편집 시 색상·되돌리기 버튼
-    - 테스트: +14 (`po-delta.service`) +13 (`purchase-order-batch.service` DELTA) = 27건
-  - **사이드바 hotfix** (commit `b3c787c`) — 발주 관리 메뉴 href를 `/purchasing` → `/purchase-orders` 로 교정
-  - **R1-b4** (commit `6dbbfb3`) — REPLACE 모드 완전 구현: 차단 기준은 `status NOT IN (DRAFT, SUBMITTED)` (APPROVED 이상 차단, CANCELLED 제외). `executeReplaceMode` 신규 함수 — 기존 DRAFT/SUBMITTED PO 를 CANCELLED 로 일괄 전이(`POAdjustmentLog` 에 `REMOVE`+`fieldName="po_status"` 기록) + 신규 DRAFT PO 원자적 생성. 오류 키: `REPLACE_BLOCKED_BY_LOCKED_PO`, `REPLACE_MISSING_BASED_ON_POS`. 단가 이력은 보존(롤백 없음) — DRAFT→SUBMITTED 전이 시 자동 재적층.
-  - **R1-b4-Test** (commit `f385f43`) — REPLACE 모드 통합 테스트 8건 추가 (`purchase-order-batch.service.test.ts`).  
-  - **R1-c** (commit `07b7181`) — Step 3 SupplierItemPicker portal(뷰포트 상하단 자동 플립 + 검색 + ✓ 표시) + 단위환산 인라인 다이얼로그(WEIGHT/toUnit=g 고정, 등록 즉시 해당 자재 모든 행 클라이언트 재계산). 기존 `supplier-item-picker.tsx` 는 보존(향후 4-D 수동 발주에서 재사용 여지).
-  - **Phase 1.6** (commit `75f07d6` 등) — D9 적용: `PurchaseOrder.deliveryDate` → `outboundDate` 마이그레이션 + 서비스·액션·UI 일괄 갱신
-  - **Phase 1.7-D16** (commit `fe046d11`) — `UnitConversionInlineDialog`에 `UnitCombobox` 도입, 카테고리 제약 제거, fromUnit 자유 텍스트 입력 폐지
-  - **Phase 1.7-D17** (commit `9255b78`) — 공급단위 기준 단일 단계 환산 `gPerSupplyUnit = factor × supplyUnitQty`, `fromUnit === supplyUnit.code` 강제, supplyUnit='g' 자동 처리
-  - **Phase 1.7-D17-8** (commit `032f872`, `a6c4d15`) — 시스템 전반 단위 비교 키를 `UnitMaster.code`로 일원화 (name은 표시 전용). `POItemCandidate.supplierItem`에 `supplyUnitCode` 추가, `RESOLVE_UNMAPPED` / `REFRESH_ROW_AFTER_CONVERSION` 양쪽 reducer가 `calculateOrderQuantity` 단일 진실원천 사용
-  - **Phase 1.7-D17-9** (이번 작업) — UnitConversion factor 입력 가드: 클라(`> 100000` 차단, 비정수 confirm), 서버(`max(1_000_000)`). 사유: `factor=1000.0001` 오타로 발주량 1박스 부풀림 회귀 발견
-  - **Phase 1.6** (commit `5afb0113` 이후 갱신분) — `deliveryDate` → `outboundDate` 마이그레이션, `expectedReceiveDate = outboundDate − leadTimeDays` 표시 도입
-  - **Phase 1.7 / D17** (commit `9255b785`) — 공급단위 기준 환산 + 미등록 시 등록 요구. UnitMaster.code 기반 매칭 일관화 (commit `032f8727`)
-  - **D17-8 / D17-9 / D17-10** (commit `a6c4d151` + 본 푸시) — 단위 환산 입력 3중 가드:
-    - D17-9: factor 상한 (100,000 / 서버 1,000,000) + 비정수 입력 시 confirm
-    - D17-10: 미매핑 행에서 ↗ 단위 환산 등록 버튼 숨김, 매핑 후 `supplyUnit.code` 잠금 전달, `DUPLICATE_CONVERSION` → 정상 흐름 + 재계산
-    - 서버 schema: `factor.max(1_000_000)` 추가 (`unit-conversion.schema.ts`)
-    - **R1-b5-1** (commit `c83c1e80`) — NEW 모드 표시조건 보정 (D18). 활성 PO 0건일 때만 NEW 노출, 1건 이상이면 DELTA/REPLACE 자동 전환
-  - **R1-b5-2** (commit `0ed1d8cf`) — Step 2 DeltaPreviewCard 제거 (D20). 차분 가이드는 Step 3 인라인 + Step 5 요약으로 이전
-  - **R1-b5-3** (commit `d3ca6b2c`) — Step 5 DeltaPreviewCard 접힘 + 발주량 정수 강제 (D20, D23). `Math.ceil` 라운드업 정책, `step={1}` 입력, reducer `safeValue` 가드
-  - **R1-b5-4** (commit `5b8edc7c` + hotfix `91967e3b`) — Step 3 인라인 차분 컬럼 (D20). DeltaCell 신설 (변경없음/신규 PO/추가/수량·단가·금액 델타). DELTA 모드에서만 노출, NEW/REPLACE 영향 없음. Hotfix: mapped 섹션이 unmapped 행을 받던 prop 오타 (rows={unmapped}/mode="unmapped" → rows={allMapped}/mode="mapped")
-  - **D27** (commits `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e`) — 멱등성 가드 + PO 목록 취소 정책:
-    - 서버: `createPurchaseOrdersBatch` 의 idempotent replay 가 batch 내 PO `status` 미검사로, 전량 CANCELLED 인 batch 도 replay 매칭되던 버그 수정. 매칭 시 활성 PO 만 응답에 포함, 전량 취소면 신규 토큰(suffix `_r{timestamp}`) 발급 후 신규 batch 생성. (`idempotencyKey`는 Prisma 스키마상 non-nullable 이므로 null 갱신 대신 신규 토큰 전략 채택)
-    - 클라이언트: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰 폐기 (`clearAllIdempotencyTokensFor`)
-    - PO 목록 (C-1 정책): 기본 필터 `"active"` (CANCELLED 제외), "활성" / "전체" / 개별 상태 6개 옵션. 백엔드 `excludeCancelled` 쿼리 파라미터 추가, `purchaseOrderListQuerySchema` 확장
-
-## 다음 진행 항목 (확정 순서)
-  ### Sprint 3 잔여
-  1. **D30 — 입고서 (ReceivingNote) 확정 통합 + 불일치 기록 (ReceivingDiscrepancy)** [부분 완료]:
-
-    **C-1·C-2 (스키마 + 서비스) ✅ 완료 (2026-06-30)**
-    - 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta` (commit `67a60e34`).
-    - enum `DiscrepancyType { QUANTITY_SHORT, QUANTITY_OVER, UNIT_PRICE_DIFF, ITEM_MISSING }` (4개).
-    - 모델 `ReceivingDiscrepancy` (append-only 스냅샷): `purchaseOrderId / purchaseOrderItemId? / receivingNoteId / receivingNoteItemId? / type / expectedQty? / actualQty? / expectedUnitPrice? / actualUnitPrice? / diffValue / reason? / recordedAt / recordedByUserId`.
-    - `ReceivingNote.confirmedAt / confirmedByUserId` 추가.
-    - 서비스 `confirmReceivingNote(companyId, noteId, actorUserId)` 단일 트랜잭션으로 (commits `35773f1b → 64924006 → f8764185`):
-      1. InventoryLot 생성 (`unitPrice = PO 단가`, P9 고정) + InventoryTransaction(PURCHASE) 적층
-      2. PurchaseOrderItem.receivedQty 누적
-      3. 수량·단가 불일치 스냅샷 (`QUANTITY_SHORT/OVER`, `UNIT_PRICE_DIFF`, `ITEM_MISSING`)
-      4. `ReceivingNote.status = CONFIRMED` + `confirmedAt/By` 기록
-      5. `transitionPurchaseOrderStatus(..., toStatus: RECEIVED, ..., tx)` 같은 트랜잭션 합류 — **P5 재정정 반영**
-    - 테스트 10/10 PASS (정상/수량부족/수량초과/단가차이/PO외항목/입고누락/중복확정/회사불일치/없음/SUBSIDIARY 차단).
-    - **제약**: SUBSIDIARY 입고는 현 스키마(`InventoryTransaction.materialMasterId` NOT NULL, `subsidiaryMasterId` 컬럼 없음)에서 미지원 → `UnsupportedSubsidiaryReceivingError` throw. Sprint 4 Phase 10에서 스키마 보강 예정.
-
-    **C-3 (액션 + UI) ✅ 완료 (2026-07-03, commits `d96ad317` → `70cb64f5` → `20c7f75b` → `85302dc9`)**
-    - `confirmReceivingNoteAction`: `assertScope(LOCATION)` + 서비스 호출 + audit + revalidatePath 3곳 (pending / 노트 상세 / PO 상세) ✅
-    - 실제 배포 UI 5종:
-      - `/receiving` — 대시보드 (초안·확정·발주 대기·최근 노트·불일치 이력 카드)
-      - `/receiving/notes` — 입고서 목록 (상태/기간/검색 필터)
-      - `/receiving/notes/new?poId=...` — 초안 생성
-      - `/receiving/notes/[id]` — 상세 + 확정 다이얼로그 + 불일치 이력 섹션 + 삭제(DRAFT) / 편집 링크
-      - `/receiving/notes/[id]/edit` — DRAFT 수정
-      - `/receiving/discrepancies` — 회사 전사 불일치 이력 (월/타입/검색)
-    - 확정 다이얼로그 확장 (C-3-d3): 열림 시 `previewReceivingDiscrepanciesAction` 호출 → 불일치 목록별 개별 사유 입력 + "전 항목 동일 사유" 토글
-    - 사유 우선순위: 품목별(`discrepancyReasons[key]`) > 통일(`discrepancyReason`) > 자동(`autoReason`)
-    - 하위호환: 통일 사유(`discrepancyReason`) 유지, 기존 32건 테스트 무파괴 (총 39건 PASS)
-
-    **후속 잔여 (D30 범위 밖, 다른 Phase 로 이관)**
-    - "발주 대비 초과·불일치 시 관리자 사유 필수 게이트" → P5 재정정으로 폐기 (모든 불일치는 차단 없이 기록만)
-    - 일자별 입고 통합 뷰 (옵션 α, N개 PO 동시 확정) → **Phase 3-D30-Ex1 신규 (다음 착수)**
-    - SUBSIDIARY 입고 지원 → Sprint 4 Phase 10 스키마 보강 후
-
-    **문서 갱신 완료**
-    - `RECEIVING_INVENTORY_POLICY.md` §9 (사유 해결 우선순위 정책) 추가 — 본 커밋
-    - `SCHEMA_COVERAGE.md` — 모델 #41 상태는 이미 🔄로 갱신됨(C-1·C-2 시점), 별도 조치 불필요
-
-    **D30 범위에서 제외된 항목 (의사결정 2026-06-30)**
-    - `overReceivedQty / overReceivedReason` 컬럼 추가 — `ReceivingDiscrepancy(QUANTITY_OVER)` 스냅샷으로 통합되므로 불필요.
-    - `createDraft / createCorrection` 서비스 — D31(부분 입고 진행률) 또는 Sprint 4로 이관.
-    - 부분 입고(split receiving) — "1 PO = 1 ReceivingNote" 단순 모델 유지, Sprint 4 이후 확장.
-    - 관리자 과입고 사유 필수 게이트 — 모든 불일치는 차단 없이 기록만(P5 재정정).
-    - 별도 `markPurchaseOrderAsReceivedAction` — `confirmReceivingNote` 단일 트랜잭션에 통합되어 폐기.
-    - `ITEM_UNEXPECTED` enum — 실제로는 `ITEM_MISSING`이 양방향(발주에만 있음 / 입고에만 있음) 케이스를 모두 표현.
-
-    **문서 갱신**
-    - C-1·C-2 시점: `SCHEMA_COVERAGE.md` 갱신 완료 (모델 #41 🔄), 변경 이력 D30 라인 추가.
-    - C-3 시점에 추가 갱신: `RECEIVING_INVENTORY_POLICY.md` (신규), `PO_LIFECYCLE.md` §3-A 에 "발주 종결은 ReceivingNote 확정과 단일 트랜잭션" 한 줄.
-
-  4. **Phase 4-D** — 수동 발주 UI (위저드 우회 단건 발주).
-  5. **Phase 4-F-2** — 발주 엑셀 내보내기 / 일괄 export.
-  6. **Phase 4-E** — scopeLevel 동적화 (현재 위저드 `"COMPANY"` 하드코딩 해제 → 세션 userScope 연결).
-
-  ### Sprint 4 — 사용(출고) + 재고
-  - D32 가용재고 조회 + FIFO 출고 엔진 (선행 의존).
-  - D35 ConsumptionItem (PER_MEAL_COUNT / FIXED_QUANTITY) + MealCount 트리거 + ConsumptionLotDetail 기록 + ConsumptionDisposition (USED/RETURNED/DISPOSED) + DisposalReason.
-  - D33 InventoryReservation 자동 생성/해제 + MR.stockQtyG 정합 (excludeReserved).
-  - D34 InventoryTransfer 지점간 이동 + Lot 분할 + 원가 승계.
-
-  ### Sprint 4 후반 / Sprint 5 진입 직전 — 재고 실사 (StockTake)
-
-  > 사용 처리 완료 후 일정 주기로 실사를 진행하여 이론 재고와 실재고의 차이를 검출·기록·조정한다.
-  > Sprint 5 원가 정산(D36 재고 차분 방식)의 기말재고 입력원.
-  > ReceivingDiscrepancy(D30 발주↔입고 불일치) 와는 별개 도메인 — 시점·원천·트랜잭션 타입이 다르다.
-
-  - **D39 — StockTake 워크플로우** (DRAFT → IN_PROGRESS → PENDING_REVIEW → COMPLETED):
-    - 실사 시작 시 InventoryLot 스냅샷 → StockTakeItem 일괄 생성(이론 재고 freeze).
-    - 현장 측정값 입력 UI (공장·라인·자재 단위 분할 입력).
-    - PENDING_REVIEW 단계에서 차이 검토 + 사유 입력. COMPLETED 전이는 COMPANY_ADMIN 권한.
-
-  - **D40 — 실사 차이 자동 검출 + StockGrade 기록**:
-    - StockTakeItem expected(이론) vs actual(실측) 비교 → 차이 행 자동 추출.
-    - StockGrade(A/B/C) 입력으로 자재 상태 기록.
-    - 차이 사유 enum 신설 검토 (LOSS / DAMAGE / MISCOUNT / UNRECORDED_USE / OTHER — 스키마에 동등 enum 존재 여부 본격 진입 시 확인).
-
-  - **D41 — COMPLETED 전이 시 일괄 보정**:
-    - 차이만큼 `InventoryTransaction(type=ADJUSTMENT)` 적층, `referenceType='STOCK_TAKE' / referenceId=stockTakeId` 기록.
-    - InventoryLot.remainingQty 자동 보정.
-    - 음수 조정 = 손실원가, 양수 조정 = 미기록 입고로 별도 집계 가능 (Sprint 5 D37 정합성 리포트 입력원).
-    - 잔량 음수화 케이스 차단 정책은 본격 진입 시 스키마 확인 후 확정.
-
-  - **사전 확인 항목 (D39 진입 시점에 1회 점검)**:
-    - StockTake / StockTakeItem 모델 본문 (필드 셋, 라인업 귀속 컬럼 유무).
-    - 차이 사유용 enum 존재 여부 — 없으면 GAP-4 로 별도 마이그레이션 1건 분리.
-    - StockTakeItem.lineupId 누락 시 DC5(라인업 차원 보존) 위배 — GAP-4 와 함께 처리.
-
-  ### Sprint 5 — 원가 정산
-  - D36 월말 원가 정산 (소비 기반 vs 재고 차분, 라인업별 양립).
-  - D37 ESTIMATED / ORDER_BASED / ACTUAL 3중 정합성 리포트.
-  - D38 라인업·지점·라인 단위 원가 분해 대시보드.
-
-  ### Phase A (병행 트랙 — Sprint 4 진입 시 본격화)
-  - A1 권한 매트릭스 정합화 (`docs/progress/ACCESS_MATRIX.md`).
-  - A2 서버 가드 일원화 (`assertScope` 일괄 적용).
-  - A3 UI 가드.
-  - A4 초대 (`Invitation` 모델 이미 존재 — 서비스 + UI 만).
-  - A5 감사 로그 (`AuditAction` enum 이미 존재).
-
-
-- **현재 블로커**: 없음
-- **누적 테스트**: 410 PASS / 2 skipped / 0 fail (D17 회귀 6건 추가)
-- **TypeScript errors**: 0
-- **백엔드 위저드 파이프라인**: 완성 (NEW + DELTA + REPLACE 3개 모드 모두 동작)
+- **현재 진행 중 Sprint**: 없음 (Sprint 3 종결, Sprint 3.5 착수 대기)
+- **직전 종결 Sprint**: Sprint 3 (발주 + 입고, 2026-06-15 ~ 2026-07-07)
+  > 상세 이력 → `docs/progress/SPRINT3.md`
+  >
+  > 요약: 발주 위저드(NEW/DELTA/REPLACE 3모드) + `PurchaseOrderBatch`·`POAdjustmentLog` 신설, 입고서 CRUD, `ReceivingDiscrepancy` 신설, 일자별 입고 통합 뷰, 라인업 다축 집계(`MaterialRequirement.lineupId`), MR 자동 산출 훅(G-1), `existingTx` 패턴 확립, PO 라이프사이클 재정의(RECEIVED 자동 전이), 헌법 P5·P9 재정정 + 계층분리·재고 소유 주체·마이너스 금지 원칙 명시.
+- **이전 아카이브 Sprint**: Sprint 1 → `docs/progress/SPRINT1.md`, Sprint 2 → `docs/progress/SPRINT2.md`
+- **최근 완료 항목**: 없음 (Sprint 3.5 착수 전)
+- **다음 착수 항목**: **Sprint 3.5 — 수동(독립) 발주 보완** → 이어서 Sprint 4 Phase S4-0
 
 ---
 
-## 🏗️ Sprint 3: 발주 + 입고 (진행 중)
+## 🚧 다음 진행 항목
 
-### Sprint 3 Phase 일정 및 상태
-
-| Phase | 내용 | 상태 | 커밋 |
-|---|---|---|---|
-| 1 | PO Zod schema | ✅ | (Sprint 3 Phase 1) |
-| 2 | PO Service Layer | ✅ | `84e59dc2` |
-| 3 | PO Server Actions | ✅ | `28b53151` |
-| 4-A | PO 목록 페이지 | ✅ | `90809007` |
-| 4-A.1 | 인도일 → 입고예정일 통일 | ✅ | `9f4507e8` |
-| ~~4-B (구버전)~~ | ~~공급사 선두 폼 다이얼로그~~ | ❌ **폐기** | `f83eeab2` |
-| 0-A | 잘못된 Phase 4-B 제거 + 페이지 안정화 | ✅ | `98c4cdb1` |
-| 0-B | SupplierItem action 시그니처 정리 + 문서 갱신 | ✅ | `b4c9143a` |
-| 0-C | DB 점검 + PO location/productionLine 마이그레이션 SQL 확정 | ✅ | (Phase 1.5 에 흡수) |
-| **1.5** | PurchaseOrder 스키마 확장 (locationId NOT NULL, productionLineId nullable) | ✅ | `58da2a1e`, `f1db9d25` |
-| **4-B'-1** | 단위 환산 라이브러리 (`calculateOrderQuantity`) | ✅ | `b6ec1240` |
-| **4-B'-2** | MR → PO 항목 변환 헬퍼 (`buildPOItemsFromMR`) + InventoryAdapter placeholder | ✅ | `af333130` |
-| **4-B'-3** | 배치 PO 생성 서비스 (`createPurchaseOrdersBatch`) | ✅ | `ff6b5071` |
-| **4-B'-4** | DRAFT→SUBMITTED 시 PriceHistory 적층 | ✅ | `5232ec46` |
-| **4-B'-5a** | 위저드 server actions 3종 (`getMealPlanGroupsForOrderAction`, `loadPOWizardDataAction`, `createPurchaseOrdersBatchAction`) + `loadPOWizardDataSchema` | ✅ | `cff165e4` |
-| **4-B'-5b** | 위저드 UI 골격 (`/purchase-orders/new` 라우트 + POWizard 컨테이너 + Step 1·2) | ✅ | `d48a9e2` |
-| 4-B'-5c | 위저드 UI 메인 (Step 3 매핑·편집 + Step 4 분할 미리보기 + Step 5 일괄 생성) | ✅ | `655da30` |
-| **M-Fix** | MaterialMaster (companyId, name) unique 가드 + 마이그레이션 | ✅ | `bc8bcadd` |
-| **M-Fix-R1** | MaterialMaster/SubsidiaryMaster isActive 생명주기 + DependencyActionDialog | ✅ | `dc52645a` |
-| **S-Fix** | SupplierItem isActive + 의존성 가드 + 도메인 에러 메시지 | ✅ | `b5405c21`, `f24f273d` |
-| **R1-a** | 위저드 Step 2 4분류 도입 (mapped / partial / full / unmapped) + Step 3 통합 섹션 | ✅ | `5afb0113` |
-| **R1-a-fix-2** | stockOffsetAmount raw 기준 + Math.round 정수 안정화 + invariant 교정 + "충당"→"활용" 라벨 통일 | ✅ | (이번 작업) |
-| **R1-b1** | 멱등성 키 (`PurchaseOrderBatch` 모델 + `idempotencyKey` unique) + Step 1·5 기존 PO 사전 안내 카드 | ✅ | `a32e255` |
-| **R1-b2** | 위저드 모드 선택 UI (NEW / DELTA / REPLACE 라디오) + PO 상태별 활성화 로직 | ✅ | `6e1afb5`, `a32e255` |
-| **R1-b3** | DELTA 모드 본격 구현 — `po-delta.service` + `executeDeltaMode` + `POAdjustmentLog` 적층 + Preview Action + DeltaPreviewCard (Step 2/5) + Step 3 수동 조정 가시화 | ✅ | `a32e255`, `a952a95`, `ee1f47b`, `32544bb`, `f65c582` |
-| **R1-b3-Fix** | 사이드바 발주 관리 href 교정 (`/purchasing` → `/purchase-orders`) | ✅ | `b3c787c` |
-| **R1-b4** | REPLACE 모드 (DRAFT·SUBMITTED 일괄 CANCELLED + 신규 DRAFT PO 원자적 생성, `POAdjustmentLog` REMOVE 적층, `REPLACE_BLOCKED_BY_LOCKED_PO`/`REPLACE_MISSING_BASED_ON_POS` 오류 키) + 통합 테스트 8건 | ✅ | `6dbbfb3`, `f385f43` |
-| **R1-c** | Step 3 SupplierItemPicker portal(뷰포트 플립 + 검색 + ✓ 표시) + 단위환산 인라인 모달(WEIGHT/toUnit=g 고정) | ✅ | `07b7181` |
-| **1.6** | **D9 적용**: PurchaseOrder.deliveryDate → outboundDate 마이그레이션 + 서비스·액션·UI 일괄 갱신 | ✅ | `75f07d6` 등 |
-| **1.7** | **D16/D17 적용**: UnitCombobox 통합 + 공급단위 기준 단일 단계 환산 + UnitMaster.code 일원화 + factor 입력 가드 | ✅ | `fe046d11`, `9255b78`, `032f872`, `a6c4d15`, (이번 커밋) |
-| **4-B'-5c-Fix-R2** | 위저드 UI 개선 R2 — Step 3 단위환산 인라인 등록(✅ 완료) + Step 5 품목별 예상 입고일(⬜) + Step 4 라인업 뷰 백엔드(⬜) | 🟡 부분 | `07b7181` 등 |
-| **R1-b5** | 위저드 UX 정합 패치 (D18~D22 적용) — NEW 모드 표시조건 + Step 2 DeltaPreviewCard 제거 + Step 3 인라인 차분 컬럼 + Step 5 DeltaPreviewCard 접힘 + 정수 수량 강제 | ✅ | `c83c1e80`, `0ed1d8cf`, `d3ca6b2c`, `5b8edc7c`, `91967e3b` |
-| **D27** | 멱등성 가드 (전량 취소 batch 제외) + PO 목록 취소 기본 숨김 (C-1) | ✅ | `e8a0e2c4`, `acf0f295`, `b19a9273`, `3e80834e` |
-| **4-C** | 상세보기 + 상태 전이 다이얼로그 + 품목별 입고일 컬럼 (D28) + Step 5 D-N 배지. 입고 수량 컬럼은 placeholder (`receivedQty/quantity`), Phase 5에서 활성화 | ✅ | `{D28 커밋해시들}` |
-| **4-C2 (pre)** | GAP-1 해소 (MR.lineupId) + `getLineupBreakdownAction` 백엔드 3종 집계 (D29 백엔드) | ✅ | `318d602`, `cc086e25`, `61e8da48`, `b9d043c1`, `9ea97f88` |
-| **4-C2 (UI)** | Step 4 라인업 다축 집계 뷰 UI (D29 프런트) — `GroupByTabs` 4축 탭 + 라인업/기준량(g) 컬럼 + `scopeLevel` prop 체인 | ✅ | `bf103b1a` |
-| **D25-4** | 레거시 `StepSplitPreview` 삭제 — D25-3 에서 사용처 교체 완료 후 정리. `NewModePreview` 단일 SSOT 확정 | ✅ | `dafb5785` |
-| 4-D | 수동 발주 페이지 `/purchase-orders/manual` — 식단 외 발주 트랙, `isManual=true`, 4-B' 컨벤션 재사용 (D19) | ⬜ | - |
-| 4-E | PO 권한 스코프 — 회사/공장/라인 읽기 가시성, 헌법 P2 적용 (D21-B, 다중 사용자 환경 진입 시) | ⬜ | - |
-| 4-F | PO 목록 다축 뷰 (출고일/공급사/라인업, D21-A) — D29와 일부 중첩, 통합 검토 | ⬜ | - |
-| 5 | ReceivingNote 백엔드 (수량만, 단가는 P9' 에 따라 발주 단계로 위임) | ⬜ | - |
-| 6 | ReceivingNote UI | ⬜ | - |
-| 7 | MaterialRequirement → PO 자동 생성 파이프라인 | ⬜ | - |
-| 8 | CookingPlan / Consumption 연계 | ⬜ | - |
-
-### Sprint 3 폐기 의사결정 보존 (Phase 4-B 구버전)
-
-본 Sprint 진행 중 폐기된 설계가 있어 의사결정 사유를 보존한다.
-
-**폐기 항목**: 구 Phase 4-B "공급사 선두 폼 다이얼로그" (`f83eeab2`).
-
-**폐기 사유**:
-- 헌법 P1 위반 — "발주는 식단 기반"이 원칙인데, 공급사를 먼저 선택하고 품목을 추가하는 흐름은 식단과의 연결 고리를 끊는다.
-- 자재→공급사 자동 매핑(즐겨찾기)과 다공급업체 분할 발주 시나리오를 표현할 수 없다.
-- 운영 현장 멘탈 모델("식단 보고 발주 만든다")과 역방향.
-
-**대체 설계**: Phase 4-B' (식단 기반 발주 위저드). `MealPlanGroup` → MR 자동 로드 → 자재별 공급사 매핑 → 공급사 × 공장 단위 PO N개 자동 분할.
-
-**Phase 0-A 정리 작업** (`98c4cdb1`):
-- 폐기된 Phase 4-B 컴포넌트 3개 제거 (`purchase-order-form-dialog.tsx`, `purchase-order-item-rows.tsx`, 관련 훅)
-- `purchase-orders/page.tsx`의 "신규 발주" 버튼 동작을 임시 비활성화 (Phase 4-B'-5b 에서 `/purchase-orders/new` 라우팅으로 교체 예정)
-- 기존 PO 목록 페이지 단독으로 정상 동작하도록 안정화
-
-**Phase 0-B 작업** (`b4c9143a`):
-- `SupplierItem` action 시그니처 정리 (Sprint 1 패턴과 일치시킴): `(companyId, id, input)` 통일, `findDuplicateSupplierItem` 파라미터 명료화, 잔여 SOL(Sprint outline log) 정리.
-- 위저드 자재→공급사 매핑 단계에서 호출되는 진입점이므로 4-B' 전에 반드시 정돈 필요.
-
-### Sprint 3 결정사항 (라이프사이클 정책)
-
-#### POStatus enum 라벨 매핑 (옵션 A 채택)
-
-`POStatus` enum 을 그대로 유지하고 운영 라벨을 다음과 같이 매핑한다.
-대안(`DRAFT→REGISTERED→MODIFIED→CONFIRMED`) 은 `MODIFIED` 가 라이프사이클 상태가 아니라 행동(action)이고, 부분 입고 정책이 `receivedQty` 로 충분히 표현됨에 따라 폐기.
-
-| enum | 운영 라벨 | 수정 가능 | 입고 가능 | 비고 |
-|------|-----------|-----------|-----------|------|
-| DRAFT | 작성중 | ✅ 자유 | ❌ | 초안 |
-| SUBMITTED | 발주등록 | ✅ 자유 | ❌ | 공급업체 통보 전 자유 편집 |
-| APPROVED | 발주확정 | ⚠️ 사유 기록 시 허용 | ✅ | 부분 입고 진행 가능 |
-| RECEIVED | 입고완료 | ❌ 잠금 | — | 전량 입고 완료 |
-| CANCELLED | 취소 | ❌ 잠금 | ❌ | 취소 사유 기록 필수 |
-
-#### 라이프사이클 추적 필드
-`PurchaseOrder` 에 추가됨: `submittedAt`, `approvedByUserId`, `cancelledAt`, `cancelledByUserId`, `cancelReason`.
-
-#### Phase 1.5 — locationId / productionLineId 추가 결정
-- **결정**: `PurchaseOrder.locationId` 는 **NOT NULL**, `productionLineId` 는 nullable.
-- **사유**:
-  - 헌법 P2 (Roll-up: Company → Location → ProductionLine) 준수. 회사 직발은 PO 가 아닌 "공장별 PO N개"로 표현.
-  - 식단 외 소모품 발주(공장 자체 발주)도 항상 공장 단위로 발생 → `locationId` 강제 가능.
-  - `productionLineId` 는 라인 전용 자재(특정 제조라인 소모품) 추적용으로만 사용, 공장 공통 자재는 NULL.
-- **가드**: `LINE_LOCATION_MISMATCH` — `productionLineId` 지정 시 해당 라인의 `locationId` 와 PO 의 `locationId` 가 반드시 일치해야 함.
-- **마이그레이션**: `20260615114719_sprint3_phase1_5_po_location_rollup` (`58da2a1e`). 기존 dev DB PurchaseOrder 행 0개 확인 후 NOT NULL 직접 적용.
-
-#### 부분 입고 정책
-한 PO 에 N 개 ReceivingNote 가능. `PurchaseOrderItem.receivedQty` 누적이 `quantity` 도달 시 PO 자동 `APPROVED → RECEIVED` (서비스 가드).
-
-#### 보정 발주 (별도 트랙)
-CONFIRMED / RECEIVED 이후 발견된 오배송·누락은 본 PO 를 수정하지 않고 별도 보정 PO 로 분리. `PurchaseOrder.note` 에 원본 PO 참조 기록.
-
-### Sprint 3 Phase 4-B' 결정사항 (식단 기반 발주 위저드)
-
-#### D1. PO 의미론
-1 PurchaseOrder = "1 공장 × 1 공급업체 × 1 발주일" 의 자재 묶음. 즉 위저드는 `MealPlanGroup` 1 개를 입력으로 받아 N 개 DRAFT PO 를 동시에 생성한다 (공장 × 공급업체로 그룹핑).
-
-#### D2. 위저드 vs 수동 발주
-- 위저드 (`/purchase-orders/new`): 식단 기반 자동. `sourceType='WIZARD_AUTO'`, `isManual=false`.
-- 수동 (`4-D`): 식단 외 소모품·예외 케이스. `isManual=true`. 4-B' 컨벤션(공장 × 공급업체 그룹핑, 단가 적층 정책)을 그대로 재사용.
-
-#### D3. 단위 환산 체인 (2 단계)
-필요량(g) → `UnitConversion` → 환산전 단위(예: 포) → `SupplierItem.supplyUnit × supplyUnitQty` → 발주 단위(박스·포대 등).
-예시: 19,000 g → 19 포 → 0.95 박스 → `Math.ceil` → **1 박스**.
-
-엣지케이스: `UnitConversion` 미등록 → 경고 + 수동 입력 강제. 계수 0/null → 1 로 간주 + 경고. 소수 결과 → 기본 `Math.ceil`, 사용자 수정 가능.
-
-#### D4. PriceHistory 적층 정책
-- DRAFT 단계: 사용자가 `unitPrice` 자유 편집. `SupplierItem.currentPrice` 불변, `PriceHistory` 비적층 (P9' 준수).
-- **DRAFT → SUBMITTED 전이 시점**: 변경된 항목만 `SupplierItemPriceHistory` 적층 + `SupplierItem.currentPrice` 갱신.
-- SUBMITTED → DRAFT 회수: 히스토리·`currentPrice` 모두 보존 (롤백 안 함).
-- 입고 단계(Phase 5): 단가 UI 없음. 수량만 처리.
-- 단가 이력 수정 UI 는 별도 (`SupplierItem 상세 > 단가 이력`) 에서 직접 편집 가능.
-
-#### D5. PO 그룹핑 키
-`supplierId × locationId × productionLineId` (null 은 별도 그룹). 같은 그룹은 1 개 DRAFT PO 로 통합.
-
-#### D6. 미매핑 자재 처리 (스키마 변경 없음)
-"미지정" = BOM 의 자재 자체가 아니라 **자재→공급사 상품 매핑**이 안 된 상태. 즐겨찾기(`MaterialMaster.defaultSupplierItemId`) 자동 적용 후 미매핑 항목은 UI 클라이언트 상태로 빨간 영역에 표시. 미매핑이 1 건이라도 있으면 "발주 생성" 버튼 비활성화. DB 모델 추가 불필요.
-
-#### D7. 회사 계층 발주
-PO 는 항상 공장(Location) 단위로 생성됨 (P2 롤업). 회사 계층 사용자는 모든 공장 PO 를 볼 뿐, 공장 미지정 PO 는 생성되지 않는다 → `locationId` NOT NULL 유지.
-
-#### D8. 재고 인터페이스 (Phase 6 대비)
-`InventoryAdapter` 인터페이스 + `noopInventoryAdapter` (재고 0 반환) 도입. Sprint 4 재고 구현 시 실제 어댑터로 교체.
-
-#### D16. 단위 환산 다이얼로그 통합 (Phase 1.7)
-
-- **결정**: `UnitConversionInlineDialog`의 `fromUnit` 입력을 자유 텍스트(`<input>`)에서 `UnitCombobox`로 교체.
-- **사유**: 자유 텍스트는 사용자가 `"포(包)"`, `"팩 "`, `"box"` 같이 임의 값을 입력해 `UnitConversion.fromUnit`이 `SupplierItem.supplyUnit.code`와 불일치하는 데드락을 만들었음.
-- **부속 결정 (D16-4')**: 카테고리 제약 폐지. `fromUnitCategory`는 UnitCombobox에서 자동 도출하고 다이얼로그는 카테고리 미선택 시 `WEIGHT` 폴백. 자재별로 PACKAGE→g, VOLUME→g 등 카테고리 횡단 환산 허용.
-- **영향 파일**: `unit-conversion-inline-dialog.tsx`, `UnitCombobox` (`itemType="MATERIAL"`, `valueMode="code"`, `excludeValue="g"`).
-
-#### D17. 공급단위 기준 단일 단계 환산 (Phase 1.7)
-
-- **결정**: 발주량 계산식을 `gPerSupplyUnit = factor × supplyUnitQty` 단일 단계로 통일.
-  - `orderQuantityRaw = netRequiredG / gPerSupplyUnit`
-  - `orderQuantity = Math.ceil(orderQuantityRaw - 1e-9)` (부동소수 경계 보정)
-- **가드**:
-  - `fromUnit === supplyUnit.code` 강제 — 불일치 시 `requiresManualInput=true`, 경고 발생, UNMAPPED 유지.
-  - `supplyUnit.code === "g"` 예외 — factor=1 자동 적용 (환산 등록 불필요).
-  - `supplyUnitQty <= 0` → `requiresManualInput=true` (1 fallback 폐기).
-  - 환산 미등록 시 g 폴백 폐기 → 사용자에게 등록 다이얼로그 노출.
-- **회귀 테스트**: 6건 추가 (`unit-conversion.test.ts`).
-
-#### D17-8. UnitMaster.code 시스템 전반 일원화 (Phase 1.7)
-
-- **결정**: 모든 도메인의 단위 비교 키를 `UnitMaster.code`로 통일. `UnitMaster.name`은 표시 전용.
-- **사유**: PO 위저드만 `SupplierItem.supplyUnit.name`으로 비교해 `name="포(包)"` vs `code="포"`인 자재에서 영구적 "환산 미등록" 데드락 발생.
-- **변경 파일**:
-  - `build-po-items-from-mr.ts` — UnitConversion 조회 키 `supplyUnit.name` → `supplyUnit.code`.
-  - `POItemCandidate.supplierItem`에 `supplyUnitCode: string` 추가 (`supplyUnitName`은 표시용으로 유지).
-  - `po-wizard.tsx` `RESOLVE_UNMAPPED`: `calculateOrderQuantity` 단일 진실원천 사용. 옛 D3 fallback 제거.
-  - `po-wizard.tsx` `REFRESH_ROW_AFTER_CONVERSION`: D17 단일 단계 환산 + `supplyUnitCode !== fromUnit` 시 등록 거부 + unmapped→mapped 승격 가드.
-  - `step-mapping-table.tsx` — 등록 버튼 노출 키워드에 D17 메시지 추가.
-  - `unit-conversion-inline-dialog.tsx` — `suggestedFromUnit`은 항상 `supplyUnit.code`로 전달.
-
-#### D17-9. UnitConversion factor 입력 가드 (Phase 1.7, 회귀 패치)
-
-- **계기**: 사용자가 `factor=1000.0001` (`팩→g`) 입력 → DB에 그대로 저장 → 19포 발주 케이스에서 `Math.ceil`이 19.0000019를 20으로 올림 → 1박스 부풀림.
-- **결정**: 3계층 방어.
-  - **DB 청소**: `factor <> ROUND(factor) AND to_unit IN ('g','mL')` 행 검토 후 명백한 오타 보정.
-  - **클라이언트**: `unit-conversion-inline-dialog.tsx` — factor > 100000 즉시 차단, 비정수 입력 시 `confirm` 명시적 확인.
-  - **서버**: `unit-conversion.schema.ts` — `createUnitConversionSchema.factor`, `updateUnitConversionSchema.factor`에 `.max(1_000_000)` 추가.
-- **상한 근거**: 1톤=1,000,000g이 실용적 상한. 외식업 식자재 환산에 이를 초과하는 케이스는 없음.
-- **영향 없는 부분**: 기존 정상 데이터(factor=1000 등) 전혀 영향 없음. 미래 합리적 환산도 통과.
-
-#### D18. NEW 모드 표시 조건 (R1-b2 보정)
-
-- **결정**: `WizardModeSelector`는 선택된 식단군에 **활성 PO**(=DRAFT/SUBMITTED/APPROVED/RECEIVED)가 1건이라도 있으면 NEW 옵션을 **표시하지 않는다**. CANCELLED만 있는 경우는 0건과 동일하게 취급 → NEW 단독 표시.
-- **사유**:
-  - 위저드 발주는 `(mealPlanGroupId, outboundDate)` 멱등성 키로 중복 차단되므로 (R1-b1), 활성 PO 존재 시 NEW 시도는 어차피 실패한다.
-  - 라디오에 비활성 NEW를 두면 사용자가 "왜 안 되는가" 추측하게 만든다. 표시 자체를 없애 의사결정 공간을 좁힌다.
-  - 식단 외 발주는 위저드가 아닌 Phase 4-D 수동 발주 트랙에서 처리한다 (D19).
-- **표시 규칙**:
-
-  | 식단군 활성 PO 상태 | NEW | DELTA | REPLACE |
-  |---|---|---|---|
-  | 0건 (활성 PO 없음) | ✅ (단독) | — | — |
-  | DRAFT / SUBMITTED만 | ❌ | ✅ | ✅ |
-  | APPROVED 이상 포함 | ❌ | ✅ | ❌ (b4 정책 유지) |
-  | 전건 CANCELLED | ✅ (단독) | — | — |
-
-- **영향 파일**: `wizard-mode-selector.tsx` (`options` 배열에서 활성 PO > 0이면 NEW 필터 제거 + "식단 외 추가 자재" 문구 삭제), `existing-po-notice.tsx` (카운트는 활성 PO 기준), `step-meal-plan-group-select.tsx` (`handleExistingPOsLoaded` — 활성 PO 0건일 때만 자동 NEW).
-
-#### D19. 수동 발주 트랙 분리 (D2 확장, Phase 4-D 명세)
-
-- **결정**: 식단과 무관한 발주(잡자재·일회성·예외 케이스)는 위저드가 아닌 **별도 페이지** `/purchase-orders/manual` 에서 처리한다.
-- **데이터 모델 차이**:
-
-  | 필드 | 위저드 (4-B') | 수동 (4-D) |
-  |---|---|---|
-  | `isManual` | false | **true** |
-  | `sourceType` | `WIZARD_AUTO` | `MANUAL` |
-  | `mealPlanGroupId` | NOT NULL | **NULL** |
-  | `idempotencyKey` | `(mealPlanGroupId, outboundDate)` | `(supplierId, outboundDate, manualBatchId)` 별도 키 |
-  | 그룹핑 키 (D5) | `supplierId × locationId × productionLineId` | 동일 |
-  | 단가 적층 (P9') | DRAFT→SUBMITTED 시점 자동 적층 | 동일 |
-
-- **진입점**: 발주 목록 페이지 우측 상단에 버튼 2개 — "식단 기반 발주"(`/purchase-orders/new`, 위저드) / "수동 발주"(`/purchase-orders/manual`, 4-D).
-- **재사용**: Phase 4-D는 R1-c의 `SupplierItemPicker` portal + 단위환산 인라인 다이얼로그를 그대로 활용. `createPurchaseOrdersBatch` 백엔드 공유, `isManual`·`sourceType` 플래그로 분기.
-- **착수 시점**: Phase 4-C 완료 후.
-
-#### D20. 미리보기 책임 분배 (R1-b3 보정, D25 시리즈 정정)
-
-- **계기**: Step 2에서 차분 표만 보여주면 사용자가 매핑·수량을 보지 못한 상태라 의사결정에 쓸 수 없다. 실제 편집은 Step 3에서 가능하므로 차분 가이드는 Step 3에 있어야 한다. D25-2 (WizardPreviewPanel 신설) 자체는 유효하지만 Step 2 호출 위치가 잘못됐다.
-- **재분배 규칙**:
-
-  | Step | 역할 | 컴포넌트 |
-  |---|---|---|
-  | Step 1 | 식단군 선택 + 모드 선택 + 사전 안내(있음/없음·카운트) | `ExistingPONotice` + `WizardModeSelector` |
-  | Step 2 | 4분류 요약(mapped/partial/full/unmapped). **차분 표 없음** | `step-load-summary.tsx` (`DeltaPreviewCard` 호출 제거) |
-  | Step 3 | **품목별 인라인 차분**: 행마다 `기존 발주량 → 권장량 (Δ) → 발주량(편집)` 컬럼. DELTA/REPLACE에서만 노출 | `step-mapping-table.tsx` (컬럼 확장) |
-  | Step 4 | PO 분할 미리보기 (공급사 × 공장 × 라인) — 모든 모드 공통 | `WizardPreviewPanel` (D25-2 유지, Step 4 한정) |
-  | Step 5 | 최종 차분 요약(**접힘 기본**) + 신규 PO 그룹 카드 | `DeltaPreviewCard` (collapsed) |
-
-- **R1-b5에서 일괄 작업**:
-  1. Step 2의 `DeltaPreviewCard` 호출 제거.
-  2. `step-mapping-table.tsx`에 컬럼 4개 추가 (`기존 발주량`, `권장량(시스템)`, `Δ`, `발주량`) — DELTA/REPLACE 모드에서만 표시. 데이터는 `previewDeltaPlanAction.itemChanges` 재사용 (백엔드 변경 없음).
-  3. Step 5 `DeltaPreviewCard`를 `<details>` 접힘으로 변경, 헤더에 총 Δ 금액 + 변경 품목 수만 표시.
-  4. `new-mode-preview.tsx`는 D18 이후 NEW 진입 = "활성 PO 0건"이므로 차분 분기 제거, 신규 그룹 카드만 표시.
-
-#### D21. 계층별 뷰 — 권한 스코프 + 다축 그루핑 (D7 확장)
-
-D7 "회사 계층 발주"는 PO **생성** 측면만 다뤘고 **조회 가시성**(롤업 기반 뷰)은 미정의였다. 이를 두 축으로 분리한다.
-
-##### D21-A. PO 목록 다축 뷰 (Phase 4-F, 우선)
-
-- **결정**: PO 목록 페이지에 **그루핑 토글** 3종 — `출고일` / `공급사` / `라인업(공장 × 라인)`.
-- **기본값**: 출고일 그루핑 (운영자 멘탈 모델: "오늘/내일 나갈 발주").
-- **구현 방식**: 백엔드 동일, 클라이언트 `groupBy`만 변경. 그룹 헤더에 소계(건수 + 총액) 표시.
-- **예시 (출고일 그루핑)**:
-  📅 2026-07-01 (목) ── 12건 / ₩4,820,000 ├ 김치공장 · A공급사 · 라인1 ₩1,200,000 ├ 김치공장 · B공급사 · (공통) ₩2,200,000 └ 반찬공장 · A공급사 · 라인2 ₩1,420,000 📅 2026-07-02 (금) ── 8건 / ₩3,100,000 ...
-
-
-- **공급사 그루핑**: 공급사별 정산·납품 일정 확인 시.
-- **라인업 그루핑**: 공장×라인 단위 원가 배분 확인 시 (헌법 P2 롤업의 직접 시각화).
-
-##### D21-B. 권한 스코프 (Phase 4-E, 후순위)
-
-- **결정**: 사용자의 `ScopeRole`에 따라 PO 조회 범위 제한.
-
-| ScopeRole | PO 조회 범위 |
-|---|---|
-| SYSTEM_ADMIN / COMPANY_ADMIN | 회사 내 전체 |
-| LOCATION_MANAGER (신규) | 해당 `locationId` PO만 |
-| LINE_MANAGER (신규) | 해당 `productionLineId` PO만 (`productionLineId IS NULL`인 공통자재는 LOCATION_MANAGER만 조회) |
-
-- **구현 위치**: `purchase-order.service.ts`의 `listPurchaseOrders` `where` 조건 추가.
-- **착수 시점**: 다중 사용자 환경 진입 시 (현재는 단일 운영자 가정 → 후순위).
-
-#### D22. 위저드 컴포넌트 책임 정리 (R1-b5 적용 후)
-
-R1-b5 패치 적용 후 위저드 컴포넌트 트리의 책임 분담은 다음과 같다.
-
-po-wizard.tsx (state machine + step orchestration) 
-├─ step-meal-plan-group-select.tsx [Step 1] 
-│ 
-├─ ExistingPONotice ← 활성 PO 카운트만 (D18) 
-│ 
-└─ WizardModeSelector ← NEW/DELTA/REPLACE (D18 표시 규칙) 
-├─ step-load-summary.tsx [Step 2] 
-│ 
-└─ (DeltaPreviewCard 제거) ← 4분류 요약만 (D20) 
-├─ step-mapping-table.tsx [Step 3] 
-│ 
-├─ SupplierItemPicker (portal) 
-│ 
-├─ UnitConversionInlineDialog 
-│ 
-└─ DELTA/REPLACE: 인라인 차분 컬럼 ← 신규 (D20) 
-├─ WizardPreviewPanel [Step 4] 
-│ 
-├─ NewModePreview (NEW) ← 신규 그룹 카드만 
-│ 
-└─ StepSplitPreview (DELTA/REPLACE) ← PO 분할 표시 
-└─ step-confirm-create.tsx [Step 5] 
-├─ ExistingPONotice (재사용) 
-└─ DeltaPreviewCard (collapsed) ← D20 접힘  
-
-
-#### D23. 발주 수량 정수 강제 (Phase 1.7, R1-b5-3)
-
-- **결정**: 모든 발주량(`PurchaseOrderItem.quantity`) 은 정수만 허용. 소수 입력은 라운드업.
-- **사유**: 박스/포대 단위 발주는 분할 불가 — 사용자가 `12.5` 입력 시 13으로 자동 보정해 운영 사고 예방.
-- **적용**:
-  - 클라이언트: `QuantityCell` `step={1}`, `inputMode="numeric"`, onChange 에서 `parseInt + Math.ceil`. 시스템 권장값과 직접 비교(부동소수 임계값 폐기).
-  - reducer: `UPDATE_QUANTITY` 의 payload value 에 `safeValue = Math.max(0, Math.ceil((value ?? 0) - 1e-9))` 가드.
-  - 표시: `DeltaPreviewCard` 의 `ChangeRowsTable` 과 `newGroups` 도 `Math.round` 로 표시 안전성.
-- **테스트 시나리오**: 12.5 → 13, 빈 입력 → 0, 권장값으로 되돌리기 동작 검증.
-
-#### D27. 멱등성 가드 — 전량 취소 batch 제외 + PO 목록 취소 기본 숨김 (R1-b5 부속)
-
-- **계기**: 위저드로 5건 생성 → REPLACE/수동으로 모두 CANCELLED → 같은 식단그룹·모드로 재진입 시 "동일 세션으로 생성된 발주서 0건이 있어 기존 결과를 반환합니다" 토스트가 떠 신규 발주가 영구 차단되던 회귀.
-- **원인**: `createPurchaseOrdersBatch` 의 idempotent lookup 이 `existingBatch.purchaseOrders` 의 `status` 를 검사하지 않아 전량 취소된 batch 도 replay 매칭. localStorage 토큰 24h TTL.
-- **결정**:
-  1. 서버에서 매칭된 batch 의 PO 가 전량 CANCELLED 이면 replay 가 아니라 신규 생성 경로로 fall-through. 단 `PurchaseOrderBatch.idempotencyKey` 가 Prisma 스키마상 non-nullable + unique 이므로 null 갱신 불가 → **신규 토큰을 suffix `_r{timestamp}` 로 발급해 이번 호출만 새 batch 생성**. 기존 batch 행/PO 는 감사 추적용 보존.
-  2. 활성 PO 가 1건이라도 있으면 정상 replay (응답에서 CANCELLED 는 제외해 표시 정합 유지).
-  3. 클라이언트 보조 가드: `step-meal-plan-group-select.tsx` 의 `handleExistingPOsLoaded` 에서 활성 PO 0건이면 localStorage 의 모든 모드 토큰을 일괄 폐기.
-- **PO 목록 정책 (C-1)**: CANCELLED 는 감사 추적용 보존하되 목록 기본은 숨김.
-  - `purchase-order-list.tsx`: STATUS_OPTIONS 에 "활성 (취소 제외)" / "전체 (취소 포함)" 분리, 기본 `statusFilter = "active"`.
-  - `purchase-order.schema.ts`: `excludeCancelled` 쿼리 파라미터 추가.
-  - `purchase-order.service.ts`: `status` 미지정 + `excludeCancelled=true` 이면 `where.status = { not: "CANCELLED" }`.
-- **회귀 방어**: 위저드 5건 생성 → 전량 취소 → 재진입 → 신규 발주 정상 생성 시나리오 수동 검증 완료.
-
-- **Phase 4-C / D28** (commits `{커밋해시들}`) — 품목별 예상 입고일 표시 정책 통일:
-  - `format-lead-time.ts` 유틸 3종 (`formatLeadTimeBadge`, `calculateExpectedReceiveDate`, `formatExpectedReceiveDate`) — Step 5 위저드와 상세 화면이 공유
-  - `POItemCandidate.supplierItem` 에 `leadTimeDays` 노출 (`build-po-items-from-mr.ts`)
-  - `po-wizard.tsx` `RESOLVE_UNMAPPED` 리듀서가 새로 매핑되는 행에도 `leadTimeDays` 전달 (회귀 1건 fix)
-  - Step 5 (`step-confirm-create.tsx`) 에 품목별 `D-N · YYYY-MM-DD` 리스트 추가 — 출고일 입력 전에는 안내 문구
-  - 상세 (`purchase-order-detail.tsx`) "예상 입고일" 셀을 `formatDate(ko-KR)` → `formatExpectedReceiveDate(YYYY-MM-DD)` 로 통일
-  - 정책 분리: Step 5 = D-N + 절대일자(미리보기), 상세 = 절대일자만(확정값), 헤더 = 표시 안 함 (D20 와 정합)
-
-#### D28. 품목별 예상 입고일 표시 정책 (2026-06-26, D20 보강)
-
-- **결정**: 출고일(outboundDate) 기준으로 품목별 리드타임을 적용한 예상 입고일을 두 화면에 일관되게 표시.
-  - **Step 5 위저드**: 출고일이 지정되면 각 품목 row에 `D-N` 배지 표시 (예: 리드타임 1일 → "D-1 (출고 하루 전)")
-  - **발주서 상세 화면**: 출고일 헤더와 함께 품목별 `expectedReceiveDate = outboundDate − leadTimeDays` 절대일자(YYYY-MM-DD) 컬럼
-- **D20과의 관계**: D20에서 폐기한 것은 "PO 목록·위저드 헤더의 단일 입고일 칸"이며, 본 D28은 품목 단위 표기를 부활시키는 게 아니라 D20 이후 정합화. 헤더 단일 칸은 여전히 없음.
-- **구현 위치**: Phase 4-C(발주서 상세)에서 컬럼 추가, Step 5 D-N 배지는 동일 PR에서 가볍게 부착.
-
-#### D29. Step 4 라인업 3종 뷰 (2026-06-26, Fix-R2 재정의)
-
-- **결정**: Step 4(분할 미리보기) 및 발주서 목록의 다축 뷰를 3가지 탭으로 제공.
-  1. **공급업체별 뷰** — 현재 `StepSplitPreview`(supplier × location × line 그룹핑)를 흡수
-  2. **라인업별 뷰** — 제조라인 → 품목 (해당 라인에서 필요한 자재)
-  3. **계층 분리 뷰** — 회사 → 공장 → 제조라인 트리
-- **백엔드**: `lineupBreakdownAction` 신설 — 발주 후보를 3축으로 집계 반환
-- **구현 위치**: Phase 4-F(PO 목록 다축 뷰, D21-A)와 통합하거나 **별도 Phase 4-C2로 분리**. 우선순위가 4-C(상세) 다음, 4-D(수동발주) 이전.
-- **Fix-R2 잔여 처리**: Step 4 `lineupBreakdown` 백엔드 항목은 본 D29로 흡수되어 닫힘. Fix-R2의 또다른 항목인 Step 5 품목별 입고일은 D28로 흡수됨. 따라서 Fix-R2 자체는 닫힘 처리.
-
-#### D30 (예고). 입고서 ↔ 발주서 관계 모델 (Phase 5 착수 전 확정)
-
-- **방향**: 1 ReceivingNote ↔ N PurchaseOrderItem (다대다, ReceivingNoteItem이 PO item을 FK로 참조).
-- **사유**:
-  - 운영 현장 멘탈 모델 = "오늘 공장에 들어온 물건" 1건 = 1 입고서
-  - 같은 일자에 여러 PO의 자재가 섞여 들어와도 1 입고서로 처리 가능
-  - 헌법 P2/P3 정합 (입고는 공장 단위, 재고도 공장 단위)
-- **트리거 구조**:
-  - 발주서 APPROVED 전이 = 입고서 작성 가능 시점 (발주 담당자의 마지막 행위)
-  - 입고서 확정 = `PurchaseOrderItem.receivedQty` 증분 (입고 담당자의 행위)
-  - `SUM(receivedQty) === SUM(quantity)` 조건 충족 시 PO 자동 `APPROVED → RECEIVED` (서비스 가드)
-- **입고 작성 UX (Phase 5)**: 입고일·공장 선택 시 "그 일자 예상 입고인 모든 활성 PO 품목" 자동 표출. 출고일 + 품목별 leadTimeDays로 계산.
-- **Phase 4-C와의 인터페이스**: 발주서 상세 품목 테이블에 "입고 수량" 컬럼 자리만 미리 잡고 Phase 5 완료까지는 `0 / quantity` 표기.
-- **확정 시점**: Phase 4-D 완료 직후, Phase 5 착수 직전 D30으로 정식 확정.
-
-### D30 (2026-06-30 ~ 2026-07-01) 입고서 확정 & 재고 반영
-
-- ✅ C-1 스키마: ReceivingDiscrepancy 모델 + ReceivingNote.confirmedAt/confirmedByUserId
-  (migration: phase_3_d30_receiving_discrepancy_and_confirmed_meta, commit 67a60e34)
-- ✅ C-2 서비스: confirmReceivingNote 단일 트랜잭션 구현, 10/10 tests pass
-  (commit f8764185, 4da325a)
-- ✅ C-3-a 액션: confirmReceivingNoteAction + 6 tests pass
-  - 권한 리소스 seed 추가: "receiving-note" (seed.ts sysAdminResources)
-  - 정책 문서화: docs/progress/RECEIVING_INVENTORY_POLICY.md 신규 (§1-7)
-- ⏳ C-3-b UI: /receiving 신규 라우트 (목록 + 상세 + 확정 다이얼로그) — 다음 진행
-
-### D30 진행 상황 갱신 (2026-07-01)
-
-- ✅ C-3-a 액션: confirmReceivingNoteAction 구현 완료
-  - 권한 리소스 seed 추가: `"receiving-note"` (prisma/seed.ts sysAdminResources, 108개 PermissionSetItem 반영 확인)
-  - 정책 문서 신규: `docs/progress/RECEIVING_INVENTORY_POLICY.md` (§1-7: 도메인/단가/위치/Discrepancy 부호/부자재/멱등성/변경이력)
-  - 도메인 에러 매핑: NOT_FOUND / ALREADY_CONFIRMED / FORBIDDEN / UNSUPPORTED_SUBSIDIARY
-  - 테스트 6/6 pass (`src/tests/confirm-receiving-note.action.test.ts`)
-- ⏳ C-3-b UI: /receiving 신규 라우트 (목록 + 상세 + 확정 다이얼로그) — 다음 진행
-
-## D30-8. ReceivingDiscrepancy 관계 격리 정책
-
-`ReceivingDiscrepancy`는 감사·스냅샷 성격의 이력 테이블이다.
-`purchaseOrderItemId`, `receivingNoteItemId` FK 스칼라는 유지하되 Prisma 관계 라인은
-의도적으로 정의하지 않는다. 이유:
-
-- 스냅샷 값(expectedQty, actualQty, expectedUnitPrice, actualUnitPrice, diffValue)은
-  기록 시점에 이미 박제되어 있어 관계로 현재 상태를 다시 끌어올 필요가 없다.
-- 상위 엔티티(PurchaseOrderItem/ReceivingNoteItem)가 변경·삭제되어도 이력의 진실성이
-  유지되도록 soft dependency 를 유지한다.
-
-UI에서 품목명 등 부가 정보가 필요한 경우, 이미 로드된 `receivingNote.purchaseOrder.items`
-에서 `purchaseOrderItemId` 로 클라이언트 사이드 조인한다.
-
-### 발견된 별건 이슈 (D30 스코프 외)
-
-- **seed.ts MealPlan 멱등성 버그**: `existingPlanB_LunchFresh` 조건이 unique key `(meal_plan_group_id, company_meal_slot_id, lineup_id)` 와 어긋나 재실행 시 P2002 발생. `receiving-note` 권한 seed 반영에는 영향 없음 (해당 단계 이후 실패). 별건 D 항목으로 분리 처리 예정.
-- **권한 리소스 키 불일치**: `bulk-transition-po-status.action.ts` 등이 `"purchase-order"` 리소스 키를 사용하나 seed 의 `sysAdminResources` 에는 `"purchasing"` 만 존재. SYSTEM_ADMIN·COMPANY_ADMIN 은 `assertPermission` 앞단에서 통과하므로 현재 운영은 문제없지만, MEMBER 롤 사용자는 FORBIDDEN 이 발생하는 잠재 버그. 별건으로 정리 필요.
-
-#### D31 (예고). 부분 입고 진행률 UX (Phase 5)
-
-- 발주서 상세에서 입고 진척률을 품목별 `receivedQty / quantity` (예: "5/10 박스")로 표시.
-- APPROVED 상태이고 1품목이라도 `receivedQty > 0` 이면 "입고 진행중" 배지.
+Sprint 3.5(보완) 및 Sprint 4 ~ Sprint 8 로드맵. 각 Sprint 는 스키마 실측(`prisma/schema.prisma`) 및 `SCHEMA_COVERAGE.md` 의 모델 배치를 SSOT 로 삼는다. Phase 번호는 착수 시점에 조정 가능.
 
 ---
 
-### Sprint 3 누적 산출물 요약
+### Sprint 3.5 — 수동(독립) 발주 보완 [Sprint 3 사후 보완]
 
-**신규 파일** (백엔드):
-- `src/features/purchase-order/schemas/purchase-order.schema.ts`
-- `src/features/purchase-order/services/purchase-order.service.ts`
-- `src/features/purchase-order/services/purchase-order-batch.service.ts`
-- `src/features/purchase-order/actions/purchase-order.action.ts`
-- `src/features/purchase-order/lib/unit-conversion.ts`
-- `src/features/purchase-order/lib/build-po-items-from-mr.ts`
-- `src/features/purchase-order/lib/inventory-adapter.ts`
-- `src/features/purchase-order/lib/stack-price-history.ts`
+**목적**: 식단 기반 발주 외 독립 발주 경로를 신설하여 P1' 를 코드로 구현. 라인업 귀속 축을 필수화하여 원가 산정 누락을 방지.
 
-**R1-b 추가 신규 파일** (R1-b1·b2·b3):
-- `src/features/purchase-order/services/po-delta.service.ts` — `computeDeltaPlan` 순수 함수 (DELTA 차분 계산)
-- `src/features/purchase-order/components/wizard/wizard-mode-selector.tsx` — NEW/DELTA/REPLACE 모드 라디오
-- `src/features/purchase-order/components/wizard/existing-po-notice.tsx` — Step 1·5 기존 PO 사전 안내 카드
-- `src/features/purchase-order/components/wizard/delta-preview-card.tsx` — Step 2·5 차분 미리보기 카드
-- `src/tests/po-delta.service.test.ts` — `computeDeltaPlan` 유닛 테스트 (14건)
+**스코프**: `PurchaseOrder.isManual=true` 브랜치. 스키마 실측 기반:
+- `PurchaseOrder(isManual, locationId, productionLineId?, lineupId?)` — `isManual=true` 인 경우 `lineupId` 필수화(서비스 검증)
 
+#### Phase S3.5-1 — 수동 발주 서비스·액션
 
-**Phase 4-B'-5a 추가** (`cff165e4`):
-- `purchase-order.schema.ts` 에 `loadPOWizardDataSchema` / `LoadPOWizardDataInput` 추가
-- `purchase-order.action.ts` 에 3개 위저드 action 추가:
-  - `getMealPlanGroupsForOrderAction()` — IN_PROGRESS/COMPLETED 그룹, 최근 30일, planDate desc, take 100
-  - `loadPOWizardDataAction(input)` — `loadPOWizardDataSchema` 파싱 → MR 조회 → `buildPOItemsFromMR` 호출
-  - `createPurchaseOrdersBatchAction(input)` — `companyId`/`createdByUserId` 세션 강제 주입, 배치 생성 후 PO 1건당 감사 로그 1개
-- 모두 thin wrapper (별도 서비스 미생성), 권한: READ 또는 CREATE, 도메인 에러 매핑은 service 의 에러 코드 재사용
+- 서비스: `createManualPurchaseOrderDraft(input)` — MR 없이 사용자가 자재·수량·공급사·단가·outboundDate 직접 입력. 필수: `locationId`, `lineupId`. 선택: `productionLineId`.
+- 액션: 기존 PO 위저드 서비스와 분리된 별도 진입점. 위저드는 식단 기반 전용.
+- 스키마 보강 검토: `PurchaseOrder.lineupId` 를 nullable 유지하되, `isManual=true` 시 애플리케이션 레이어에서 NOT NULL 검증. (또는 CHECK 제약 도입 검토)
 
-**테스트**: `unit-conversion (16) + build-po-items-from-mr (9) + purchase-order-batch (17) + stack-price-history (8) + purchase-order.service (27 — 8 신규 포함) + purchase-order.schema (27)` = Sprint 3 신규 104 tests.
+#### Phase S3.5-2 — 수동 발주 UI
 
-**도메인 에러 코드**:
-`NOT_FOUND` / `PO_LOCKED` / `PO_NOT_DRAFT` / `INVALID_TRANSITION` / `LOCATION_NOT_FOUND` / `PRODUCTION_LINE_NOT_FOUND` / `LINE_LOCATION_MISMATCH` / `EMPTY_ITEMS` / `SUPPLIER_NOT_FOUND` / `SUPPLIER_ITEM_NOT_FOUND`
+- `/purchase-orders/manual/new` — 자재 선택(자재 마스터 검색) → 공급사·단가·수량 → Location·Lineup·ProductionLine 지정 → outboundDate → DRAFT 저장
+- 기존 `/purchase-orders/[id]` 상세는 `isManual` 플래그에 따라 배지 표기.
+- 목록 `/purchase-orders` 에서 `isManual` 필터 추가.
 
-**권한 키**: `purchase-order:READ` / `:CREATE` / `:UPDATE` / `:DELETE` (Sprint 7 PermissionSet seed 등록 예정)
+#### Phase S3.5-3 — 테스트·문서
 
-**Phase 4-B'-5b 추가** (`d48a9e2`):
-- `src/app/(dashboard)/purchase-orders/new/page.tsx` — 라우트 + 권한 가드 (requireCompanySession + assertPermission)
-- `src/features/purchase-order/components/wizard/po-wizard.tsx` — useReducer 기반 5-step 컨테이너, 진행바, 네비게이션
-- `src/features/purchase-order/components/wizard/step-meal-plan-group-select.tsx` — Step 1 식단 그룹 선택 + countSource 토글
-- `src/features/purchase-order/components/wizard/step-load-summary.tsx` — Step 2 자동 로드 + 4-카드 요약
-- 기존 `purchase-orders/page.tsx` 의 "신규 발주" 버튼 → `/purchase-orders/new` 라우팅으로 변경, 재설계 안내 배너 제거
-- Step 3~5 는 placeholder (4-B'-5c 에서 구현)
-- 테스트: 신규 없음 (UI thin wrapper, 5a 액션 재사용)
+- 서비스 유닛 테스트: lineupId 누락 시 실패, 정상 케이스 성공
+- 문서: `docs/progress/PO_LIFECYCLE.md` 에 수동 발주 경로 섹션 추가
 
-**Phase 4-B'-5c 추가** (`655da30`):
-- `step-mapping-table.tsx` — 3섹션(미매핑/매핑됨/재고충당) 인라인 편집 테이블
-- `supplier-item-picker.tsx` — 자재별 공급업체×품목 콤보박스 (`getSupplierItemsByMaterialAction` 재사용)
-- `step-split-preview.tsx` — 공급업체×공장×라인 그룹 미리보기
-- `step-confirm-create.tsx` — 주문일/납기일/메모 + `createPurchaseOrdersBatchAction` 호출 + 리스트 리다이렉트
-- `use-wizard-persistence.ts` — localStorage 저장 훅 (복구는 별도 작업)
-- `po-wizard.tsx` reducer 확장: UPDATE_QUANTITY/UPDATE_UNIT_PRICE/RESOLVE_UNMAPPED/SET_ORDER_DATE/SET_DELIVERY_DATE/SET_NOTE
-- 미매핑 매핑 시 `supplyUnitQty` 기반 자동 ceil 재계산
-- Step 3 가드: `unmapped.length > 0` 이면 "다음" 차단
-- 테스트: 신규 없음 (UI-only)
+---
 
-**4-B'-5c 이월 항목**: localStorage 복구(reload 시 자동 복원) — Phase 4-D hotfix 후보. 단가 변경 시각 강조 — currentPrice 비교 로직 필요, 추후 보완.
+### Sprint 4 — 재고·이동·조리계획·사용·실사·대시보드
 
-### Sprint 3 Phase 4-B'-5c 후속 결정사항 (사용자 피드백 기반)
+**목적**: 입고 이후의 재고 도메인을 완성하고, 재고 이동·조리 계획·사용(Consumption)까지 연결하여 "일별 라인업 원가"(P7 전반부) 의 데이터 소스를 확보한다.
 
-본 결정사항은 2026-06-17 위저드 UI 1차 완성 직후 사용자 피드백을 기반으로 합의된 6단계 후속 Fix 계획이다.
+**스키마 실측 기반 스코프**: `InventoryLot`, `InventoryTransaction`, `InventoryReservation`, `InventoryTransfer`/`InventoryTransferItem`, `StockTake`/`StockTakeItem`, `ConsumptionItem`/`ConsumptionLotDetail`, `CookingPlan`/`CookingPlanItem`/`CookingPlanSlot`.
 
-#### D9. 출고일 기반 발주 관리 (헌법 P8 구체화)
+#### Phase S4-0 — 스키마 보강 (Sprint 4 진입 게이트)
 
-**용어 통일** (전 시스템 적용):
+착수 전 반드시 완료해야 하는 준비 Phase. **정책은 헌법에서 이미 확정됨** — 여기는 스키마·마이그레이션만 처리.
 
-| 기존 용어 | 새 용어 | 정의 |
+- **S4-0-a**: `InventoryTransaction` 부자재 지원 스키마 보강
+  - 현 상태: `materialMasterId` NOT NULL, `subsidiaryMasterId` 컬럼 없음
+  - `ConsumptionItem` 은 이미 `itemType` (MATERIAL/SUBSIDIARY) + `subsidiaryMasterId` 지원
+  - `InventoryLot` 도 이미 `itemType` + `subsidiaryMasterId` 지원
+  - **적용**: `InventoryTransaction.materialMasterId` nullable + `subsidiaryMasterId` 컬럼 추가 + `itemType` 추가. `ReceivingNoteService.confirmReceivingNote` 의 `UnsupportedSubsidiaryReceivingError` 해소.
+- **S4-0-b**: `InventoryReservation` 활성화 (정책 확정됨 — 예약 도입)
+  - 필드 재점검: `lotId`, `qty`, `sourceType(CookingPlan)`, `sourceId`, `releasedAt?`, `releaseReason?`
+  - Lot 잔량 계산 헬퍼: `getAvailableQty(lotId)` 및 `getAvailableQtyByMaterial(materialMasterId, locationId)`
+  - Cron 스크립트 뼈대: `expireStaleReservations()` (Sprint 5 대시보드에서 실제 스케줄러 연결)
+- **S4-0-c**: `AuditLog` 진입 유틸 표준화 (Sprint 8 전면 적용 전 최소 헬퍼)
+  - `writeAuditLog(tx, {action, entityType, entityId, before, after, userId, companyId})` 헬퍼 신설
+  - Sprint 3 의 bulk transition 코드에서 사용된 패턴을 공용 유틸로 승격
+
+#### Phase S4-1 — 재고 조회 + 재고 이동 (동일 Company 내 재고 보유 주체 간 상호 이동)
+
+**중요**: 재고 이동은 Sprint 4 의 핵심 축이다. **동일 Company 내에서 재고를 보유할 수 있는 모든 Location 간에 상호 이동이 가능**하다. 대표 유스케이스:
+- 중앙 창고(WAREHOUSE) → 지점 공장(FACTORY) / 지점 창고(WAREHOUSE)
+- **공장(FACTORY) ↔ 공장(FACTORY)**: 잉여 재고 재배치, 긴급 지원, 라인업 재편으로 인한 이관
+- 공장(FACTORY) → 창고(WAREHOUSE): 미사용 재고 반납·재보관
+- HYBRID Location 은 위 모든 조합의 참여 주체가 될 수 있음
+- **Cross-Company 이동은 불가** — Lot 은 하나의 Company 내에서만 관리되는 단위(P3 보강)
+
+- **모델**: `InventoryLot`(조회), `InventoryTransaction`(조회), `InventoryTransfer`/`InventoryTransferItem`(신규 서비스)
+- **enum 활용**: `TransferType(PUSH/PULL)`, `TransferStatus(REQUESTED/DRAFT/CONFIRMED/RECEIVED/CANCELLED)`
+- **PUSH vs PULL**:
+  - `PUSH`: 출발지가 발신 주도 (예: 중앙 창고가 지점으로 밀어보냄)
+  - `PULL`: 도착지가 요청 주도 (예: 지점이 중앙 창고에 요청)
+- **서비스**:
+  - `getLotsByLocation(locationId, options)` — Lot 단위 조회, `availableQty`(예약 차감 후) 포함
+  - `getLotsByMaterial(materialMasterId, locationId?)` — 자재 단위 집계
+  - `getRemainingQuantity(materialMasterId, locationId)` — 잔량 합계 (실물 기준)
+  - `getAvailableQuantity(materialMasterId, locationId)` — 가용 잔량 (예약 차감)
+  - `createInventoryTransfer(input)` — DRAFT/REQUESTED
+  - `confirmInventoryTransfer(id, existingTx?)` — 출발지 `InventoryTransaction(type=TRANSFER_OUT)` + Lot `remainingQty` 차감
+  - `receiveInventoryTransfer(id, existingTx?)` — 도착지 `InventoryTransaction(type=TRANSFER_IN)` + 도착지 신규 Lot 생성 (또는 기존 Lot merge 정책 결정 — 초기 안: 신규 Lot 생성으로 이력 보존)
+- **원칙 준수**:
+  - 출발지·도착지 모두 `LocationType ∈ {FACTORY, WAREHOUSE, HYBRID}` (P3 보강)
+  - **출발지·도착지의 `companyId` 가 동일해야 함** — 불일치 시 `CROSS_COMPANY_TRANSFER_FORBIDDEN` (P3 보강)
+  - 동일 Company 내 두 Location 간 조합에는 제약 없음. FACTORY↔FACTORY 도 허용.
+  - `출발지 == 도착지` 자기 이동은 서비스 레벨에서 차단 (`SAME_LOCATION_TRANSFER_FORBIDDEN`)
+  - ProductionLine 은 이동의 소스·목적지가 될 수 없다 (P3 보강)
+  - 출발지 잔량 부족 시 CONFIRMED 차단 (P11 준용)
+- **UI**: `/inventory` (Location 별 재고 조회), `/inventory/transfers` (이동 이력 + 신규)
+- **테스트**: FIFO 조회 정렬, 이동 원자성, PUSH/PULL 흐름, 잔량 부족 차단, 예약 차감된 availableQty 정확성
+
+#### Phase S4-2 — 조리 계획 (CookingPlan) + 예약 생성
+
+- **모델**: `CookingPlan` + `CookingPlanItem` + `CookingPlanSlot` (bomSnapshotJson 로 BOM 스냅샷) + `InventoryReservation`(연동)
+- **enum 활용**: `CookingPlanStatus(DRAFT/CONFIRMED/COMPLETED/REPLACED)`
+- **관계**: `MealPlanSlot → CookingPlan(productionLineId, planDate) → ConsumptionItem`
+- **BOM 스냅샷 정책**: `CookingPlanSlot.bomSnapshotJson` 에 사용 시점의 `RecipeBOM` 스냅샷을 저장 → BOM 마스터가 이후 변경되어도 원가 재계산이 흔들리지 않음
+- **CONFIRMED 전이 시 예약 생성** (P11·예약 정책):
+  1. 각 `CookingPlanItem` 마다 필요 자재·수량 계산 (BOM 스냅샷 기준)
+  2. 대상 ProductionLine 의 소속 Location 에서 FIFO Lot 선정
+  3. `availableQty` 합계 < 필요량 이면 `INSUFFICIENT_STOCK` throw
+  4. 통과 시 `InventoryReservation` 생성 (Lot 별 분할)
+- **자동 생성**: `MealPlanGroup` 상태가 `IN_PROGRESS → COMPLETED` 전이 시 `CookingPlan` 자동 생성 (`AutoGenLog` 기록)
+- **REPLACED / DRAFT 재편집 시**: 기존 Reservation 자동 해제(`MANUAL_CANCEL`)
+- **UI**: `/cooking-plans`, `/cooking-plans/[id]`
+
+#### Phase S4-3 — 사용/소비 (Consumption)
+
+- **모델**: `ConsumptionItem` + `ConsumptionLotDetail`
+- **enum 활용**: `ConsumptionStatus(DRAFT/CONFIRMED)`, `ConsumptionDisposition(USED/RETURNED/DISPOSED)`, `DisposalReason(EXPIRED/DAMAGED/CONTAMINATED/OVER_PREPARED/OTHER)`
+- **disposition 3분기 처리**:
+  - `USED` → `InventoryTransaction(type=CONSUMPTION)` 발생, `ConsumptionLotDetail` 로 Lot 분할 기록, Reservation 해제(`CONSUMED`)
+  - `RETURNED` → 트랜잭션 없음 (애초에 출고되지 않은 양). Reservation 있으면 해제(`MANUAL_CANCEL`)
+  - `DISPOSED` → `InventoryTransaction(type=DISPOSAL)` 발생, `disposalReason` 필수, 손실 원가에 별도 집계. Reservation 해제(`CONSUMED` — 소진 처리)
+- **손질 손실(정상 손실) vs 폐기(예외 손실)**: 손질 손실은 `BOM.yieldRate`(또는 `RecipeBOM.baseWeightG` 대비)에서 흡수. `DisposalReason` enum 에 포함하지 않음.
+- **재고 차감 (P11 Pre-flight 필수)**:
+  1. Reservation 이 있으면 → Reservation 대상 Lot 을 그대로 차감 (이중 예약 방지)
+  2. Reservation 이 없으면 (예: 예약 없이 즉시 소비) → FIFO 로 재선정 + Pre-flight 검증
+  3. 잔량 부족 시 `INSUFFICIENT_STOCK` throw — 재고 이동 또는 발주가 선행되어야 함
+- **서비스**:
+  - `createConsumptionItemDraft(input)` — DRAFT
+  - `confirmConsumptionItem(id, existingTx?)` — Pre-flight → Lot 차감 + `InventoryTransaction` + `ConsumptionLotDetail` + Reservation 해제
+  - `updateConsumptionDisposition(id, disposition, reason?, note?)` — USED/RETURNED/DISPOSED 전환
+- **원가 raw data**: 각 `ConsumptionLotDetail.unitPrice` = 소진된 Lot 의 unitPrice. 이것이 P7 실시간 원가의 base.
+- **감사**: 확정·폐기·수량 변경 시 `AuditLog` 자동 기록 (S4-0-c 헬퍼 사용)
+
+#### Phase S4-4 — 재고 실사 (StockTake)
+
+- **모델**: `StockTake` + `StockTakeItem`
+- **enum 활용**: `StockTakeStatus(DRAFT/IN_PROGRESS/PENDING_REVIEW/COMPLETED)`
+- **서비스**:
+  - `createStockTakeDraft(locationId, takeDate)` — DRAFT
+  - `startStockTake(id)` — IN_PROGRESS 로 전이, 시점의 `systemQty` 스냅샷을 각 `StockTakeItem.systemQty` 에 저장
+  - `enterActualQty(itemId, actualQty)` — `difference = actualQty - systemQty` 자동 계산
+  - `submitStockTake(id)` — PENDING_REVIEW
+  - `completeStockTake(id, existingTx?)` — 원자적: 각 `StockTakeItem` 마다 `InventoryTransaction(type=ADJUSTMENT)` 적층 + `InventoryLot` 조정. 조정 대상 Lot 선정 정책 초기 안: **잔량 비례 분배**. 마이너스 조정 시에도 잔량 0 미만 금지(P11).
+- **원칙**: 불일치 추적 도메인 분리 — `ReceivingDiscrepancy` 와 절대 상호 트리거하지 않는다.
+- **UI**: `/stock-takes`, `/stock-takes/new`, `/stock-takes/[id]`
+- **등급별 실사 빈도 판정** (StockGrade 연동, 원자재·부자재 공통):
+  - 자재 마스터(`MaterialMaster.stockGrade`) 및 부자재 마스터(`SubsidiaryMaster.stockGrade`) 를 함께 조회하여 실사 도래 여부 판정.
+    - A(가): 마지막 실사일 이후 사용(CONSUMPTION) 발생 시 즉시 도래. Consumption 확정 화면에서 A 등급 자재 실사 촉구 배너.
+    - B(나): 마지막 실사일로부터 7일 경과 시 도래.
+    - C(다): 마지막 실사일로부터 1개월 경과 시 도래.
+  - 서비스: `getDueStockTakeMaterials(locationId, referenceDate)` — 등급별 대상 원자재+부자재 리스트 반환.
+  - `StockTake` 생성 시 이 리스트를 프리셋으로 자동 채움 (사용자가 가감 가능).
+  - **알림 연동**: Sprint 5 S5-5 에서 `STOCK_TAKE_DUE_A/B/C` 태그 발송. Cron 은 매일 실행하여 도래 판정.
+
+#### Phase S4-5 — 재고 현황 대시보드
+
+- **범위**:
+  - Location × 자재별 잔량 (실물 / 가용)
+  - 회전율 (자재별 최근 30/60/90일 소비량 대비 잔량)
+  - **악성 재고 탐지**: 장기 미사용(N일 이상 소비 이력 없음) + 유효기간 임박 목록
+  - 최근 이동/폐기 요약
+  - `disposition` 비율 (USED/RETURNED/DISPOSED) 및 사유별 폐기 통계
+  - 예약 현황 (활성 Reservation 요약)
+- **UI**: `/dashboard/inventory`
+- **의존**: S4-1 ~ S4-4 완료
+
+---
+
+### Sprint 5 — 원가·간접비 인프라·월말 마감·알림
+
+**목적**: Sprint 4 에서 확보한 CONSUMPTION/DISPOSAL 데이터로 **재료비 기반 실시간 라인업 원가**를 산출하고, 월말 회계 원가 스냅샷과 크로스체크한다 (P7). 간접비는 **인프라만 마련**하여 향후 입력 시 자동 합산되도록 한다.
+
+**스키마 실측 기반 스코프**: `CostSnapshot`/`CostSnapshotItem`, `CostCalculation`/`CostCalculationItem`, `OverheadCost`, `MonthEndSnapshot`/`MonthEndAdjustment`/`MonthEndAdjustmentItem`, `NotificationTagDef`/`NotificationRule`/`NotificationTemplate`/`NotificationLog`.
+
+#### Phase S5-1 — 일별 라인업 원가 산출 (실시간, 재료비 기반)
+
+- **모델**: `CostCalculation` (`CostType: ESTIMATED/ORDER_BASED/ACTUAL`) + `CostCalculationItem`
+- **축**: `outboundDate × lineupId × productionLineId` (라인업이 최우선, 공장·제조라인은 레퍼런스)
+- **소스**:
+  - **ESTIMATED (예상 식수 원가)**: `MaterialRequirement (countSource=ESTIMATED) × SupplierItem.currentPrice`
+  - **ORDER_BASED (확정 식수 발주 원가)**: `PurchaseOrderItem.qty × PurchaseOrderItem.unitPrice`
+  - **ACTUAL (사용량 기반 실제 원가)**: `Σ ConsumptionLotDetail.quantity × ConsumptionLotDetail.unitPrice` (원자재+부자재 포함)
+- **직접재료비 확정**: 위 3개 costType 은 모두 **재료비만** 포함. 간접비는 별도 필드(`overheadAmount`)로 표시.
+- **서비스**: `computeCostCalculation(companyId, referenceType, referenceId, costType)`
+- **재사용**: Sprint 3 `getLineupBreakdownAction` 을 원가 축으로 확장
+- **BOM 적정성 판단축 (자동 산출 지표)**:
+  - `예상수량 vs 확정수량 vs 실제사용량` 3축 편차
+  - `BOM 이론 사용량 vs 실제 사용량` 편차 (자재별)
+- **UI**: `/cost/daily` (라인업별 데일리), `/cost/comparison` (3종 costType 비교), `/cost/bom-adequacy` (BOM 적정성 진단)
+
+#### Phase S5-2 — 간접비 인프라 (OverheadCost) — 입력만, 배부는 옵션
+
+- **모델**: `OverheadCost(companyId, category, name, amount, month)`
+- **범위**: 재료비 외 간접비(인건비, 유틸리티, 물류비, 감가 등). 월별 입력.
+- **원칙**: 초기 원가 관리는 **재료비만으로 완결**. `OverheadCost` 는 사용자가 입력한 경우에만 대시보드에 가산 표시.
+- **배부 정책 (D60)**: 기본 안 — **조리량 비례(라인업별 ConsumptionItem 수량 합계 기준)**. 데이터 없으면 배부 자체 비활성. 향후 매출액·시간 기반 등 추가 가능.
+- **UI**: `/cost/overhead` — 카테고리·명칭·금액·월 입력. 배부 미리보기.
+- **주의**: 이 Phase 는 **입력 UI + 조회 + 배부 계산 함수**까지만. 인건비 정산 시스템 등과의 연동은 범위 외.
+
+#### Phase S5-3 — 월말 마감 (MonthEndSnapshot) — 회계 기반 원가 크로스체크
+
+- **모델**: `MonthEndSnapshot` + `MonthEndAdjustment` + `MonthEndAdjustmentItem`
+- **enum 활용**: `MonthEndStatus(DRAFT/LOCKED)`
+- **회계 원가 산출식**:
+  ```
+  회계원가 = 기초재고 + 당월매입 − 기말재고
+  ```
+  - 기초재고: 전월 `MonthEndSnapshot.snapshotData` 의 기말재고
+  - 당월매입: 해당 월의 `InventoryTransaction(type=PURCHASE)` 합계 (금액)
+  - 기말재고: 마감 시점의 `InventoryLot.remainingQty × unitPrice` 합계
+- **사용량 기반 원가 vs 회계 원가 교차 검증**:
+  ```
+  편차 = |사용량기반원가 − 회계원가|
+  편차율 = 편차 / 회계원가
+  ```
+  편차율이 임계값(초기 안: 3%) 초과 시 알림(S5-5) + 대시보드 이상치 표시.
+- **정책**:
+  - `MonthEndSnapshot.snapshotData JSON` 에 마감 시점의 전체 원가/재고 상태 스냅샷
+  - `LOCKED` 후 해당 월 데이터 편집 차단. 조정은 오직 `MonthEndAdjustment` 로만.
+  - `MonthEndAdjustment` 는 before/after JSON 을 모두 보존 → 감사 로그 가능
+- **서비스**:
+  - `createMonthEndSnapshot(companyId, closingMonth)` — DRAFT 로 생성
+  - `computeSnapshot(id)` — snapshotData 계산·저장 (기초/당월매입/기말/사용량기반원가/편차)
+  - `lockMonthEnd(id)` — DRAFT → LOCKED
+  - `createAdjustment(input)` — LOCKED 상태에서만
+- **UI**: `/cost/monthly-close`
+
+#### Phase S5-4 — 원가 대시보드 (경영 지표 흐름 뷰)
+
+- **핵심 흐름 뷰** (2026-07-08 확정 요구사항):
+  ```
+  발주 금액 → 입고 금액 → 총 사용 금액 → 라인업별 사용 금액 → (예상 수량 원가 ↔ 확정 수량 원가)
+  ```
+  각 단계 간 편차가 강조되며, 클릭 시 원인 도메인으로 드릴다운:
+  - 발주↔입고 편차 → `ReceivingDiscrepancy` 목록
+  - 입고↔사용 편차 → 재고 잔존 or 미기록 소비
+  - 총사용↔라인업합계 편차 → 미귀속 소비 (`lineupId` NULL)
+  - 예상↔확정 편차 → MR 재산출 이력
+- **부가 지표**:
+  - 일/주/월 라인업 원가 트렌드
+  - ESTIMATED vs ORDER_BASED vs ACTUAL 편차
+  - 폐기율(DISPOSED) 및 사유별
+  - 원가 편차 Top-N 라인업
+  - **레퍼런스 축**: 공장별·제조라인별 사용 금액 (이상치 추적용, 최우선 지표는 아님)
+  - 예산 대비 실적 (예산 데이터가 있을 때만)
+- **토글**: "재료비만" ↔ "재료비 + 간접비" (OverheadCost 입력 여부에 따라)
+- **UI**: `/dashboard/cost`
+
+#### Phase S5-5 — 알림 관리 (Notification)
+
+- **모델**: `NotificationTagDef` + `NotificationRule` + `NotificationTemplate` + `NotificationLog`
+- **enum 활용**: `NotificationChannel(IN_APP/EMAIL)`, `NotificationLogStatus(PENDING/SENT/FAILED)`
+- **구조**:
+  - `NotificationTagDef` — 시스템 전역 태그 정의 (예: `INVENTORY_LOW`, `EXPIRATION_SOON`, `MONTH_END_UNLOCKED`, `PO_STUCK`, `COST_VARIANCE_HIGH`, `RESERVATION_STALE`, `STOCK_TAKE_DUE_A`, `STOCK_TAKE_DUE_B`, `STOCK_TAKE_DUE_C`, `STOCK_GRADE_REVIEW_PENDING`)
+  - `NotificationRule` — 회사별 규칙 (eventType + channel + templateId)
+  - `NotificationTemplate` — 공용 템플릿 (재사용 가능한 문구)
+  - `NotificationLog` — 발송 이력 (recipientId, status)
+- **트리거**: Vercel Cron + 서버 액션 (초기). 도메인 이벤트(입고/실사/마감/원가편차 등)에서 인라인 발송도 가능.
+- **UI**: `/notifications` (인박스), `/settings/notifications` (규칙 편집)
+
+---
+
+### Sprint 6 — 조직 관리 UI (Company · Location · ProductionLine · Lineup · CompanyMealSlot)
+
+**목적**: 계층 분리 원칙(P2 보강) 을 사용자가 편집할 수 있는 관리 UI 로 완결.
+Sprint 1~3 에서 스키마와 서비스는 완성됨. Sprint 6 은 **관리 UI 통합·재점검**이 스코프.
+
+**스키마 실측 기반 스코프**: `Company`, `Location`, `ProductionLine`, `Lineup`, `CompanyMealSlot`.
+
+#### Phase S6-1 — Company 관리
+- 등록·수정·(soft) 삭제. 사업자번호(`bizNo`)·주소·연락처.
+- SYSTEM_ADMIN 만 접근 (Sprint 7 권한 연동).
+
+#### Phase S6-2 — Location 관리 재점검
+- 이미 Sprint 2 Phase 8.5-B 에서 마스터 UI 완료. Sprint 6 은 통합 시점 재점검.
+- `LocationType(FACTORY/WAREHOUSE/HYBRID)` 별 UI 차등 (WAREHOUSE 는 ProductionLine 미노출 등)
+- 재고를 보유한 Location soft-delete 시 P3 검증
+- **P3 강화 검증**: Company·ProductionLine 이 재고 소유 시도하는 코드 경로가 없는지 정적 검사(스캔 스크립트)
+
+#### Phase S6-3 — ProductionLine 관리 재점검
+- Sprint 2 Phase 8.5-C 에서 완료. 통합 시점 재점검.
+- `ProductionLineStatus(ACTIVE/INACTIVE/MAINTENANCE)` 상태 관리
+- `LocationType=FACTORY|HYBRID` 소속만 허용 (검증)
+
+#### Phase S6-4 — Lineup 관리
+- Company 레벨 마스터. MealPlan·MaterialRequirement·(수동)PurchaseOrder·CostCalculation 의 축
+- 라인업 통폐합 시 이력 보존 정책 (D70 예정) — 소프트 삭제 vs 병합 참조
+- `Lineup.isActive`, `sortOrder` 관리
+
+#### Phase S6-5 — CompanyMealSlot 관리
+- Sprint 2 Phase 5-R Step 3.1 에서 스키마 신설. Sprint 6 관리 UI 완성.
+- 자동 채번(`SLOT-001`, `SLOT-002` ...) + `displayName` 사용자 편집. `isActive` / `sortOrder`.
+
+#### Phase S6-6 — 계층 트리 뷰어
+- `/organization` — Company → Location → ProductionLine → Lineup 트리 뷰
+- 각 계층별 현재 활성 사용자·재고 위치 요약
+
+#### Phase S6-7 — 재고 등급 관리 (StockGrade, 상시 관리 프로세스)
+
+- **목적**: 원자재·부자재의 관리 등급(A/B/C) 을 **사용자 편집 + 주기적 재평가**의 상시 프로세스로 관리하여 재고 실사 빈도·알림 우선순위를 자동화한다.
+- **스키마 실측**:
+  - `enum StockGrade { A B C }` — 이미 정의됨
+  - `MaterialMaster.stockGrade` / `SubsidiaryMaster.stockGrade` — 두 마스터 모두에 필드 존재 (Sprint 6 착수 시 최종 재확인)
+  - **신규 모델 `StockGradeReviewLog`** (Sprint 6 진입 시 스키마 보강):
+    - 필드: `id`, `companyId`, `itemType(MATERIAL|SUBSIDIARY)`, `materialMasterId?`, `subsidiaryMasterId?`, `beforeGrade`, `suggestedGrade`, `decidedGrade`, `decision(APPLIED|KEPT)`, `usageAmountWindow`(참조된 기간), `usageAmount`, `decidedByUserId`, `decidedAt`, `reviewedInBatchId?`
+    - 인덱스: `(companyId, decidedAt)`, `(materialMasterId)`, `(subsidiaryMasterId)`
+    - enum `StockGradeDecision { APPLIED KEPT }`
+  - **신규 모델 `StockGradeReviewBatch`** (재평가 배치 단위):
+    - 필드: `id`, `companyId`, `runAt`, `windowMonths`, `thresholdA`, `thresholdB`, `status(PENDING|COMPLETED)`, `pendingCount`
+- **정책 (기본값, 회사별 커스텀은 D85 로 유보 — 초기 안: 시스템 고정)**:
+  - A(가): 사용 시마다 실사 촉구
+  - B(나): 주 1회 실사 도래
+  - C(다): 월 1회 실사 도래
+  - 자동 재평가 주기: 매월 1일 00:00 (KST)
+  - 사용액 산출 창(window): 최근 3개월
+  - 파레토 임계값: A=상위 80% 누적, B=중간 15%, C=하위 5%
+- **서비스**:
+  - `updateItemStockGrade(itemType, itemId, grade, existingTx?)` — 직접 편집. `AuditLog` 필수, 결과를 `StockGradeReviewLog(decision=APPLIED, suggestedGrade=null)` 로도 적층 (편집 이력 통합).
+  - `runStockGradeReviewBatch(companyId, windowMonths = 3)` — 배치 실행. 최근 windowMonths 의 `ConsumptionLotDetail` 합산으로 자재별 사용액 산출 → 파레토 판정 → 현재 등급과 다르면 `StockGradeReviewLog(decision=PENDING placeholder는 사용하지 않음)` 대신 **`StockGradeReviewBatch.pendingCount`** 로 미결 후보 카운트 관리. 실제 미결 후보는 배치 실행 결과 산출물(JSON 또는 별도 임시 테이블 검토 — Sprint 6 착수 시 확정).
+  - `applySuggestedStockGrade(itemType, itemId, batchId, existingTx?)` — 사용자가 "변경 승인" 선택 시 호출. 마스터 필드 갱신 + `StockGradeReviewLog(decision=APPLIED)` 적층 + 감사 로그.
+  - `keepCurrentStockGrade(itemType, itemId, batchId, note?, existingTx?)` — 사용자가 "유지" 선택 시 호출. `StockGradeReviewLog(decision=KEPT)` 적층. 마스터 변경 없음. 이후 재평가에서 최근 KEPT 결정은 재추천 우선순위를 낮추는 시그널로 활용.
+  - `getPendingStockGradeReviews(companyId, itemType?)` — 미결 후보 목록 조회 (리뷰 UI 소스).
+- **UI**:
+  - `/settings/stock-grades` — 원자재·부자재 통합 목록 + 현재 등급 + 최근 N개월 사용액 컬럼 + 인라인 등급 편집 (직접 편집 진입점)
+  - `/settings/stock-grades/review` — **미결 후보 리스트** + 자재별 `[변경 → suggestedGrade]` / `[유지]` 액션 버튼 + 결정 이력 tab
+  - `/settings/stock-grades/history` — `StockGradeReviewLog` 기반 이력 뷰 (자재별 · 사용자별 · 기간별)
+- **감사**: 모든 등급 변경·유지 결정은 `AuditLog` 필수 기록. `StockGradeReviewLog` 는 도메인 이력, `AuditLog` 는 시스템 감사 이력 — 이중 기록 원칙 유지.
+- **의존**:
+  - 직접 편집·이력 뷰: 선행 가능 (Sprint 6 착수 시 즉시)
+  - 자동 재평가·리뷰 UI: S4-3(Consumption) 완료 후 사용액 데이터 확보 필요. Sprint 4 종결 이후 실질적 의미 발생.
+- **알림 연동**: Sprint 5 S5-5 에서 `STOCK_GRADE_REVIEW_PENDING` 태그 신설. 매월 재평가 배치 완료 후 미결 후보 수를 담아 관리자에게 발송.
+
+---
+
+### Sprint 7 — 권한·사용자·초대
+
+**목적**: **계층 스코프(어디에 소속) × 권한셋(무엇을 할 수 있음)** 이원 구조로 접근 제어 완성 + 초대 기반 사용자 온보딩.
+
+**설계 원칙 (2026-07-08 재확인)**:
+- **계층 분리** = 회사·공장·제조라인 계층별 **접근 스코프**를 정의 (누가 어느 데이터를 볼 수 있는가)
+- **권한셋** = 각 자원(view + 기능)에 대한 **CRUD/APPROVE/EXPORT 허용 여부**를 정의 (본 수 있는 것 안에서 무엇을 할 수 있는가)
+- 사용자는 `(계층 스코프, 권한셋)` 을 조합하여 최종 권한이 산출됨. 예: "A공장 스코프 + 재고관리 권한셋" 사용자는 A공장 재고만 편집 가능.
+
+**스키마 실측 기반 스코프**: `User`, `UserScope`, `PermissionSet`, `PermissionSetItem`, `Invitation`.
+
+#### Phase S7-1 — 권한 셋 (PermissionSet)
+
+- **모델**: `PermissionSet(name, description)` + `PermissionSetItem(permissionSetId, resource, action)` — 자원×액션 M:N
+- **enum 활용**: `PermissionAction(CREATE/READ/UPDATE/DELETE/APPROVE/EXPORT)` — 스키마에 이미 정의됨
+- **`resource` 문자열 카탈로그** (Sprint 7 착수 시 각 도메인 서비스 스캔하여 확정, 아래는 초기 안):
+  - `meal-plan` / `meal-plan-slot` / `material-requirement`
+  - `purchase-order` / `purchase-order-manual` / `purchase-order-batch` / `receiving-note` / `receiving-discrepancy`
+  - `inventory-lot` / `inventory-transaction` / `inventory-transfer` / `stock-take` / `inventory-reservation`
+  - `consumption-item` / `cooking-plan`
+  - `cost-calculation` / `overhead-cost` / `month-end-snapshot`
+  - `notification-rule`
+  - `company` / `location` / `production-line` / `lineup` / `company-meal-slot`
+  - `user` / `permission-set` / `invitation` / `audit-log`
+- **시스템 사전 정의 권한 셋** (`UserScope.role` 과 조합):
+  - `ScopeRole.SYSTEM_ADMIN` — 전 자원 × 전 액션
+  - `ScopeRole.COMPANY_ADMIN` — 회사 자원 × 전 액션
+  - `ScopeRole.MEMBER` + 회사별 커스텀 `PermissionSet` — 자유 조합
+- **뷰 통제**: 각 페이지 진입 시 `resource.READ` 미보유면 메뉴 자체 비노출. 편집 버튼은 `resource.UPDATE` 로 통제.
+- **UI**: `/settings/permissions`
+
+#### Phase S7-2 — 사용자 관리 (User + UserScope)
+
+- **모델**: `User(providerUserId, email, name, status)` + `UserScope(userId, companyId, role, permissionSetId?)`
+- **enum 활용**: `UserStatus(ACTIVE/INACTIVE/SUSPENDED)`, `ScopeRole`
+- **계층 스코프 필터링**:
+  - `UserScope` 는 회사·역할·권한셋 조합.
+  - Location·ProductionLine 단위 스코프 확장 검토 (D80 예정) — 현 스키마상 `UserScope` 는 Company 단위이나, 자원 접근 시 애플리케이션 레이어에서 사용자별 허용 Location/ProductionLine 리스트를 추가로 매핑할 수 있는 여지 확인 필요.
+- **UI**: `/settings/users`
+
+#### Phase S7-3 — 초대 (Invitation)
+
+- **모델**: `Invitation(companyId, email, role, invitedById, token, expiresAt, acceptedAt)`
+- **흐름**:
+  1. 관리자가 이메일 초대 발송 → `Invitation` 생성 (token 발급, 기본 7일 만료)
+  2. 수신자 링크 클릭 → 계정 생성 or 기존 계정 연결
+  3. `acceptedAt` 기록 + `UserScope` 자동 생성
+- **정책**:
+  - 만료(`expiresAt < now`) 시 재발송 필요
+  - 재발송·취소·재활용 규칙
+  - 초대자는 `invitation.CREATE` 권한 필수, 부여 가능한 역할은 초대자 역할의 하위 집합(권한 상승 방지)
+- **UI**: `/settings/invitations`
+
+---
+
+### Sprint 8 — 감사로그 전면·자동생성 이력·통합 대시보드·UX 통일·최종 QA
+
+**스키마 실측 기반 스코프**: `AuditLog`, `AutoGenLog`.
+
+#### Phase S8-1 — 감사 로그 전면 표준화
+
+- **모델**: `AuditLog(companyId?, userId?, action, entityType, entityId, before, after, ipAddress)`
+- **enum 활용**: `AuditAction(CREATE/UPDATE/DELETE/APPROVE/REJECT/STATUS_CHANGE/LOGIN/OVERRIDE)`
+- **범위**: Sprint 3(부분) + Sprint 4(S4-0-c 헬퍼) → Sprint 8 에서 **전 도메인 서비스에 미들웨어/데코레이터 패턴으로 자동 기록**. 민감 액션 전량 로그.
+- **필수 커버 대상**: PO 상태 전이, 입고 확정, 재고 이동 확정, StockTake 완료, Consumption 확정/폐기, MonthEndSnapshot lock, PermissionSet 변경, User 상태 변경, Invitation 발송/수락.
+
+#### Phase S8-2 — 자동 생성 이력 (AutoGenLog)
+
+- **모델**: `AutoGenLog(companyId, triggerType, status, inputJson, outputJson, errorMsg)`
+- **enum 활용**: `AutoGenStatus(PENDING/GENERATED/FAILED)`
+- **적용 대상**: MR 자동 산출(Sprint 3 4-G G-1), CookingPlan 자동 생성(S4-2), 원가 스냅샷(S5-3), Reservation 자동 만료(S4-0-b Cron), 알림 발송(S5-5) 등 자동화 이벤트 전량
+
+#### Phase S8-3 — 통합 대시보드 `/dashboard`
+
+- 일별 원가·재고 요약·발주/입고 진행률·알림 최신 5건·마감 상태
+- **경영 지표 흐름(S5-4)** 을 최상단 카드로 배치
+- 계층/권한 스코프에 따라 위젯 가시성 자동 조정
+
+#### Phase S8-4 — UX 통일
+- 색상 팔레트·타이포·간격·상태 배지·에러 메시지 톤 재검토
+- Sprint 3 의 `STATUS_LABEL/STATUS_COLOR` 패턴 전 도메인 확장
+
+#### Phase S8-5 — 접근성 · i18n 후보 검토
+- 기본 ko-KR. 다국어 요구 시 도입 여부 판단.
+
+#### Phase S8-6 — 최종 QA
+- 시나리오 기반 E2E, 부하 테스트, 백업/복구 리허설
+
+---
+
+## 📦 미착수 예약 모델 (스키마만 존재)
+
+아래 모델은 스키마에 정의되어 있으나, 현재 요구사항 범위에 포함되지 않아 구현을 착수하지 않는다. 향후 요구가 확정되면 별도 Sprint 로 재개한다.
+
+| 모델 | 상태 | 재개 트리거 |
 |---|---|---|
-| 납기일 (deliveryDate) | **출고일 (outboundDate)** | 우리 공장 → 고객사 배송일 = 식단 실행일 |
-| (없음) | **예상 입고일 (expectedReceiveDate)** | `outboundDate − SupplierItem.leadTimeDays` (표시 전용 파생값) |
-| (없음) | **입고일 (receivedDate)** | 실제 우리 공장 도착일 (ReceivingNote 에서 기록, Phase 5) |
+| `ShippingOrder` / `ShippingOrderItem` | 스키마만 존재 | 완제품/포장 배송·출하 관리 요구가 명시적으로 확정될 때. 참고: "중앙 창고 → 지점" 물류는 `InventoryTransfer`(S4-1) 로 커버되므로 ShippingOrder 는 별개 도메인. |
 
-**원칙**:
-- 일반적으로 출고일 = 입고일 (당일 입고 후 당일 출고). 리드타임 D-1 → 하루 전 입고.
-- PO 의 1차 키 일자는 **출고일** (헌법 P8 `outboundDate` 와 일치).
-- 품목별 예상 입고일은 **표시 전용 파생값** — 컬럼화 금지. 실제 입고는 ReceivingNote 에서 기록.
-- 위저드 Step 5 출고일 입력 시 품목별 예상 입고일 즉시 리스트업.
+---
 
-**스키마 변경 (Phase 1.6 에서 일괄 적용)**:
-- `PurchaseOrder.deliveryDate` → `outboundDate` 컬럼 개명 (의미 재정의).
-- `SupplierItem.leadTimeDays` 는 이미 존재 (`Int @default(1)`) — 신규 추가 없음.
-- 마이그레이션: `RENAME COLUMN delivery_date TO outbound_date`. 기존 데이터 보존.
+## 📋 요구사항 커버리지 매트릭스
 
-#### D10. Step 2 재고 활용 카테고리 4분류
-
-현재 3분류 (mapped/unmapped/noOrderNeeded) → 4분류로 세분.
-
-| 카테고리 | 정의 | UI 위치 |
+| 요구 사항 | 담당 Sprint / Phase | 상태 |
 |---|---|---|
-| `mapped` | 매핑 완료 + 재고 0 (전량 발주) | 자동 매핑됨 |
-| `mappedPartialStock` | 매핑 완료 + 재고 일부 활용 (감량 발주) | 자동 매핑됨 + 일부 활용 뱃지 |
-| `mappedFullStock` | 매핑 완료 + 재고 전량 활용 (발주 0) | 자동 매핑됨 + 전체 활용 뱃지 |
-| `unmapped` | 공급업체 선택 필요 | 미매핑 (별도 섹션) |
-
-**Step 2 요약 카드 재설계**: 전체 / 자동 매핑됨(매핑금액) / 재고 활용(일부·전체 활용 합산, 활용금액) / 미매핑.
-
-**금액 계산 정책 (R1-a-fix-2)**:
-- `mappedGrossAmount`, `stockOffsetAmount` — **raw 박스수량(소수)** × 단가, `Math.round` 정수화.
-- `estimatedTotalAmount` — `Math.ceil` 박스수량 × 단가 (실제 발주 금액).
-- invariant: `estimatedTotalAmount ≥ mappedGrossAmount − stockOffsetAmount` (박스 올림 차이만큼 ≥).
-- 등식이 아닌 부등식이 되는 이유: 박스 단위 발주는 항상 올림이므로, raw 차이(`gross-offset`)는 항상 올림 발주 금액 이하.
-
-**Step 3 섹션 구성 변경**: noOrderNeeded 별도 섹션 폐지 → 매핑됨 안에 흡수 (뱃지로 구분).
-
-#### D11. Step 3 사용성 4종 개선
-
-1. **드롭다운 가림 해결**: `SupplierItemPicker` 가 뷰포트 하단에서 자동으로 위로 펼침 (Radix Popover 또는 자체 flip 로직).
-2. **순필요량 / 포장단위 필요량 열 분리**: 한 셀에 작은 글씨 표기를 두 개 열로 분리.
-3. **UnitConversion 미등록 시 인라인 등록**: 경고 행에 "단위 환산 등록" 버튼 → 모달 → 등록 후 해당 행만 `calculateOrderQuantity` 재실행.
-4. **단위환산 모달 정책**: `(materialMasterId, fromUnit, toUnit='g', factor)` 1건 등록, 회사 단위 unique 위반 시 기존 행 갱신 또는 에러.
-
-#### D11. 위저드 동시성·재산출 정책 (R1-b 그룹)
-
-##### 배경
-1. **동시 실행 사고**: 회사에 발주 담당자가 복수 존재할 때, 동일 식단그룹으로 두 명이 위저드를 모르고 동시에 실행하여 PO 가 두 벌 생성되는 사고 우려.
-2. **식수 변경/식단 수정 후 재발주**: 예상식수가 변경되거나 식단이 수정되면 기존 PO 를 수정/덮어쓰는 워크플로우 필요.
-
-##### 결정 — 위저드 3가지 모드
-
-| 모드 | 정의 | 적용 가능 상태 | 동작 |
-|------|------|----------------|------|
-| **NEW (신규)** | 별도 PO 추가 생성 | 무관 (기존 PO 유지) | 기존 PO 유지 + 신규 PO 생성. 분할 발주 / 신규 자재 추가 발주 |
-| **DELTA (차분)** | 기존 PO 에 병합 | DRAFT / SUBMITTED / APPROVED | 동일 (material × line × location × supplier) item 수량 합산 + `adjustedQuantity` 갱신, 신규 자재는 item 추가. `POAdjustmentLog` 시계열 이력 적층 |
-| **REPLACE (덮어쓰기)** | 기존 PO 취소 후 재생성 | **DRAFT 전용** | 대상 PO 전체를 `CANCELLED` 전이 (사유: "REGENERATED_FROM_WIZARD_REPLACE: {새 batchId}") + 신규 PO 채번 생성을 단일 트랜잭션. SUBMITTED·APPROVED 는 차단 |
-
-`RECEIVED` / `CANCELLED` PO 는 어느 모드에서도 대상 제외.
-
-##### 멱등성 키 (R1-b1)
-- 모든 모드 공통으로 위저드 세션마다 `idempotencyKey` 발급 — Step 1 진입 시 1회 (`wiz_${mealPlanGroupId}_${countSource}_${randomUUID()}`).
-- batch service 는 `PurchaseOrderBatch.idempotencyKey` unique 제약으로 중복 제출 멱등 처리. 동일 키 재호출 시 기존 batch 의 PO 목록을 그대로 반환.
-- 세션 토큰은 클라이언트 `localStorage` 에 `mealPlanGroupId + countSource` 단위로 저장 — 새로고침·재진입 시 같은 토큰 재사용. 위저드 완료(`onClearPersistence`) 시 또는 24시간 경과 시 삭제.
-
-##### 사전 안내 카드 (R1-b1)
-Step 1 (식단 그룹 선택 직후) 및 Step 5 (생성 직전) 에 동일 식단그룹의 활성 PO 목록 표시 (`status NOT IN (CANCELLED)`).
-
-표시 정보: 발주번호 / 상태 뱃지 / 라인 / 공급사 / 총액 / 생성자 / 생성시각 + 상세보기 링크.
-
-차단이 아닌 **정보 제공**. 사용자가 모드를 명시 선택하면 그에 맞춰 진행.
-
-##### DELTA 병합 규칙 (R1-b3)
-- 병합 키: `(mealPlanGroupId, materialMasterId, locationId, productionLineId, supplierId)` — 즉 공급사가 다르면 별도 item.
-- 합산 시:
-  - `PurchaseOrderItem.quantity` = 기존 + 추가분
-  - `PurchaseOrderItem.systemQuantity` = 새 MR 산출 raw 값
-  - `PurchaseOrderItem.adjustedQuantity` = 합산 후 최종 발주 수량
-  - `PurchaseOrderItem.adjustmentReason` = "식수 변경 재산출 (N→M명, by {user}, {timestamp})"
-- 신규 자재(기존 PO 에 없는 매칭)는 적합한 기존 PO 또는 신규 PO 로 추가.
-- `POAdjustmentLog` 시계열 이력 행별 적층 (before/after qty, reason, actorUserId, sourceBatchId).
-- `PurchaseOrder.totalAmount` 재계산.
-- 상태 전이 발생하지 않음 (DRAFT 유지 / SUBMITTED 유지 / APPROVED 유지).
-- SUBMITTED·APPROVED PO 수정 시 `AuditLog` 에 추가 기록.
-
-##### REPLACE 가드 (R1-b4)
-- 대상 PO 중 하나라도 `status NOT IN (DRAFT, CANCELLED)` 이면 차단.
-- 에러: `REPLACE_BLOCKED_BY_NON_DRAFT_PO` — UI 메시지: "발주등록 이상 상태의 PO 가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO 를 먼저 취소하세요."
-- 트랜잭션: 대상 DRAFT PO 전체 `CANCELLED` 전이 + 신규 PO **신규 채번** 생성 + 새 batch 행 생성 — 단일 `prisma.$transaction`.
-- 신규 PO 의 `note` 메타에 "REPLACED PO-001, PO-002 by {user}" 기록.
-- **신규 채번 채택 사유**: 채번 충돌 방지, 감사 추적 명확, "어떤 PO 가 어떤 PO 를 대체했는지" 추적은 `batch.basedOnPOIds` 와 `note` 로 표현.
-
-##### 새 모델 — `PurchaseOrderBatch` (R1-b1 도입)
-\`\`\`prisma
-model PurchaseOrderBatch {
-  id              String         @id @default(cuid())
-  companyId       String         @map("company_id")
-  idempotencyKey  String         @map("idempotency_key")
-  mealPlanGroupId String?        @map("meal_plan_group_id")
-  countSource     MealCountSource
-  mode            POBatchMode
-  basedOnPOIds    String[]       @map("based_on_po_ids")
-  createdByUserId String         @map("created_by_user_id")
-  createdAt       DateTime       @default(now()) @map("created_at")
-
-  company        Company         @relation(fields: [companyId], references: [id])
-  mealPlanGroup  MealPlanGroup?  @relation(fields: [mealPlanGroupId], references: [id])
-  createdByUser  User            @relation(fields: [createdByUserId], references: [id])
-  purchaseOrders PurchaseOrder[]
-
-  @@unique([companyId, idempotencyKey])
-  @@index([mealPlanGroupId])
-  @@index([createdAt])
-  @@map("purchase_order_batches")
-}
-
-enum POBatchMode {
-  NEW
-  DELTA
-  REPLACE
-
-  @@map("po_batch_mode")
-}
-\`\`\`
-
-`PurchaseOrder` 에 `batchId: String?` nullable 컬럼 추가 (기존 PO 는 NULL, 새 위저드 생성 PO 만 batch 추적).
-
-##### 새 모델 — `POAdjustmentLog` (R1-b3 도입)
-\`\`\`prisma
-model POAdjustmentLog {
-  id                   String              @id @default(cuid())
-  purchaseOrderId      String              @map("purchase_order_id")
-  purchaseOrderItemId  String?             @map("purchase_order_item_id")
-  action               POAdjustmentAction
-  fieldName            String?
-  beforeValue          String?             // JSON 직렬화
-  afterValue           String?             // JSON 직렬화
-  reason               String
-  sourceBatchId        String?             @map("source_batch_id")
-  actorUserId          String              @map("actor_user_id")
-  createdAt            DateTime            @default(now()) @map("created_at")
-
-  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
-  purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
-  sourceBatch       PurchaseOrderBatch? @relation(fields: [sourceBatchId], references: [id])
-  actorUser         User               @relation(fields: [actorUserId], references: [id])
-
-  @@index([purchaseOrderId])
-  @@index([sourceBatchId])
-  @@index([createdAt])
-  @@map("po_adjustment_logs")
-}
-
-enum POAdjustmentAction {
-  ADD
-  UPDATE_QUANTITY
-  UPDATE_UNIT_PRICE
-  REMOVE
-  NOTE_CHANGE
-
-  @@map("po_adjustment_action")
-}
-\`\`\`
-
-##### R1-b 이후 백로그
-- 실시간 위저드 lock (`MealPlanGroupLock` 30분 TTL) — R1-b 운영 피드백 후 결정.
-- 라인업 단위 PO 트래킹 — 현재는 라인(ProductionLine) 단위 PO. Phase 1.6 또는 별도 phase 에서 검토.
-- DELTA 시 단가 변경 처리 — 현재 설계상 단가 미변경(수량만 합산). 단가도 재산출하려면 별도 정책 필요 (P9' 와 충돌 가능).
-- 차분 발주 후보 분류 표시 — 기존 PO 대비 변동 없는 행을 위저드 Step 2/3 에서 별도 카테고리(`UNCHANGED`) 또는 회색 처리로 표시할지 검토.
-
-#### D12. Step 4 분할 미리보기 멀티뷰 (3종)
-
-| 뷰 | 그룹키 | 의미 |
-|---|---|---|
-| **계층 뷰** (기본) | `supplierId × locationId × productionLineId` | 실제 PO 분할 단위 |
-| **공급업체 뷰** | `supplierId` | "이 업체에 총 얼마짜리 발주가 나가나" |
-| **라인업 뷰** | `lineupId` | "이 상품 1식 원가 = ?" 의 출발점 — 원가 추적 핵심 차원 |
-
-**라인업 뷰 구현 정책**:
-- 한 자재가 여러 라인업에서 사용 → 라인업별 `weightG × estimatedCount` 비율로 가중 분배.
-- MR 자체에 lineup 차원 없음 → `buildPOItemsFromMR()` 결과에 `lineupBreakdown` 필드 추가 필요 (백엔드 변경).
-- **Fix-R1 에서는 계층뷰·공급업체뷰만 구현, 라인업뷰는 Fix-R2 로 분리.**
-
-#### D13. Step 5 표현 3종 개선
-
-1. **"납기일" → "출고일"** 라벨 변경 (Fix-R1 시점에 라벨만 변경, 컬럼 실 변경은 Phase 1.6).
-2. **품목별 예상 입고일 리스트업**: 출고일 입력 즉시 매핑된 자재마다 `outboundDate − leadTimeDays` 표시 (Fix-R2 에서 구현, Phase 1.6 의존).
-3. **"N개 발주서 생성" → "N개 품목 → M개 발주서 생성"** 정확한 문구로 변경.
-
-#### D13. REPLACE 모드 정책 (R1-b4)
-
-##### 차단 기준
-- 차단: 대상 PO 중 하나라도 `status IN (APPROVED, RECEIVED)` 인 경우.
-- 허용: 대상 PO 가 모두 `status IN (DRAFT, SUBMITTED)` 인 경우. (CANCELLED 는 대상에서 자동 제외)
-- 사유: SUBMITTED 도 아직 "발주확정" 전이므로 수량·단가 변경에 의한 재발주가 정당. APPROVED 부터는 입고 흐름이 시작될 수 있어 차단.
-
-##### 동작
-- 기존 PO 의 상태를 `CANCELLED` 로 일괄 전이, `cancelReason` 에 `[REPLACE] 위저드에서 덮어쓰기로 인한 취소` 자동 기입.
-- 동일 트랜잭션 안에서 신규 PO 들을 DRAFT 상태로 생성 (NEW 모드 분기의 그룹핑·번호생성·검증 로직 재사용).
-- 신규 PO 의 `note` 에 `[REPLACE] 취소된 원본 PO: <원본 발주번호들>` 자동 기입.
-- `POAdjustmentLog` 에 PO 1건당 1행: `action="REMOVE"`, `fieldName="po_status"`, `beforeValue=<원래 상태>`, `afterValue="CANCELLED"`, `reason="REPLACE 모드 — 위저드 재실행"`, `sourceBatchId=<배치 ID>`.
-
-##### 단가 이력 정책 (P9·P9' 와의 정합성)
-- REPLACE 로 SUBMITTED PO 를 CANCELLED 로 전이해도 `SupplierItemPriceHistory` 및 `SupplierItem.currentPrice` 는 **롤백하지 않는다** (보존).
-- 사유: 이미 적층된 이력은 "그 시점에 그 가격이 유효했다"는 사실의 기록이므로 사후 취소와 무관. FIFO 원가관리는 `InventoryLot` 단위로 독립 동작하므로 충돌 없음.
-- 신규 DRAFT PO 가 SUBMITTED 로 전이되는 시점에 변경된 항목이 있다면 `stackPriceHistoryForPO` 가 다시 적층 — 이력 누락 없음.
-
-##### 오류 키
-- `REPLACE_BLOCKED_BY_LOCKED_PO` — 대상 PO 중 APPROVED/RECEIVED 가 1건이라도 포함된 경우.
-- `REPLACE_MISSING_BASED_ON_POS` — REPLACE 모드인데 `basedOnPOIds` 가 비어있는 경우.
-- 이전 가안의 `REPLACE_BLOCKED_BY_NON_DRAFT_PO` 명칭은 채택 직전 폐기 (SUBMITTED 도 허용으로 정책 변경).
-
-##### UI 영향
-- `wizard-mode-selector.tsx`: `replaceEnabled = draftCount + submittedCount > 0 && lockedCount === 0` 로 활성화 조건 완화 (SUBMITTED 단독으로도 REPLACE 가능).
-- `step-confirm-create.tsx`: REPLACE 차단 토스트 제거, REPLACE 배지 빨강, 성공 토스트에 취소된 원본 PO 수 + 신규 PO 수 표시.
-
-##### 미해결 사항 — Phase 4-C 진입 시 재논의
-- Q. 상태 전이 다이얼로그 권한 키 분리 — `purchase-order:APPROVE` 도입 여부. 본 R1-b4 단계에서는 보류, Phase 4-C 착수 시 PROGRESS.md "권한 키" 라인을 정식 갱신할지 함께 결정.
-
-## D14 — MaterialMaster / SubsidiaryMaster 동명 자재 방지 (M-Fix)
-
-### 배경
-Sprint 3 Phase 4-B'-5c 위저드 Step 3 사용자 피드백:
-같은 이름의 자재(예: "다진마늘")가 여러 건 존재하여 공급업체 매핑이 차단됨.
-DB·서비스 차원에서 사전 방지 필요.
-
-### 결정사항
-- **D14-1**: 동일 companyId 내 살아있는 자재(`deletedAt IS NULL`)의 name 중복 금지
-- **D14-2**: Partial unique index (`WHERE deleted_at IS NULL`)로 구현
-  → soft-delete 이력 보존 가능, 동일 name으로 재등록 가능
-- **D14-3**: Prisma `@@unique`는 partial 조건 미지원
-  → 마이그레이션 SQL에 수동 정의, schema.prisma에 코멘트로 명시
-- **D14-4**: SubsidiaryMaster도 동일 정책 적용 (일관성)
-- **D14-5**: 2중 보호
-  - 서비스 가드: 친절한 한국어 에러 ("이미 동일한 이름의 자재가 존재합니다")
-  - DB 제약: race condition 대응 (서비스 가드 통과 후 다른 트랜잭션이 먼저 INSERT 한 경우)
-
-### 검토된 선택지 비교
-
-| 옵션 | 방식 | 채택 | 사유 |
-|------|------|------|------|
-| 1 | 일반 unique + soft-delete 시 name suffix 부여 | ✗ | 기존 soft-delete 행 변형 필요, 도메인 의도 부정확 표현 |
-| 2 | 일반 unique + soft-delete 행 하드 삭제 | ✗ | 감사·BOM 이력 손실 위험, FK 의존성 점검 부담 |
-| 3 | **Partial unique index** | **✓** | **데이터 무변형, 도메인 의도 정확 표현, 이력 보존** |
-
-### 마이그레이션
-`prisma/migrations/<timestamp>_add_partial_unique_name_to_material_subsidiary/migration.sql`
-
-### 테스트
-- 자재 6건, 부자재 6건 = 총 12건 신규
-- 누적 테스트: 343 → 355 PASS
-
-### D14 추가 결정 (M-Fix-R1, 2026-06-17)
-
-- **D14-7**: MaterialMaster·SubsidiaryMaster에 `isActive` Boolean 추가 (기본 true). SupplierItem의 S-Fix(D15) 패턴과 동일.
-- **D14-8**: `deleteMaterial`·`deleteSubsidiary`에 의존성 가드 적용 — SupplierItem(alive)/MR(alive)/RecipeIngredient/RecipeBOMSlotItem/BOMItem/PurchaseOrderItem/MealPlanAccessory/MealPlanSlot/ContainerSlot/MealTemplateContainer/MealTemplateAccessory/RecipeBOMSlot 어느 하나라도 참조 시 `HAS_USAGE_HISTORY` 에러. soft-delete만 허용하며 hard-delete 경로는 의존성 0건 케이스에서도 soft-delete로 통일.
-- **D14-9**: `getMaterialDependencies`·`getSubsidiaryDependencies` 신규 — UI 모달에서 사전 카운트 표시용.
-- **D14-10**: `setMaterialActive(false)`·`setSubsidiaryActive(false)` — 진행 중 식단/발주 보유 시 `IN_USE_BY_ACTIVE_MEAL_PLAN` 에러로 차단, 통과 시 산하 SupplierItem 자동 비활성화. 재활성화는 단방향(SupplierItem 수동 복구 필요).
-- **D14-11**: 위저드 `build-po-items-from-mr` — `POItemCandidate.isMaterialActive` 추가, 비활성 자재는 자동 매핑되지 않고 UNMAPPED으로 분류 + warning 표시.
-- **D14-12**: 데이터 복구 — 다진마늘 MAT-018, 국간장, 닭가슴살 alive 복원 완료 (2026-06-17). 다진마늘 MAT-014는 의존성 있는 채로 soft-deleted 유지 (개발 데이터, 테스트 종료 후 정리).
-
-### D14-7 ~ D14-12 — M-Fix-R1 (2026-06-17)
-
-**목표**: 자재/부자재의 "사용 이력이 있는 항목 삭제 시 데이터 무결성 손상" 문제를 해결하고, 운영 중 자재 수명주기 관리(활성/비활성/삭제)를 도입.
-
-#### 데이터 정합성 복구
-- 잘못 soft-delete 되어 위저드에서 "(자재 정보 없음)"으로 표시되던 행 복원
-  - MAT-018 (다진마늘, 윌스토 2,000원) — 활성 PO/MR/Recipe 의존성 유지
-  - 국간장 (cmq4yxg4p01bkxci8yv3w7xh1)
-  - 닭가슴살 (cmpza49nv0039s8i8p6i6rn46)
-- 참기름(MAT-005)은 미사용 결정 → 그대로 soft-delete 유지
-- MAT-014 (다진마늘) 테스트 목적 soft-delete 유지 → UI 비활성 필터로 가시화 확인
-
-#### 스키마 변경 (D14-7)
-- `MaterialMaster.isActive: Boolean @default(true)` 추가 + `@@index([isActive])`
-- `SubsidiaryMaster.isActive: Boolean @default(true)` 추가 + `@@index([isActive])`
-- 마이그레이션: `m_fix_r1_material_subsidiary_active`
-
-#### 서비스 가드 (D14-8 ~ D14-10)
-- `MATERIAL_ERRORS` / `SUBSIDIARY_ERRORS`에 `HAS_USAGE_HISTORY`, `IN_USE_BY_ACTIVE_MEAL_PLAN` 추가
-- `getMaterialDependencies` / `getSubsidiaryDependencies`: 공급품목·MR·레시피·BOM·PO·식단 카운트 + `canHardDelete` / `canDeactivate` 계산
-- `setMaterialActive` / `setSubsidiaryActive`:
-  - 비활성화 시 진행 중 식단(`CONFIRMED`/`IN_PROGRESS`)·진행 중 PO(`DRAFT`/`SUBMITTED`/`APPROVED`) 검사
-  - 통과 시 산하 SupplierItem 자동 비활성화 (재활성화는 수동)
-- `deleteMaterial` / `deleteSubsidiary`: 의존성 0건일 때만 soft-delete + `isActive=false`, 아니면 `HAS_USAGE_HISTORY` 차단
-- `getMaterials` / `getSubsidiaries`: `orderBy: [{ isActive: 'desc' }, ...]` — 활성 우선 정렬, `isActive` 필터 지원
-- `getSubsidiariesByType`: 활성 항목만 반환 (위저드 노출 차단)
-
-#### 액션 (D14-11)
-- `getMaterialDependenciesAction`, `setMaterialActiveAction`
-- `getSubsidiaryDependenciesAction`, `setSubsidiaryActiveAction`
-- 모두 권한 검사 + 감사 로그(`UPDATE`)
-
-#### 위저드 가드 (D14-11)
-- `build-po-items-from-mr.ts`: `isActive: false`인 자재는 UNMAPPED 분류 + 경고 "비활성 자재 — 활성화 후 진행하거나 대체 자재 선택 필요"
-
-#### UI (D14-12)
-- 공용 `DependencyActionDialog` + `Stat` 컴포넌트
-  (`src/features/material/components/dependency-action-dialog.tsx`)
-- `MaterialList` / `SubsidiaryList` 전면 개편
-  - "상태" 컬럼(emerald/gray 칩) 추가
-  - "활성/비활성/전체" 드롭다운 필터 추가
-  - 기존 Trash 단순 삭제 버튼 → ⚙️ Settings 버튼 → 의존성 다이얼로그
-  - 비활성 행은 회색조 + 텍스트 흐림 처리
-
-#### 스키마 (zod)
-- `materialListQuerySchema` / `subsidiaryListQuerySchema`에 `isActive: z.coerce.boolean().optional()` 추가
-
-#### 테스트
-- `material-fix-r1.test.ts` / `subsidiary-fix-r1.test.ts` 추가 (각 9건)
-- 기존 회귀: `material.service.test.ts` / `subsidiary.service.test.ts` / `build-po-items-from-mr.test.ts` 보강
-- 최종: **Test Files 25 passed / Tests 367 passed | 2 skipped**
-
-#### 후속 과제 (Backlog)
-- supplier-item-list.tsx도 동일 패턴으로 일원화 (Sprint 3 종료 후 별도 마이크로 작업)
-- `DependencyActionDialog`를 `src/components/shared/`로 이동해 feature 경계 정리
-- 비활성 자재가 즐겨찾기/기본 공급품목으로 지정된 경우 일괄 정리 배치
-
-#### D14. 위저드 인라인 단위 환산 등록 권한 정책 (R1-c)
-
-**결정**: 위저드 Step 3 의 단위 환산 인라인 등록 다이얼로그는 `createUnitConversionAction` 을 재사용한다. 권한 키는 기존대로 **`material:CREATE`** 를 요구한다 (옵션 A 채택).
-
-**대안 검토 및 폐기**:
-- (옵션 B) `purchase-order:CREATE` 만으로 통과시키는 우회 경로 — 권한 우회 통로가 생기면 감사 추적이 약화되고, 위저드 외부의 단위 환산 등록과 정책이 불일치하게 됨. 폐기.
-
-**운영 가이드**:
-- 위저드 사용 권한 부여 시 `material:CREATE` 를 함께 부여하는 것이 정상 운영 패턴.
-- `material:CREATE` 가 없는 사용자는 다이얼로그에서 등록 시도 시 `FORBIDDEN` 응답을 받고 "공급업체 / 자재 마스터 관리자에게 단위 환산 등록을 요청하세요" 안내를 받음 (Phase 5 PermissionSet seed 시 함께 점검).
-
-**모달 입력 정책**:
-- `materialMasterId`: 다이얼로그가 props 로 받음 (위저드 행 컨텍스트).
-- `subsidiaryMasterId`: 항상 `null` (위저드는 자재 발주에만 사용).
-- `fromUnit`: 사용자 입력 (추천값 = 해당 행의 `fromUnitName`).
-- `toUnit`: `"g"` 고정.
-- `factor`: 양수 (소수 허용).
-- `unitCategory`: `"WEIGHT"` 고정 (위저드 발주 시 자재 중량 환산만 필요).
-- 중복 등록 시 `DUPLICATE_CONVERSION` 토스트 노출 후 다이얼로그 유지.
-
-**등록 후 동작**:
-- 등록 성공 시 위저드는 서버 재요청 없이 `dispatch({ type: "REFRESH_ROW_AFTER_CONVERSION", ... })` 로 동일 `materialMasterId` 의 모든 행(`mapped`/`mappedPartialStock`/`mappedFullStock`/`unmapped`)을 클라이언트에서 재계산한다 (`Math.ceil` 동일 정책 적용).
-- 경고 메시지에서 "단위 환산 정보 미등록" / "단위 환산 계수 …" 항목은 제거된다.
-
-
-### Phase 1.6 — outboundDate 리네임 + expectedReceiveDate 도입 (D15)
-
-#### 배경
-- 기존 `PurchaseOrder.deliveryDate` 의 의미가 모호 (출고일/입고일/납기일?)
-- 운영팀 합의: "출고일"(공급업체가 우리 창고로 출고하는 날) 로 명확화
-
-#### 결정사항 (D15)
-- **D15-1**: `deliveryDate` → `outboundDate` 리네임 (DB 컬럼 `delivery_date` → `outbound_date`)
-- **D15-2**: `expectedReceiveDate` 신규 컬럼 추가
-  - 계산식: `outboundDate + MAX(items.supplierItem.leadTimeDays)`
-  - DB 저장 (Option A) — PO 생성/수정 시 계산해서 컬럼에 저장
-  - `outboundDate` 가 null 이면 `expectedReceiveDate` 도 null
-  - items 의 모든 `leadTimeDays` 가 누락되면 기본값 **1일** 사용
-- **D15-3**: 품목별 입고일 (`itemExpectedReceiveDate`) 은 런타임 derived
-  - 계산식: `outboundDate + item.supplierItem.leadTimeDays` (default 1)
-  - DB 미저장, `getPurchaseOrderById` 응답에서만 제공
-- **D15-4**: DELTA 모드는 `outboundDate` 를 변경하지 않음
-  - items 변경 시 기존 `outboundDate` 기준으로 `expectedReceiveDate` 재계산만 수행
-
-#### 변경 파일
-- `prisma/schema.prisma`: PurchaseOrder 모델 필드 리네임 + 신규 컬럼 + 인덱스 2건 추가
-- `prisma/migrations/20260622080946_phase_1_6_outbound_date_and_expected_receive_date/migration.sql`
-- `src/features/purchase-order/schemas/purchase-order.schema.ts`
-- `src/features/purchase-order/services/purchase-order.service.ts` (+ `calculateExpectedReceiveDate` 헬퍼)
-- `src/features/purchase-order/services/purchase-order-batch.service.ts` (+ `calculateExpectedReceiveDateForBatch`)
-- `src/features/purchase-order/components/purchase-order-list.tsx` (타입만 임시 수정 — UI는 다음 커밋)
-- `src/tests/purchase-order-batch.service.test.ts` (DELTA 재계산 assertion 업데이트)
-
-#### 검증
-- ✅ `npx prisma migrate dev` 성공
-- ✅ `npx tsc --noEmit` 0 errors
-- ✅ `npm run test` — 406 tests / 404 passed / 2 skipped / 0 failed
-
-#### 후속 작업 (Phase 1.6 UI — 다음 커밋)
-- `po-wizard.tsx`: state/action/reducer 리네임
-- `step-confirm-create.tsx`: 라벨 "출고일", "예상 입고일" 미리보기
-- `purchase-order-list.tsx`: 테이블 헤더 "출고일" + 신규 "입고예정일" 컬럼
+| 수동(독립) 발주 | Sprint 3.5 | 🟡 스키마 존재(`isManual`), 서비스/UI 미착수 |
+| **사용(소비) 관리** | Sprint 4 / S4-3 (ConsumptionItem) | 🟡 스키마 완료, 서비스/UI 미착수 |
+| **재고 관리 (조회)** | Sprint 4 / S4-1 | 🟡 스키마 완료, 서비스/UI 미착수 |
+| **재고 이동 (동일 Company 내 재고 보유 Location 간 상호 이동, 공장↔공장 포함)** | Sprint 4 / S4-1 (InventoryTransfer) | 🟡 스키마 완료, 서비스/UI 미착수 |
+| **재고 실사** | Sprint 4 / S4-4 | 🟡 스키마 완료, 서비스/UI 미착수 |
+| **재고 등급 관리 (A/B/C, 상시 재평가 프로세스, 원자재+부자재)** | Sprint 6 / S6-7 (마스터 편집 + 리뷰 UI + `StockGradeReviewLog/Batch` 신설) + Sprint 4 / S4-4 (등급별 빈도 판정) + Sprint 5 / S5-5 (도래·리뷰 알림) | 🟡 `StockGrade` enum 완료, `stockGrade` 필드 존재, 재평가·리뷰 이력 모델 스키마 보강 필요, 서비스/UI/알림 태그 미착수 |
+| **재고 현황 대시보드** | Sprint 4 / S4-5 | 📋 계획 |
+| 조리 계획 (CookingPlan) | Sprint 4 / S4-2 | 🟡 스키마 완료 (CookingPlan 3모델), 서비스/UI 미착수 |
+| 폐기 관리 | Sprint 4 / S4-3 (`disposition=DISPOSED` + `DisposalReason`) | 🟡 스키마 완료, 서비스/UI 미착수 |
+| 재고 예약 (Reservation) | Sprint 4 / S4-0-b + S4-2 | 🟡 스키마 완료, 활성화 미착수 |
+| **원가 관리 (재료비 기반, 실시간)** | Sprint 5 / S5-1 | 🟡 스키마 완료 (CostCalculation), 서비스/UI 미착수 |
+| 간접비 인프라 (OverheadCost) | Sprint 5 / S5-2 | 🟡 스키마 완료, 입력 UI 미착수 |
+| **월 단위 마감 (회계 원가 크로스체크)** | Sprint 5 / S5-3 | 🟡 스키마 완료 (MonthEndSnapshot 3모델), 서비스/UI 미착수 |
+| **원가 관리 대시보드 (경영 지표 흐름)** | Sprint 5 / S5-4 | 📋 계획 |
+| **알림 관리** | Sprint 5 / S5-5 | 🟡 스키마 완료 (Notification 4모델), 서비스/UI 미착수 |
+| **계층 분리 (회사–공장–제조라인)** | Sprint 1~2 (스키마+마스터 UI) / Sprint 6 (통합 재점검) | 🟢 부분 완료 — 스키마·마스터 UI ✅, 통합 재점검 📋 |
+| Lineup 관리 UI | Sprint 6 / S6-4 | 🟡 스키마 완료, UI 미착수 |
+| CompanyMealSlot 관리 UI | Sprint 6 / S6-5 | 🟡 스키마 완료, UI 미착수 |
+| **권한 셋 관리 (기능 사용 통제)** | Sprint 7 / S7-1 | 🟡 스키마 완료 (PermissionSet + Item), UI 미착수 |
+| 사용자 관리 (계층 스코프 연결) | Sprint 7 / S7-2 | 🟡 스키마 완료 (User+UserScope), UI 미착수 |
+| **초대 기능** | Sprint 7 / S7-3 | 🟡 스키마 완료 (Invitation), UI/이메일 발송 미착수 |
+| 감사 로그 표준화 | Sprint 3 (부분) / Sprint 4 (헬퍼) / Sprint 8 (전면) | 🟠 부분 도입, 전면 표준화 계획 |
+| 자동 생성 이력 | Sprint 8 / S8-2 | 🟡 스키마 완료 (AutoGenLog), 적용 미착수 |
+| 통합 대시보드 | Sprint 8 / S8-3 | 📋 계획 |
+
+**범례**: 🟢 완료 / 🟡 스키마 완료·구현 미착수 / 🟠 부분 구현 / 📋 계획
+
+> Sprint 종결 시마다 상태 갱신. Sprint 4 종결 시 재고/이동/사용/실사/대시보드 5개 행이 🟢 로.
 
 ---
 
-### M-Fix · S-Fix 결정사항 (위저드 외 운영 버그)
-
-#### M-Fix: MaterialMaster 품목명 중복 방지
-- **현 상태**: `(companyId, code)` unique 만 존재, `name` 중복 허용.
-- **변경**: `(companyId, name)` unique 추가 + 서비스 사전 가드 + 사용자 친화 에러 `DUPLICATE_MATERIAL_NAME`.
-- **마이그레이션**: 기존 중복 데이터 사전 점검 (dev DB 확인 후 일괄 적용 또는 충돌 행 수동 해소).
-
-#### S-Fix: SupplierItem 삭제 의존성 가드
-- **현 상태**: 삭제 실패 시 원인 불명, 일반 에러로 처리.
-- **의존성 5종**: `PurchaseOrderItem`, `MealPlanSlot`, `MaterialMaster.defaultSupplierItem`, `SubsidiaryMaster.defaultSupplierItem`, `SupplierItemPriceHistory`.
-- **변경**: 삭제 전 의존성 카운트 조회 → 0이 아니면 도메인 에러 `SUPPLIER_ITEM_IN_USE` 반환, 메시지에 어떤 엔티티에 N건 연결되어 있는지 명시.
-- **예외**: `SupplierItemPriceHistory` 는 가격 이력이므로 함께 삭제 (CASCADE 또는 사전 정리).
-
-#### Phase 4-B'-5c-Fix-R1 — 위저드 모드 분리 결정 (R1-b 그룹)
-
-##### 배경
-사용자 피드백:
-1. 회사에 발주 담당자가 복수 존재할 때, 동시 위저드 실행으로 PO가 두 벌 생성되는 사고 우려
-2. 식단 식수가 변경/조정되면 기존 PO를 수정하거나 덮어쓸 수 있어야 함
-
-##### 결정 — 위저드 3가지 모드 도입
-
-| 모드 | 정의 | 적용 가능 상태 | 동작 |
-|------|------|----------------|------|
-| **NEW (신규)** | 별도 PO 추가 생성 | 무관 | 기존 PO 유지 + 신규 PO 생성. 분할 발주 / 신규 자재 발주 |
-| **DELTA (차분)** | 기존 PO에 병합 | DRAFT / SUBMITTED / APPROVED | 동일 (material × line × location × supplier) item은 수량 합산 + `adjustedQuantity` 기록, 신규 자재는 item 추가. `POAdjustmentLog`에 시계열 이력 적층 |
-| **REPLACE (덮어쓰기)** | 기존 PO 취소 후 재생성 | **DRAFT 전용** | 대상 PO 전체를 `CANCELLED` 전이 (사유: "재산출에 의한 덮어쓰기") + 신규 PO 생성을 단일 트랜잭션. SUBMITTED·APPROVED는 차단 |
-
-`RECEIVED` / `CANCELLED` PO는 어느 모드에서도 대상 제외.
-
-##### 멱등성 키 정책 (R1-b1)
-모든 모드 공통으로 위저드 세션마다 `idempotencyKey` 발급 (Step 1 진입 시 1회). batch service는 `PurchaseOrderBatch.idempotencyKey` unique 제약으로 중복 제출을 멱등 처리. 동일 키 재호출 시 기존 batch의 PO 목록을 그대로 반환.
-
-세션 토큰은 클라이언트의 `localStorage` 에 `mealPlanGroupId + countSource` 단위로 저장 — 새로고침·재진입 시 같은 토큰 재사용. 위저드 완료(`onClearPersistence`) 또는 24시간 경과 시 삭제.
-
-##### 사전 안내 카드 (R1-b1)
-Step 1 (식단 그룹 선택 직후) 및 Step 5 (생성 직전) 에 동일 식단그룹의 활성 PO(`status NOT IN (CANCELLED)`) 목록을 표시.
-
-표시 정보: 발주번호 / 상태 뱃지 / 라인 / 공급사 / 총액 / 생성자 / 생성시각 + 상세보기 링크.
-
-차단 아닌 **정보 제공**. 사용자가 모드를 명시 선택하면 그에 맞춰 진행.
-
-##### DELTA 병합 규칙 (R1-b3)
-- 병합 키: `(mealPlanGroupId, materialMasterId, locationId, productionLineId, supplierId)` — 즉 같은 자재가 같은 라인·공장·공급사로 이미 발주되어 있으면 동일 PO의 동일 item에 합산
-- 합산 시:
-  - `PurchaseOrderItem.quantity` = 기존값 + 추가분
-  - `PurchaseOrderItem.systemQuantity` = 새 MR 산출의 raw 값
-  - `PurchaseOrderItem.adjustedQuantity` = 합산 후 최종 발주 수량
-  - `PurchaseOrderItem.adjustmentReason` = "식수 변경 재산출 (N→M명, by {user}, {timestamp})"
-- 신규 자재 (기존 PO에 없는 자재)는 적합한 PO(같은 라인·공장·공급사) 또는 신규 PO로 추가
-- `POAdjustmentLog` 시계열 이력에 행별로 적층 (before/after qty, reason, actorUserId, createdAt)
-- `PurchaseOrder.totalAmount` 재계산
-- 상태 전이는 발생하지 않음 (DRAFT는 DRAFT 유지, SUBMITTED는 SUBMITTED 유지)
-- SUBMITTED·APPROVED PO 수정 시 `AuditLog`에 추가 기록
-
-##### REPLACE 가드 (R1-b4)
-- 대상 PO 중 하나라도 `status NOT IN (DRAFT, CANCELLED)` 이면 차단. 에러: `REPLACE_BLOCKED_BY_SUBMITTED_PO` — UI 메시지: "발주등록 또는 발주확정 상태의 PO가 있어 덮어쓸 수 없습니다. 차분 발주(DELTA)로 진행하거나 해당 PO를 먼저 취소하세요."
-- 트랜잭션: 대상 PO 전체를 `CANCELLED` 전이 (cancelReason="REGENERATED_FROM_WIZARD_REPLACE: {새 batchId}") + 신규 PO 생성 + 새 batch 행 생성 — 모두 단일 `prisma.$transaction`
-- 신규 PO의 `note` 메타에 "PO-001, PO-002 대체 (REPLACE by {user})" 기록
-
----
-
-## 📋 Sprint 3 다음 단계 상세 (Phase 4-B'-5b · 5c)
-
-### 4-B'-5b: 위저드 UI 골격 (다음 진행)
-
-
-**신규 파일**:
-- `src/app/(dashboard)/purchase-orders/new/page.tsx` — 라우트 + 인증 가드
-- `src/features/purchase-order/components/wizard/po-wizard.tsx` — 클라이언트 위저드 컨테이너
-- `src/features/purchase-order/components/wizard/step-meal-plan-group-select.tsx` — Step 1
-- `src/features/purchase-order/components/wizard/step-load-summary.tsx` — Step 2
-
-**페이지 연결**: `purchase-orders/page.tsx` 의 "신규 발주" 버튼 → `router.push('/purchase-orders/new')`.
-
-**연동 액션** (4-B'-5a 완료분 재사용):
- - Step 1 드롭다운 → `getMealPlanGroupsForOrderAction()`
- - Step 2 진입 시 자동 호출 → `loadPOWizardDataAction({ mealPlanGroupId, countSource })`
- - 최종 확정 → `createPurchaseOrdersBatchAction(input)`
-
-**상태 관리 전략**: 위저드 전체 상태는 `useState`/`useReducer` 클라이언트 상태로 관리. DB 임시 저장 없음 (Phase 1.6 DraftItem 모델 도입 결정 시 폐기됨). localStorage 키 `po-wizard-draft-{mealPlanGroupId}` 로 새로고침 복구만 지원.
-
-### 4-B'-5c: 위저드 UI 메인
-
-- Step 3: 매핑 테이블 (미매핑 강조, 단가 변경 색 구분, 자동 ceil 알림)
-- Step 4: 공장 × 공급업체 분할 미리보기 (배너 + 행 아이콘)
-- Step 5: 일괄 생성 모달 + 토스트 + 리다이렉트
-- localStorage 임시 저장, 환산 불가 행 메모 기능 포함
-
-### Phase 1.7 — 단위 환산 인라인 다이얼로그 UI 통일 (D16)
-
-#### 배경
-- R1-c 에서 추가한 위저드 인라인 단위 환산 등록이 직접 타이핑 방식이었음
-- 자재 관리 페이지(`UnitConversionForm`)는 이미 `UnitCombobox` 사용
-- 단위 중앙 관리 정책: 모든 단위는 단위 관리에 등록된 것만 셀렉트로 선택
-
-#### 결정사항 (D16)
-- **D16-1**: 위저드 인라인 단위 환산 등록도 `UnitCombobox` 사용 (직접 타이핑 금지)
-- **D16-2**: `UnitCombobox.onChange(v, unit)` 의 unit 객체에서 `unitCategory` 자동 도출
-- **D16-3**: `itemType="MATERIAL"`, `valueMode="code"` 로 자재 관리 폼과 동일 설정
-- **~~D16-4 (철회)~~**: ~~WEIGHT 카테고리만 허용~~
-  - 운영 현장 시나리오와 충돌: 포장단위(PACKAGE)→g, ml(VOLUME)→g 환산이 자재별 비중에 따라 자연 발생
-- **D16-4' (정정)**: **카테고리 제약 없음**
-  - fromUnit 은 모든 카테고리(WEIGHT/VOLUME/COUNT/LENGTH/PACKAGE) 자유 선택
-  - `excludeValue="g"` 로 toUnit 중복만 차단
-  - `UnitConversion.unitCategory` 는 fromUnit 마스터의 카테고리를 그대로 저장 (정보용, 검증 없음)
-  - **toUnit='g' 고정은 유지** — 자재 환산 체인(`lib/unit-conversion.ts`)이 g 기준이므로 변경 시 영향 범위 큼
-  - 예시 시나리오:
-    - WEIGHT: 1 kg = 1000 g (중량 단위 변환)
-    - PACKAGE: 1 포 = 1000 g (포장 → 내용물 중량)
-    - VOLUME: 1 ml = 0.92 g (기름 비중), 1 ml = 1 g (물)
-    - COUNT/LENGTH: 운영에서 필요 시 자유 정의
-
-#### 변경 파일
-- `src/features/purchase-order/components/wizard/unit-conversion-inline-dialog.tsx`
-
-#### 검증
-- ✅ `npx tsc --noEmit` 0 errors
-- ✅ `npm run test` 404 passed (회귀 없음)
-- ✅ 수동 UI: PACKAGE/VOLUME/COUNT 모든 카테고리 등록 가능, 'g' 중복 차단, 토스트 경고 없음
-
-#### 후속 메모
-- `step-mapping-table.tsx` 가 전달하는 `suggestedFromUnit` 이 UnitMaster.code 와 매칭되지 않으면 빈 상태로 열림 → 향후 UX 개선 검토
-- 자재 환산 체인의 'g' 기준 변경 검토는 별도 의사결정 필요 (현재는 g 고정 유지)
-
-#### D17. 공급단위 기준 환산 (Phase 1.7, 2026-06-22)
-
-R1-c 단위환산 인라인 모달 적용 후 사용자 검증에서 발견된 환산 로직 오류 정정.
-
-**배경**: 기존 D3 의 2단계 체인(필요량g → UnitConversion fromUnit → SupplierItem.supplyUnit)이
-`UnitConversion.fromUnit` 과 `SupplierItem.supplyUnit.name` 불일치 케이스에서 단위가 어긋난 채로
-계산을 진행하는 결함이 있었음. 예: 자재A의 환산이 'kg→g'(factor 1000)인데 공급단위가 '포'(supplyUnitQty=3)인 경우,
-"19kg ÷ 3포" 같은 의미 없는 나눗셈이 발생.
-
-**결정사항**:
-- **D17-1**: UnitConversion 조회 키를 `(materialMasterId, fromUnit=SupplierItem.supplyUnit.name, toUnit='g')`로 고정.
-  한 자재에 여러 fromUnit(포→g, kg→g 등) 등록 가능 — 스키마의 `@@unique([companyId, materialMasterId, subsidiaryMasterId, fromUnit, toUnit])` 5-튜플 unique 로 중복 방지.
-- **D17-2**: 글로벌 fallback 우선순위 = ① 자재별 일치 → ② 글로벌(`materialMasterId=null, subsidiaryMasterId=null`). 둘 다 없으면 등록 요구.
-- **D17-3**: 계산 = `gPerSupplyUnit = factor × supplyUnitQty`, `orderQuantityRaw = netRequiredG / gPerSupplyUnit`, `orderQuantity = Math.ceil(raw - EPSILON)`.
-  예: 19000g, 포→1000g, supplyUnitQty=3 → 19000/3000 = 6.33 → ceil → 7포.
-- **D17-4**: UnitConversion 미등록 시 `requiresManualInput=true` 반환 (이전 g 폴백 폐기). UI 에서 인라인 다이얼로그로 등록 유도.
-- **D17-5**: `supplyUnitName === 'g'` 예외 — UnitConversion 불필요, `factor=1` 자동 적용.
-- **D17-6**: `supplyUnitQty=0` → `requiresManualInput=true` (이전 1 fallback 폐기).
-- **D17-7**: 결과 시그니처 의미 변경 — `netRequiredInFromUnit` = 공급단위 기준 raw (= `orderQuantityRaw` 와 동일).
-  D3 시절 "환산전 단위 기준 정수(19포)" 의미는 폐기.
-
-**구현 파일**:
-- `src/features/purchase-order/lib/unit-conversion.ts` — 1단계 직접 환산
-- `src/features/purchase-order/lib/build-po-items-from-mr.ts` — 조회 키 변경 + resolveConversion() 헬퍼 + 글로벌 fallback
-- `src/tests/purchase-order-unit-conversion.test.ts` — D3 가정 테스트 10건 D17 정책으로 갱신 + 회귀 6건 추가
-- `src/tests/build-po-items-from-mr.test.ts` — mock 데이터 D17 정책 정렬 (UnitConversion.fromUnit = supplyUnit.name)
-
-**검증**:
-- `npx tsc --noEmit`: 0 errors
-- `npm run test`: 410 passed / 2 skipped / 0 failed
-- 회귀 시나리오: 포→1000g + supplyUnitQty=3 + 19000g → 7포 ✅
-
-**Phase 1.7 진입점**: Phase 1.6 (D9 outboundDate) 완료 후 R1-c 단위환산 인라인 모달의 결함 발견으로 시작된 보강 작업.
-다음 단계는 R1-c UI 트리거 보강 (공급단위 기준 환산 미등록 시 인라인 다이얼로그 자동 제안 — `step-mapping-table.tsx`) 및 Fix-R2.
-
-#### D17-10. 단위 환산 다이얼로그 3중 가드 (2026-06-23)
-
-**배경**: 사용자가 미매핑 행(공급업체 미선택)에서 단위 환산을 등록하면, `build-po-items-from-mr.ts`의 `resolveConversion`이 `defaultSupplierItem` 부재로 환산 lookup을 건너뛰어, 새로고침 시 등록한 환산이 사라진 것처럼 보이는 데드락이 발생.
-
-**결정**:
-
-1. **Guard A — 미매핑 행에서 ↗ 단위 환산 등록 버튼 숨김**
-   - `step-mapping-table.tsx`: 버튼 노출 조건에 `r.supplierItem !== null` 추가
-   - 정상 흐름: SupplierItemPicker로 공급업체 매핑 → mapped 승격 → 그때 환산 미등록이면 버튼 노출 → 등록 후 `REFRESH_ROW_AFTER_CONVERSION` 으로 재계산
-
-2. **Guard B — suggestedFromUnit 잠금**
-   - `unit-conversion-inline-dialog.tsx`: `suggestedFromUnit && fromUnit !== suggestedFromUnit` 이면 토스트로 차단
-   - 호출 시 `r.supplierItem!.supplyUnitCode` 명시적 전달 (UnitMaster.code 기준)
-
-3. **Guard C — DUPLICATE_CONVERSION 정상 흐름 처리**
-   - `ActionFailure` 타입은 `{ code, message }` 만 노출 (`details` 없음)
-   - `res.error.code === "DUPLICATE_CONVERSION"` 판별 → `onSuccess` 트리거 + 다이얼로그 닫기
-   - 메시지 fallback (`includes("이미 등록")`) 으로 i18n/메시지 변경 대비
-
-**검증**: tsc 0 errors, 410 PASS / 2 skipped
-
-**한계 / 추후 검토 (D-LOT-TRACKING 후속 안건)**:
-- 본 가드는 "공급업체가 결정된 후에만 환산 등록"이라는 UX 원칙을 강제. 공급업체 미정 자재에 대한 사전 환산 요구가 빈번하다면 build-po-items-from-mr 에서 `MaterialMaster.unit` fallback lookup을 도입해야 함.
-
----
-
-### 미해결 설계 안건 (Sprint 4 이전 결정 필요)
-
-| 안건 | 상태 | 결정 시점 |
-|---|---|---|
-| **D-FIFO** — 동일 날짜 입고 시 단가 소비 우선순위 (최신 등록분 우선 vs 등록 순) | 미결정 | Phase 5 (입고) 진입 전 |
-| **D-LOT-TRACKING** — 재고 lot 단위 단가 추적 모델 (Option A: InventoryLot 테이블 신설 / Option B: 가상 lot 계산) | 미결정 | Phase 5 진입 전 |
-| **D-RESERVATION** — PO 생성 시 예약(Reservation) 자동 생성, 가용 재고 = totalQtyG − reservedQtyG. 리드타임 D+3,+4로 미리 입고된 자재가 신규 발주 wizard에서 가용 재고로 잘못 잡히지 않도록 차단 | 미결정 | Phase 5 진입 전 |
-
----
-
-## 🗂️ 종결된 Sprint 요약
-
-### Sprint 1 — 안정화 + 품질 기반 확보 ✅
-- 기간: 2026-05-04 ~ 2026-05-12
-- 14 Phase / 16 커밋 / 158 tests / 0 failures, TS errors 0, any 0
-- 핵심 산출물: Sonner toast 인프라, UnitMaster 중앙 관리, Container 의존성 가드, duplicateRecipeBOM, handleActionError 통일, Error Boundary, CONVENTIONS 12 규칙
-- > 상세 이력 → `docs/progress/SPRINT1.md`
-
-### Sprint 2 — 식단 템플릿 · 식단 계획 ✅
-- 기간: 2026-05-13 ~ 2026-06-11
-- 핵심 산출물: MealTemplate / MealPlanGroup / MealPlan / MealPlanSlot / MealCount / MealPlanAccessory / Lineup / CompanyMealSlot / Location / ProductionLine / MaterialRequirement 도메인 완성, Phase 5-R 구조 재정의, Phase 7-F BOM 적격 가드, Phase 8.5 Location/ProductionLine 마스터, Phase 9-A MR 서비스, Phase 9-C-Fix-R1 슬롯 정합성, Phase 9-D-Sym 수량 대칭 분리
-- 테스트: 239 PASS / 2 skipped / 0 fail, TS errors 0
-- > 상세 이력 → `docs/progress/SPRINT2.md`
-
-### Sprint 2.5 — 단위 관리 중앙화 ✅
-- 기간: 2026-06-12 (~6h 임시 라운드)
-- 핵심 산출물: `UnitCategory.PACKAGE` 추가, `SupplierItem.supplyUnit → supplyUnitId` FK 전환, `UnitCombobox` 컴포넌트, 카테고리 사전 선택 UI 제거, UnitConversion 자동 도출
-- > 상세 이력 → `docs/progress/SPRINT2.md` (Sprint 2.5 섹션)
-
-### Sprint 2 잔여 (Sprint 3 또는 백로그로 이관)
-
-| 항목 | 이관 위치 |
-|------|-----------|
-| Phase 2-e — 부자재-공급업체 연결 UX | 백로그 |
-| Phase 6 — 식단 캘린더 뷰 | 백로그 (독립 가능) |
-| Phase 7-E — BOM 슬롯 totalWeightG 자동 합산 / 캘린더 공용 컴포넌트 | 백로그 |
-| Phase 7-G — 단위 환산 가드 | Sprint 2.5 에서 일부 흡수, Sprint 3 4-B'-1 에서 환산 라이브러리로 완결 |
-| Phase 9-A-4 — MR 서비스 추가 테스트 | 백로그 |
-| Phase 9-D-Acc — 부자재 사용처 지정 + 독립 발주 트랙 | Sprint 3 4-D 또는 Sprint 4 통합 검토 |
-| Phase 9-D-Sym 후속 — `collectGroupSlotQtyIssues` FINAL 분기 | 확정식수 분배 정책 도입 시점 |
-| Phase 9-E — PO 자동 생성 연결 | Sprint 3 Phase 7 |
-| Phase 10-Lint — 린트 일괄 정리 (react-hooks 24 / no-explicit-any 72 / no-unescaped-entities 2 / no-unused-vars 11) | 별도 정리 스프린트 |
-| Phase 11 — 페이지 통합 + 최종 QA | Sprint 8 |
-
-### Sprint 2 잔여 정리 항목 (라이트)
-- `page.tsx` 의 `openMealCountEditor` / `closeMealCountEditor` / `handleSaveMealCount` 들여쓰기 정리 (기능 영향 없음)
-
----
-
-## 🗺️ 앞으로의 Sprint 로드맵
-
-### Sprint 4 — 재고 + 이동 + 실사 + 출고 + 소비 + 조리계획 (~62h)
-
-| Phase | 내용 | 추정 공수 |
-|-------|------|-----------|
-| 1 | 재고 조회 서비스 (InventoryLot, InventoryTransaction) | 4h |
-| 2 | 재고 UI (`/inventory`) | 4h |
-| 3 | InventoryReservation 서비스 | 3h |
-| 4 | InventoryTransfer 서비스 + 액션 | 4h |
-| 5 | InventoryTransfer UI | 4h |
-| 6 | StockTake 서비스 + 액션 | 4h |
-| 7 | StockTake UI | 3h |
-| 8 | ShippingOrder 서비스 + 액션 | 4h |
-| 9 | ShippingOrder UI | 3h |
-| 10 | ConsumptionItem 서비스 + 액션 (자재·부자재 통합) | 4h |
-| 11 | ConsumptionItem UI | 3h |
-| 12 | CookingPlan 서비스 + 액션 | 5h |
-| 13 | CookingPlan UI | 4h |
-| 14 | 테스트 보강 | 4h |
-| 15 | Sprint 4 E2E + QA | 3h |
-
-**Sprint 4 진입 시 확장할 결정사항 (사전 합의 보존)**:
-- ConsumptionItem 처분 enum: `USED` / `RETURNED` / `DISPOSED`
-- DisposalReason enum: `EXPIRED` / `DAMAGED` / `CONTAMINATED` / `OVER_PREPARED` / `OTHER`
-- 손질손실(`TRIMMING_LOSS`)은 `BOM.yieldRate` 흡수, 폐기에 미포함
-- 재고 검증식: `기초 + ∑PURCHASE − ∑CONSUMPTION(USED) − ∑DISPOSAL(DISPOSED) ± ∑TRANSFER ± ∑ADJUSTMENT = 기말`
-- `InventoryLot.materialMasterId` nullable 전환 (부자재 표현 보강), `itemType` 인덱스 추가
-- `InventoryAdapter` (Sprint 3 placeholder) 의 실제 구현 연결
-
-### Sprint 5 — 원가 + 간접비 + 월말 마감 + 알림 (~52h)
-
-12 Phase: 원가 스냅샷 / CostCalculation / OverheadCost / MonthEnd / Notification + E2E.
-
-**진입 시 확장할 결정사항**:
-- 원가 산출 공식: 예상원가 (MR.ESTIMATED) / 확정원가 (∑USED × Lot 단가) / 손실원가 (∑DISPOSED × Lot 단가) / 원가편차 / 손실률
-- `CostType { ESTIMATED, ORDER_BASED, ACTUAL }` 유지. 손실원가는 별도 enum 값 없이 `disposition` 컬럼으로 분기.
-
-### Sprint 6 — 조직 관리 (~38h)
-Company / Location 재점검 / ProductionLine 재점검 / Lineup / 사이드바 재구성.
-> Phase 8.5 (Location · ProductionLine 마스터)는 Sprint 2 에서 선반영 완료.
-
-### Sprint 7 — 권한 + 사용자 + 초대 (~42h)
-User / UserScope / PermissionSet / Invitation + UI + E2E.
-Sprint 3 에서 등록 예정인 권한 키들을 PermissionSet seed 에 반영.
-
-### Sprint 8 — 대시보드 + 감사로그 + UX 통일 + 최종 QA (~38h)
-메인 대시보드 / AuditLog UI / AutoGenLog UI / CONVENTIONS 최종 점검 / 전체 E2E.
-
----
-
-## ⏸ 보류 범위
-
-구조 재정의 보강 완료 전 본격 착수하지 않는다:
-InventoryReservation · InventoryTransfer · StockTake · ShippingOrder · ConsumptionItem · CookingPlan 본 구현 · CostSnapshot / CostCalculation / OverheadCost / MonthEnd* · Notification* · 조직/권한/초대 · AuditLog 조회 UI · AutoGenLog 조회 UI.
-
----
-
-## 🤝 Handoff 기준
-
-다음 모델 또는 개발자는 아래 순서로 읽고 시작한다:
-
-1. `PROGRESS.md` (본 문서) — 현재 상태와 다음 단계
-2. `docs/progress/SCHEMA_COVERAGE.md` — 모델별 구현 상태
-3. `docs/progress/SPRINT2.md` — 최근 작업 컨텍스트 (식단·MR 도메인)
-4. `docs/progress/SPRINT1.md` — Sprint 1 안정화 이력
-5. `01_개발순서.md` ~ `07_HANDOFF.md` — 기획·설계 문서
-
----
-
-## 📚 종결 Sprint 결정사항 인덱스
-
-종결된 Sprint 의 핵심 결정사항이 어디에 보존되어 있는지 빠르게 찾기 위한 인덱스.
-
-| 영역 | 결정사항 | 보존 위치 |
-|------|----------|-----------|
-| MaterialRequirement 산출 정책 | 2단계 분리 (ESTIMATED/FINAL), CONTAINER 슬롯만, MR_INVALID_UNIT strict, SEMI_PRODUCT 1단계 재귀, UPSERT/UNDELETE/soft-delete diff | `SPRINT2.md` Phase 9-A |
-| 슬롯 수량 검증 (그룹 단위) | `recipeBomId` 그룹핑, OK_FALLBACK/OK_DISTRIBUTED/SUM_MISMATCH/PARTIAL_INPUT 4상태 | `SPRINT2.md` Phase 9-C, 9-C-Fix-R1 |
-| 슬롯 수량 대칭 분리 | `quantity` → `estimatedQuantity` + `finalQuantity Int?`, 검증 함수 countSource 매개변수 | `SPRINT2.md` Phase 9-D-Sym |
-| 부자재 사용처 지정 | `MealPlanAccessory.productionLineId` 추가 (예정), PER_MEAL_COUNT/FIXED_QUANTITY 모드, 식단 외 독립 발주 트랙 | `SPRINT2.md` Phase 9-D-Acc (이관 시), 본 문서 "Sprint 2 잔여" |
-| UnitMaster SSOT · PACKAGE 카테고리 | `SupplierItem.supplyUnit → supplyUnitId` FK, 카테고리 사전 선택 UI 제거, `UnitCombobox` | `SPRINT2.md` Sprint 2.5 섹션 |
-| PO 라이프사이클 정책 (POStatus 매핑) | DRAFT/SUBMITTED/APPROVED/RECEIVED/CANCELLED 라벨, submittedAt/approvedByUserId/cancelledAt 등 | 본 문서 Sprint 3 결정사항 |
-| 발주 위저드 정책 D1~D8 | PO 의미론, 위저드 vs 수동, 단위 환산 체인, PriceHistory 적층 (P9'), 그룹핑 키, 미매핑 처리, 회사 계층, InventoryAdapter | 본 문서 Sprint 3 Phase 4-B' 결정사항 |
-
-## 🔮 다음 Sprint 진입 시 확장할 합의된 정책 (사전 보존)
-
-향후 Sprint 진입 시 본 정책들을 결정사항 섹션으로 확장한다. 사전 합의된 내용을 잃지 않기 위해 보존.
-
-### Sprint 4 — ConsumptionItem · 재고 도메인
-
-- **처분 enum**: `USED` (정상사용→CONSUMPTION, 확정원가) / `RETURNED` (잔량 환원→트랜잭션 없음) / `DISPOSED` (폐기→DISPOSAL, 손실원가).
-- **DisposalReason enum**: `EXPIRED` / `DAMAGED` / `CONTAMINATED` / `OVER_PREPARED` / `OTHER`. `TRIMMING_LOSS` 는 `BOM.yieldRate` 흡수, 폐기 미포함.
-- **서비스 가드**: `USED|RETURNED` → `disposalReason` null 필수. `DISPOSED` → 사유 필수. `OTHER` → `disposalNote` 필수.
-- **부자재 통합**: `ConsumptionItem.itemType` + `subsidiaryMasterId` 추가하여 자재·부자재 단일 모델 처리 (Phase 9-D-Acc 결정사항 흡수).
-- **재고 검증식**: `기초 + ∑PURCHASE − ∑CONSUMPTION(USED) − ∑DISPOSAL(DISPOSED) ± ∑TRANSFER ± ∑ADJUSTMENT = 기말` (단일 `InventoryTransaction` 테이블, `transactionType` GROUP BY).
-- **InventoryLot 보강**: `materialMasterId` String → String? nullable 전환 (부자재 표현). `itemType` 인덱스 추가.
-- **InventoryAdapter 교체**: Sprint 3 의 `noopInventoryAdapter` → 실제 어댑터로 연결.
-
-### Sprint 5 — 원가 산출
-
-| 원가 종류 | 산출식 | 입력 |
-|-----------|--------|------|
-| 예상원가 | BOM × MealCount.estimatedCount × 단가 | MaterialRequirement(ESTIMATED) |
-| 확정원가 | ∑ ConsumptionItem(USED) × Lot 단가 | ConsumptionLotDetail |
-| 손실원가 | ∑ ConsumptionItem(DISPOSED) × Lot 단가 | ConsumptionLotDetail |
-| 원가편차 | 확정원가 − 예상원가 | (계산) |
-| 손실률 | 손실원가 ÷ (확정원가 + 손실원가) | (계산) |
-
-- `CostType { ESTIMATED, ORDER_BASED, ACTUAL }` 유지. 손실원가는 별도 enum 없이 `disposition` 컬럼으로 분기.
-- ORDER_BASED 의 의미: 발주 시점 확정 단가 (PO 단가 × MR 수량). Sprint 3 의 P9' 정책과 연동.
-
-### 발주 산정 공식 (Phase 4-B' 위저드에 일부 반영, 잔여 정책은 진입 시 확장)
-
-- 변환식: `필요량(g) ÷ 환산계수 → 포장 단위 수량` (Phase 4-B'-1 `calculateOrderQuantity` 에 구현 완료).
-- 재고 차감: `발주 수량 = 환산 후 필요량 − 현재 재고(동일 단위)` (Phase 4-B'-2 에 어댑터 인터페이스 적용, Sprint 4 에서 실 구현 연결).
-- 반올림 정책 (현재 `Math.ceil` 단일, 향후 검토):
-  - 잔여 ≤ 30% → 절사 (버림)
-  - 잔여 > 30% → 절상 (올림)
-  - 운영자 수동 조정은 DRAFT 단계에서만 허용 (현재는 항상 허용)
-- 보정 발주 정책: CONFIRMED/RECEIVED 이후 변경은 별도 보정 PO 로 분리. `PurchaseOrder.note` 에 원본 PO 참조.
-
-+ 발주 단위 = `Math.ceil(필요량 / 환산계수)` — Phase 4-B'-1 에서 구현 완료
-+ 출고일 기반 키 일자 = `PurchaseOrder.outboundDate` (Phase 1.6 에서 컬럼 개명 적용)
-+ 예상 입고일 = `outboundDate − SupplierItem.leadTimeDays` (파생값, 컬럼화 금지)
-
-### 작업지시서 (조리 지시서) — Sprint 3 Phase 8 또는 별도 Sprint
-- 컬럼: 메뉴 / 식단 / 용기 / 인분 / 식자재 / 포장 단위 / 투입량(역환산) / 총 필요량 / 1인분 BOM 중량.
-- "투입량" 은 발주 받은 포장 단위 기준 (예: 2.5포). UI 는 g 와 발주 단위 둘 다 표시.
-
-### MaterialRequirement 페이지 역할 재정의 (Sprint 3 Phase 7 에서 확장)
-- "소요량" → **"필요량/작업지시서/발주서 생성 단계"** 로 역할 확장.
-- 용어 통일: **"소요량" → "필요량"**.
-- "유니크 자재" → **"중복 사용 자재 수"**.
-- 환산 후 발주 단위 수량 컬럼 추가.
-- 산출 결과 → 공장별 작업지시서 + 공장별 발주서 초안 자동 생성.
-
-### 식단 외 독립 발주 트랙 (Sprint 3 Phase 4-D 또는 Sprint 4)
-- 용기·수저·청소 용품 등 식단과 무관한 자재는 공장 직접 발주.
-- `MaterialRequirement` 미사용, `PurchaseOrder.isManual = true` + 위저드 D2 컨벤션 재사용.
-
-### 원가/재고 검증식 (Sprint 5)
-- 일별 사용량 기반 원가 계산.
-- 월말 마감 시 `MonthEnd*` 모델로 스냅샷.
-- 예: 기초 10팩 + 6월 매입 100팩 − 기말 30팩 → 사용 80팩, 비용 = 80팩 × 단가.
-
----
-
-## 📋 Prisma 스키마 모델 커버리지
-
-요약: 총 69 모델 중 식단·자재 도메인은 ✅, 발주·재고·원가·조직·권한·알림은 ⬜ 또는 🔄.
-- PurchaseOrder / PurchaseOrderItem: 🔄 (Sprint 3 Phase 1.5 에서 `locationId` / `productionLineId` 추가, Phase 4-B' 위저드 백엔드 진행 중)
-- 상세 표 → `docs/progress/SCHEMA_COVERAGE.md`
+## 🔗 참고 문서
+
+- `docs/progress/SPRINT1.md` — Sprint 1 아카이브 (기본 인프라·마스터)
+- `docs/progress/SPRINT2.md` — Sprint 2 아카이브 (MealPlan 재정의·식단 캘린더·MaterialRequirement)
+- `docs/progress/SPRINT3.md` — Sprint 3 아카이브 (발주+입고)
+- `docs/progress/SCHEMA_COVERAGE.md` — 모델 구현 현황 (68 모델 + UnitMaster)
+- `docs/progress/PO_LIFECYCLE.md` — POStatus 라이프사이클
+- `docs/progress/RECEIVING_INVENTORY_POLICY.md` — 입고↔재고 정책
+- `docs/progress/COST_LINEUP_ALIGNMENT.md` — 원가↔라인업 정합성
+- `01_개발순서.md` ~ `07_HANDOFF.md` — 초기 설계 문서 (히스토리)
+- `prisma/schema.prisma` — 스키마 SSOT (v5, Prisma 7)
