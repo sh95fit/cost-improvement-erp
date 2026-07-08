@@ -354,11 +354,11 @@ model PurchaseOrderBatch {
   createdByUserId String          @map("created_by_user_id")
   createdAt       DateTime        @default(now()) @map("created_at")
 
-  company         Company         @relation(fields: [companyId], references: [id])
-  mealPlanGroup   MealPlanGroup?  @relation(fields: [mealPlanGroupId], references: [id])
-  createdByUser   User            @relation(fields: [createdByUserId], references: [id])
-  purchaseOrders  PurchaseOrder[]
-  adjustmentLogs  POAdjustmentLog[]
+  company        Company           @relation(fields: [companyId], references: [id])
+  mealPlanGroup  MealPlanGroup?    @relation(fields: [mealPlanGroupId], references: [id])
+  createdByUser  User              @relation(fields: [createdByUserId], references: [id])
+  purchaseOrders PurchaseOrder[]
+  adjustmentLogs POAdjustmentLog[]
 
   @@unique([companyId, idempotencyKey])
   @@index([mealPlanGroupId])
@@ -382,17 +382,17 @@ enum POBatchMode {
 // R1-b1 단계에서는 모델만 만들고 실제 적층 로직은 R1-b3 에서 구현.
 
 model POAdjustmentLog {
-  id                  String              @id @default(cuid())
-  purchaseOrderId     String              @map("purchase_order_id")
-  purchaseOrderItemId String?             @map("purchase_order_item_id")
+  id                  String             @id @default(cuid())
+  purchaseOrderId     String             @map("purchase_order_id")
+  purchaseOrderItemId String?            @map("purchase_order_item_id")
   action              POAdjustmentAction
-  fieldName           String?             @map("field_name")
-  beforeValue         String?             @map("before_value") // JSON 직렬화
-  afterValue          String?             @map("after_value")  // JSON 직렬화
+  fieldName           String?            @map("field_name")
+  beforeValue         String?            @map("before_value") // JSON 직렬화
+  afterValue          String?            @map("after_value") // JSON 직렬화
   reason              String
-  sourceBatchId       String?             @map("source_batch_id")
-  actorUserId         String              @map("actor_user_id")
-  createdAt           DateTime            @default(now()) @map("created_at")
+  sourceBatchId       String?            @map("source_batch_id")
+  actorUserId         String             @map("actor_user_id")
+  createdAt           DateTime           @default(now()) @map("created_at")
 
   purchaseOrder     PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
   purchaseOrderItem PurchaseOrderItem?  @relation(fields: [purchaseOrderItemId], references: [id])
@@ -418,10 +418,10 @@ enum POAdjustmentAction {
 // ---- D30 (2026-06-30): 발주↔입고 불일치 스냅샷 ----
 
 enum DiscrepancyType {
-  QUANTITY_SHORT      // 입고량 < 발주량
-  QUANTITY_OVER       // 입고량 > 발주량
-  UNIT_PRICE_DIFF     // 입고 단가 ≠ 발주 단가 (P9: SupplierItem 마스터 무영향)
-  ITEM_MISSING        // 발주 품목이 입고서에 누락
+  QUANTITY_SHORT // 입고량 < 발주량
+  QUANTITY_OVER // 입고량 > 발주량
+  UNIT_PRICE_DIFF // 입고 단가 ≠ 발주 단가 (P9: SupplierItem 마스터 무영향)
+  ITEM_MISSING // 발주 품목이 입고서에 누락
 
   @@map("discrepancy_type")
 }
@@ -443,46 +443,46 @@ model Company {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  users                 UserScope[]
-  locations             Location[]
-  productionLines       ProductionLine[]
-  lineups               Lineup[]
-  materialMasters       MaterialMaster[]
-  subsidiaryMasters     SubsidiaryMaster[]
-  unitConversions       UnitConversion[]
-  suppliers             Supplier[]
+  users                  UserScope[]
+  locations              Location[]
+  productionLines        ProductionLine[]
+  lineups                Lineup[]
+  materialMasters        MaterialMaster[]
+  subsidiaryMasters      SubsidiaryMaster[]
+  unitConversions        UnitConversion[]
+  suppliers              Supplier[]
   // ★ 삭제: containerGroups (ContainerGroup 모델 폐지)
-  recipes               Recipe[]
-  semiProducts          SemiProduct[]
-  boms                  BOM[]
-  recipeBoms            RecipeBOM[]
-  mealTemplates         MealTemplate[]
-  mealPlanGroups        MealPlanGroup[]
-  autoGenLogs           AutoGenLog[]
-  purchaseOrders        PurchaseOrder[]
-  purchaseOrderBatches  PurchaseOrderBatch[]
-  inventoryLots         InventoryLot[]
-  inventoryTransactions InventoryTransaction[]
-  inventoryReservations InventoryReservation[]
-  inventoryTransfers    InventoryTransfer[]
-  stockTakes            StockTake[]
-  shippingOrders        ShippingOrder[]
-  cookingPlans          CookingPlan[]
-  costSnapshots         CostSnapshot[]
-  monthEndSnapshots     MonthEndSnapshot[]
-  monthEndAdjustments   MonthEndAdjustment[]
-  notificationRules     NotificationRule[]
-  notificationLogs      NotificationLog[]
-  auditLogs             AuditLog[]
-  invitations           Invitation[]
-  receivingNotes        ReceivingNote[]
-  materialRequirements  MaterialRequirement[]
-  consumptionItems      ConsumptionItem[]
-  costCalculations      CostCalculation[]
-  overheadCosts         OverheadCost[]
-  unitMasters           UnitMaster[]
-  companyMealSlots      CompanyMealSlot[] // ★ Phase 5-R Step 3.1: 식단 슬롯 마스터  
-  receivingDiscrepancies   ReceivingDiscrepancy[]
+  recipes                Recipe[]
+  semiProducts           SemiProduct[]
+  boms                   BOM[]
+  recipeBoms             RecipeBOM[]
+  mealTemplates          MealTemplate[]
+  mealPlanGroups         MealPlanGroup[]
+  autoGenLogs            AutoGenLog[]
+  purchaseOrders         PurchaseOrder[]
+  purchaseOrderBatches   PurchaseOrderBatch[]
+  inventoryLots          InventoryLot[]
+  inventoryTransactions  InventoryTransaction[]
+  inventoryReservations  InventoryReservation[]
+  inventoryTransfers     InventoryTransfer[]
+  stockTakes             StockTake[]
+  shippingOrders         ShippingOrder[]
+  cookingPlans           CookingPlan[]
+  costSnapshots          CostSnapshot[]
+  monthEndSnapshots      MonthEndSnapshot[]
+  monthEndAdjustments    MonthEndAdjustment[]
+  notificationRules      NotificationRule[]
+  notificationLogs       NotificationLog[]
+  auditLogs              AuditLog[]
+  invitations            Invitation[]
+  receivingNotes         ReceivingNote[]
+  materialRequirements   MaterialRequirement[]
+  consumptionItems       ConsumptionItem[]
+  costCalculations       CostCalculation[]
+  overheadCosts          OverheadCost[]
+  unitMasters            UnitMaster[]
+  companyMealSlots       CompanyMealSlot[] // ★ Phase 5-R Step 3.1: 식단 슬롯 마스터  
+  receivingDiscrepancies ReceivingDiscrepancy[]
 
   @@map("companies")
 }
@@ -510,7 +510,7 @@ model Location {
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
   shippingOrders        ShippingOrder[]
   materialRequirements  MaterialRequirement[]
-  purchaseOrders PurchaseOrder[]
+  purchaseOrders        PurchaseOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -539,7 +539,7 @@ model ProductionLine {
   cookingPlans         CookingPlan[]
   mealPlanSlots        MealPlanSlot[]
   materialRequirements MaterialRequirement[]
-  purchaseOrders PurchaseOrder[]
+  purchaseOrders       PurchaseOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -569,15 +569,15 @@ model User {
   monthEndAdjustments     MonthEndAdjustment[]
   invitations             Invitation[]
   // ★ Sprint 3 Phase 1 — PO 라이프사이클 관계 분리
-  createdPurchaseOrders   PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
-  approvedPurchaseOrders  PurchaseOrder[]      @relation("PurchaseOrderApprovedBy")
-  cancelledPurchaseOrders PurchaseOrder[]      @relation("PurchaseOrderCancelledBy")
+  createdPurchaseOrders   PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
+  approvedPurchaseOrders  PurchaseOrder[]        @relation("PurchaseOrderApprovedBy")
+  cancelledPurchaseOrders PurchaseOrder[]        @relation("PurchaseOrderCancelledBy")
   // ★ R1-b1: 위저드 batch 생성자
   createdPOBatches        PurchaseOrderBatch[]
   // ★ R1-b3: PO 조정 이력 액터
-  poAdjustmentLogs        POAdjustmentLog[]  
-  receivingNotesConfirmed  ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
-  receivingDiscrepancies   ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")  
+  poAdjustmentLogs        POAdjustmentLog[]
+  receivingNotesConfirmed ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
+  receivingDiscrepancies  ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")
 
   @@map("users")
 }
@@ -663,7 +663,7 @@ model MaterialMaster {
   shelfLifeDays         Int?         @map("shelf_life_days")
   stockGrade            StockGrade   @default(C) @map("stock_grade")
   stockGradeUpdatedAt   DateTime?    @map("stock_grade_updated_at")
-  isActive              Boolean      @default(true) @map("is_active")  // ★ M-Fix-R1 (D14-7)
+  isActive              Boolean      @default(true) @map("is_active") // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
@@ -690,7 +690,7 @@ model MaterialMaster {
 
   @@unique([companyId, code])
   @@index([companyId])
-  @@index([isActive])           // ★ M-Fix-R1 (D14-7)
+  @@index([isActive]) // ★ M-Fix-R1 (D14-7)
   @@map("material_masters")
 }
 
@@ -705,7 +705,7 @@ model SubsidiaryMaster {
   unitCategory          UnitCategory   @default(COUNT) @map("unit_category")
   stockGrade            StockGrade     @default(C) @map("stock_grade")
   stockGradeUpdatedAt   DateTime?      @map("stock_grade_updated_at")
-  isActive              Boolean        @default(true) @map("is_active")  // ★ M-Fix-R1 (D14-7)
+  isActive              Boolean        @default(true) @map("is_active") // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?        @unique @map("default_supplier_item_id")
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
@@ -733,7 +733,7 @@ model SubsidiaryMaster {
   @@unique([companyId, code])
   @@index([companyId])
   @@index([companyId, subsidiaryType])
-  @@index([isActive])           // ★ M-Fix-R1 (D14-7)
+  @@index([isActive]) // ★ M-Fix-R1 (D14-7)
   @@map("subsidiary_masters")
 }
 
@@ -764,23 +764,23 @@ model Supplier {
 }
 
 model SupplierItem {
-  id                 String   @id @default(cuid())
-  supplierId         String   @map("supplier_id")
-  itemType           ItemType @map("item_type")
-  materialMasterId   String?  @map("material_master_id")
-  subsidiaryMasterId String?  @map("subsidiary_master_id")
-  supplierItemCode   String?  @map("supplier_item_code")
-  productName        String   @map("product_name")
-  spec               String?  @map("spec")
-  supplyUnitId       String   @map("supply_unit_id")
-  supplyUnitQty      Float    @map("supply_unit_qty")
-  currentPrice       Float    @map("current_price")
-  leadTimeDays       Int      @default(1) @map("lead_time_days")
+  id                 String    @id @default(cuid())
+  supplierId         String    @map("supplier_id")
+  itemType           ItemType  @map("item_type")
+  materialMasterId   String?   @map("material_master_id")
+  subsidiaryMasterId String?   @map("subsidiary_master_id")
+  supplierItemCode   String?   @map("supplier_item_code")
+  productName        String    @map("product_name")
+  spec               String?   @map("spec")
+  supplyUnitId       String    @map("supply_unit_id")
+  supplyUnitQty      Float     @map("supply_unit_qty")
+  currentPrice       Float     @map("current_price")
+  leadTimeDays       Int       @default(1) @map("lead_time_days")
   moq                Float?
-  isActive           Boolean  @default(true) @map("is_active")      // ★ S-Fix (D15-1)
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-  deletedAt          DateTime? @map("deleted_at")                   // ★ S-Fix (D15-2)
+  isActive           Boolean   @default(true) @map("is_active") // ★ S-Fix (D15-1)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at") // ★ S-Fix (D15-2)
 
   supplier             Supplier                   @relation(fields: [supplierId], references: [id])
   materialMaster       MaterialMaster?            @relation(fields: [materialMasterId], references: [id])
@@ -800,8 +800,8 @@ model SupplierItem {
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([supplyUnitId])
-  @@index([isActive])        // ★ S-Fix
-  @@index([deletedAt])       // ★ S-Fix
+  @@index([isActive]) // ★ S-Fix
+  @@index([deletedAt]) // ★ S-Fix
   @@map("supplier_items")
 }
 
@@ -1267,10 +1267,11 @@ model Lineup {
   //    슬롯-템플릿 매핑은 식단(MealPlan) 작성 단계에서 결정됨.
   // templateMaps LineupMealTemplateMap[]
 
-  mealPlans      MealPlan[]
-  mealCounts     MealCount[]
-  shippingOrders ShippingOrder[]
+  mealPlans            MealPlan[]
+  mealCounts           MealCount[]
+  shippingOrders       ShippingOrder[]
   materialRequirements MaterialRequirement[]
+  purchaseOrders       PurchaseOrder[] // ★ Sprint 3.5 Phase S3.5-0
 
   @@unique([companyId, code]) // 또는 partial unique index — 기존 정의 유지
   @@index([companyId])
@@ -1374,7 +1375,7 @@ model MaterialRequirement {
   productionLine     ProductionLine      @relation(fields: [productionLineId], references: [id])
   location           Location            @relation(fields: [locationId], references: [id])
   materialMaster     MaterialMaster      @relation(fields: [materialMasterId], references: [id])
-  lineup             Lineup?             @relation(fields: [lineupId], references: [id])  
+  lineup             Lineup?             @relation(fields: [lineupId], references: [id])
   purchaseOrderItems PurchaseOrderItem[]
 
   // Phase 9-A-1.5: countSource 포함 합성 유니크 (1차/2차 행 공존 허용)
@@ -1394,64 +1395,68 @@ model MaterialRequirement {
 // ---- 10. 발주 ----
 
 model PurchaseOrder {
-  id                String    @id @default(cuid())
-  companyId         String    @map("company_id")
-  supplierId        String    @map("supplier_id")
-  orderNumber       String    @unique @map("order_number")
-  status            POStatus  @default(DRAFT)
-  orderDate            DateTime  @map("order_date") @db.Date
+  id                  String              @id @default(cuid())
+  companyId           String              @map("company_id")
+  supplierId          String              @map("supplier_id")
+  orderNumber         String              @unique @map("order_number")
+  status              POStatus            @default(DRAFT)
+  orderDate           DateTime            @map("order_date") @db.Date
   // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate 의미 명확화
   // 출고일 = 공급업체가 우리 창고/공장으로 출고하는 날짜
-  outboundDate         DateTime? @map("outbound_date") @db.Date
+  outboundDate        DateTime?           @map("outbound_date") @db.Date
   // ★ Phase 1.6 (D15-2): 사용처 입고 예정일 (PO 헤더 단위)
   // 계산식: outboundDate + MAX(items.supplierItem.leadTimeDays)
   // outboundDate 가 null 이면 expectedReceiveDate 도 null.
   // 품목별 입고일은 런타임 derived (DB 미저장, D15-3).
-  expectedReceiveDate  DateTime? @map("expected_receive_date") @db.Date
-  totalAmount          Float?    @map("total_amount")
-  note              String?
-  isManual          Boolean   @default(false) @map("is_manual")
-  mealPlanGroupId   String?   @map("meal_plan_group_id")
-  createdByUserId   String?   @map("created_by_user_id")
+  expectedReceiveDate DateTime?           @map("expected_receive_date") @db.Date
+  totalAmount         Float?              @map("total_amount")
+  note                String?
+  isManual            Boolean             @default(false) @map("is_manual")
+  mealPlanGroupId     String?             @map("meal_plan_group_id")
+  createdByUserId     String?             @map("created_by_user_id")
   // ★ Sprint 3 Phase 1 — 라이프사이클 추적 필드 보강
-  submittedAt       DateTime? @map("submitted_at")
-  approvedAt        DateTime? @map("approved_at")
-  approvedByUserId  String?   @map("approved_by_user_id")
-  cancelledAt       DateTime? @map("cancelled_at")
-  cancelledByUserId String?   @map("cancelled_by_user_id")
-  cancelReason      String?   @map("cancel_reason")
+  submittedAt         DateTime?           @map("submitted_at")
+  approvedAt          DateTime?           @map("approved_at")
+  approvedByUserId    String?             @map("approved_by_user_id")
+  cancelledAt         DateTime?           @map("cancelled_at")
+  cancelledByUserId   String?             @map("cancelled_by_user_id")
+  cancelReason        String?             @map("cancel_reason")
   // ★ Sprint 3 Phase 1.5 — Roll-up 위치 (P3+P5)
-  locationId        String    @map("location_id")
-  productionLineId  String?   @map("production_line_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  locationId          String              @map("location_id")
+  productionLineId    String?             @map("production_line_id")
+  // ★ Sprint 3.5 Phase S3.5-0 — 라인업 귀속 축 (P1' 준수, 수동 발주 시 필수)
+  lineupId            String?             @map("lineup_id")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
   // ★ R1-b1: 위저드 batch 추적 (NEW/DELTA/REPLACE 어느 모드든 batch 에 묶임)
-  batchId String? @map("batch_id")
-  batch   PurchaseOrderBatch? @relation(fields: [batchId], references: [id])
+  batchId             String?             @map("batch_id")
+  batch               PurchaseOrderBatch? @relation(fields: [batchId], references: [id])
 
-  company         Company             @relation(fields: [companyId], references: [id])
-  supplier        Supplier            @relation(fields: [supplierId], references: [id])
-  mealPlanGroup   MealPlanGroup?      @relation(fields: [mealPlanGroupId], references: [id])
-  createdByUser   User?               @relation("PurchaseOrderCreatedBy", fields: [createdByUserId], references: [id])
-  approvedByUser  User?               @relation("PurchaseOrderApprovedBy", fields: [approvedByUserId], references: [id])
-  cancelledByUser User?               @relation("PurchaseOrderCancelledBy", fields: [cancelledByUserId], references: [id])
-  items           PurchaseOrderItem[]
-  receivingNotes  ReceivingNote[]
-  location        Location            @relation(fields: [locationId], references: [id])
-  productionLine  ProductionLine?     @relation(fields: [productionLineId], references: [id])
+  company                Company                @relation(fields: [companyId], references: [id])
+  supplier               Supplier               @relation(fields: [supplierId], references: [id])
+  mealPlanGroup          MealPlanGroup?         @relation(fields: [mealPlanGroupId], references: [id])
+  createdByUser          User?                  @relation("PurchaseOrderCreatedBy", fields: [createdByUserId], references: [id])
+  approvedByUser         User?                  @relation("PurchaseOrderApprovedBy", fields: [approvedByUserId], references: [id])
+  cancelledByUser        User?                  @relation("PurchaseOrderCancelledBy", fields: [cancelledByUserId], references: [id])
+  items                  PurchaseOrderItem[]
+  receivingNotes         ReceivingNote[]
+  location               Location               @relation(fields: [locationId], references: [id])
+  productionLine         ProductionLine?        @relation(fields: [productionLineId], references: [id])
+  lineup                 Lineup?                @relation(fields: [lineupId], references: [id])
   // ★ R1-b3: 조정 이력 (DELTA 모드에서 적층)
-  adjustmentLogs POAdjustmentLog[]
-  receivingDiscrepancies   ReceivingDiscrepancy[]  
+  adjustmentLogs         POAdjustmentLog[]
+  receivingDiscrepancies ReceivingDiscrepancy[]
 
-  @@index([batchId])  // ★ R1-b1 추가
+  @@index([batchId]) // ★ R1-b1 추가
   @@index([companyId])
   @@index([supplierId])
   @@index([orderDate])
   @@index([status])
   @@index([locationId])
   @@index([productionLineId])
-  @@index([outboundDate])           // ★ Phase 1.6
-  @@index([expectedReceiveDate])    // ★ Phase 1.6 (입고 예정 리스트 정렬용)
+  @@index([lineupId]) // ★ Sprint 3.5 Phase S3.5-0
+  @@index([outboundDate]) // ★ Phase 1.6
+  @@index([expectedReceiveDate]) // ★ Phase 1.6 (입고 예정 리스트 정렬용)
   @@map("purchase_orders")
 }
 
@@ -1482,7 +1487,7 @@ model PurchaseOrderItem {
   materialRequirement MaterialRequirement? @relation(fields: [materialRequirementId], references: [id])
   receivingNoteItems  ReceivingNoteItem[]
   // ★ R1-b3: 조정 이력 역참조
-  adjustmentLogs POAdjustmentLog[]
+  adjustmentLogs      POAdjustmentLog[]
 
   @@index([purchaseOrderId])
   @@index([supplierItemId])
@@ -1491,24 +1496,24 @@ model PurchaseOrderItem {
 }
 
 model ReceivingNote {
-  id                 String              @id @default(cuid())
-  companyId          String              @map("company_id")
-  purchaseOrderId    String              @map("purchase_order_id")
-  receiveNumber      String              @unique @map("receive_number")
-  status             ReceivingNoteStatus @default(DRAFT)
-  receivedDate       DateTime            @map("received_date") @db.Date
-  note               String?
+  id                String              @id @default(cuid())
+  companyId         String              @map("company_id")
+  purchaseOrderId   String              @map("purchase_order_id")
+  receiveNumber     String              @unique @map("receive_number")
+  status            ReceivingNoteStatus @default(DRAFT)
+  receivedDate      DateTime            @map("received_date") @db.Date
+  note              String?
   // ★ D30 (2026-06-30): 확정 메타
-  confirmedAt        DateTime?           @map("confirmed_at")
-  confirmedByUserId  String?             @map("confirmed_by_user_id")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
+  confirmedAt       DateTime?           @map("confirmed_at")
+  confirmedByUserId String?             @map("confirmed_by_user_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  company           Company                @relation(fields: [companyId], references: [id])
-  purchaseOrder     PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
-  items             ReceivingNoteItem[]
-  confirmedByUser   User?                  @relation("ReceivingNoteConfirmedBy", fields: [confirmedByUserId], references: [id])
-  discrepancies     ReceivingDiscrepancy[]
+  company         Company                @relation(fields: [companyId], references: [id])
+  purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  items           ReceivingNoteItem[]
+  confirmedByUser User?                  @relation("ReceivingNoteConfirmedBy", fields: [confirmedByUserId], references: [id])
+  discrepancies   ReceivingDiscrepancy[]
 
   @@index([companyId])
   @@index([purchaseOrderId])
@@ -1520,28 +1525,28 @@ model ReceivingNote {
 /// 입고 확정 시점에만 기록되며, 마스터 데이터에 영향을 주지 않는다.
 /// 추후 재고 실사·원인 분석의 근거로 활용.
 model ReceivingDiscrepancy {
-  id                    String           @id @default(cuid())
-  companyId             String           @map("company_id")
-  purchaseOrderId       String           @map("purchase_order_id")
-  purchaseOrderItemId   String?          @map("purchase_order_item_id")
-  receivingNoteId       String           @map("receiving_note_id")
-  receivingNoteItemId   String?          @map("receiving_note_item_id")
+  id                  String  @id @default(cuid())
+  companyId           String  @map("company_id")
+  purchaseOrderId     String  @map("purchase_order_id")
+  purchaseOrderItemId String? @map("purchase_order_item_id")
+  receivingNoteId     String  @map("receiving_note_id")
+  receivingNoteItemId String? @map("receiving_note_item_id")
 
-  type                  DiscrepancyType
-  expectedQty           Float?           @map("expected_qty")
-  actualQty             Float?           @map("actual_qty")
-  expectedUnitPrice     Float?           @map("expected_unit_price")
-  actualUnitPrice       Float?           @map("actual_unit_price")
-  diffValue             Float?           @map("diff_value")
-  reason                String?
+  type              DiscrepancyType
+  expectedQty       Float?          @map("expected_qty")
+  actualQty         Float?          @map("actual_qty")
+  expectedUnitPrice Float?          @map("expected_unit_price")
+  actualUnitPrice   Float?          @map("actual_unit_price")
+  diffValue         Float?          @map("diff_value")
+  reason            String?
 
-  recordedAt            DateTime         @default(now()) @map("recorded_at")
-  recordedByUserId      String?          @map("recorded_by_user_id")
+  recordedAt       DateTime @default(now()) @map("recorded_at")
+  recordedByUserId String?  @map("recorded_by_user_id")
 
-  company               Company          @relation(fields: [companyId], references: [id])
-  purchaseOrder         PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id])
-  receivingNote         ReceivingNote    @relation(fields: [receivingNoteId], references: [id])
-  recordedByUser        User?            @relation("ReceivingDiscrepancyRecordedBy", fields: [recordedByUserId], references: [id])
+  company        Company       @relation(fields: [companyId], references: [id])
+  purchaseOrder  PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  receivingNote  ReceivingNote @relation(fields: [receivingNoteId], references: [id])
+  recordedByUser User?         @relation("ReceivingDiscrepancyRecordedBy", fields: [recordedByUserId], references: [id])
 
   @@index([companyId, recordedAt])
   @@index([purchaseOrderId])
