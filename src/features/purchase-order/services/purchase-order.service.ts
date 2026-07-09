@@ -138,7 +138,7 @@ export async function getPurchaseOrders(
   query: PurchaseOrderListQuery,
 ) {
   const {
-    page, limit, search, status, excludeCancelled,
+    page, limit, search, status, excludeCancelled, isManual,
     supplierId, dateFrom, dateTo, sortBy, sortOrder,
   } = query;
   const skip = (page - 1) * limit;
@@ -151,6 +151,8 @@ export async function getPurchaseOrders(
       : excludeCancelled
         ? { status: { not: "CANCELLED" as const } }
         : {}),
+    // ★ Sprint 3.5 Phase S3.5-2: isManual 필터 (undefined 면 전체)
+    ...(isManual !== undefined && { isManual }),
     ...(supplierId && { supplierId }),
     ...(search && {
       OR: [

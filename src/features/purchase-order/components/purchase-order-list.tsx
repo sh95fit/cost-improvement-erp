@@ -60,6 +60,8 @@ export type PurchaseOrderRow = {
 
 type Props = {
   onNew: () => void;
+  // ★ Sprint 3.5 Phase S3.5-2: 수동 발주 진입점
+  onManualNew: () => void;
   onSelect: (po: PurchaseOrderRow) => void;
 };
 
@@ -90,7 +92,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "CANCELLED", label: PO_STATUS_LABELS.CANCELLED },
 ];
 
-export function PurchaseOrderList({ onNew, onSelect }: Props) {
+export function PurchaseOrderList({ onNew, onManualNew, onSelect }: Props) {
   const [items, setItems] = useState<PurchaseOrderRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -100,6 +102,8 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
   });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  // ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 필터
+  const [manualFilter, setManualFilter] = useState<"all" | "manual" | "auto">("all");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseOrderRow | null>(null);
 
@@ -138,6 +142,11 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
               ? undefined
               : statusFilter,
           excludeCancelled: statusFilter === "active" ? true : undefined,
+          // ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 필터
+          isManual:
+            manualFilter === "all"
+              ? undefined
+              : manualFilter === "manual",
           sortBy: "orderDate",
           sortOrder: "desc",
         });
@@ -156,7 +165,7 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
         setLoading(false);
       }
     },
-    [search, statusFilter]
+    [search, statusFilter, manualFilter]
   );
 
   useEffect(() => {
@@ -214,7 +223,25 @@ export function PurchaseOrderList({ onNew, onSelect }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={onNew} className="ml-auto">
+        {/* ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 발주 필터 */}
+        <Select
+          value={manualFilter}
+          onValueChange={(v) => setManualFilter(v as "all" | "manual" | "auto")}
+        >
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="발주 유형" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 유형</SelectItem>
+            <SelectItem value="auto">식단 기반</SelectItem>
+            <SelectItem value="manual">수동 발주</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button onClick={onManualNew} variant="outline" className="ml-auto">
+          <Plus className="mr-2 h-4 w-4" />
+          수동 발주
+        </Button>
+        <Button onClick={onNew}>
           <Plus className="mr-2 h-4 w-4" />
           발주 등록
         </Button>
