@@ -24,7 +24,7 @@ export default function ManualPurchaseOrderNewPage() {
         </p>
       </div>
       <ManualPurchaseOrderForm
-        onCreated={(id) => router.push(`/purchase-orders/${id}`)}
+        onCreated={() => router.push("/purchase-orders")}
         onCancel={() => router.push("/purchase-orders")}
       />
     </div>

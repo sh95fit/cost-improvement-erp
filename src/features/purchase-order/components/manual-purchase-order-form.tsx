@@ -34,9 +34,9 @@ import { getLineupsAction } from "@/features/lineup/actions/lineup.action";
 // Props (page.tsx 와 일치)
 // ─────────────────────────────────────
 interface Props {
-  onCreated: (id: string) => void;
-  onCancel: () => void;
-}
+    onCreated: () => void;
+    onCancel: () => void;
+  }
 
 // ─────────────────────────────────────
 // 내부 타입
@@ -315,23 +315,27 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
 
       if (!res.success) {
         toast.error(res.error.message);
+        setSubmitting(false);
         return;
-      }
+      }    
 
       const created = res.data.createdPurchaseOrders;
       if (created.length === 0) {
         toast.error("발주가 생성되지 않았습니다.");
+        setSubmitting(false);
         return;
       }
 
       toast.success(
         created.length === 1
           ? "수동 발주가 생성되었습니다."
-          : `수동 발주 ${created.length}건이 생성되었습니다. 첫 발주서 상세로 이동합니다.`
+          : `수동 발주 ${created.length}건이 생성되었습니다.`
       );
-
-      onCreated(created[0].id);
-    } finally {
+      
+      onCreated();
+      // 성공 시 setSubmitting(false) 호출하지 않음 → 리다이렉트까지 버튼 비활성 유지
+    } catch (e) {
+      toast.error("발주 생성 중 오류가 발생했습니다.");
       setSubmitting(false);
     }
   };
@@ -341,8 +345,8 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
     <div className="space-y-6">
       {/* 헤더 */}
       <div className="rounded-md border bg-white p-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-3">
+          <div className="space-y-1.5">
             <Label>
               공장 <span className="text-red-500">*</span>
             </Label>
@@ -359,7 +363,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <Label>
               라인업 <span className="text-red-500">*</span>
             </Label>
@@ -375,7 +379,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <Label>생산라인 (선택)</Label>
             <SearchableSelect
             options={filteredLines.map((p) => ({
@@ -396,7 +400,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
 
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <Label>
               발주일 <span className="text-red-500">*</span>
             </Label>
@@ -407,7 +411,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div>
+          <div className="space-y-1.5">
             <Label>출고 예정일</Label>
             <Input
               type="date"
@@ -416,7 +420,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div className="md:col-span-3">
+          <div className="space-y-1.5 md:col-span-3">
             <Label>비고</Label>
             <Textarea
               value={note}
