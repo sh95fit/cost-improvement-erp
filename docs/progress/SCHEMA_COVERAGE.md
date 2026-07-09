@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-07-09 **Sprint 3.5 종결** — 수동 발주 보완 완료. `PurchaseOrder.lineupId` 필드 추가(마이그레이션 `add_purchase_order_lineup`), 서비스 레이어에서 `isManual=true` 시 lineupId NOT NULL 강제. `PurchaseOrder` 모델 커버리지 갱신 없음(기존 완료 상태 유지). 상세: `docs/progress/SPRINT3.5.md`, `docs/progress/MANUAL_PURCHASE_ORDER.md`.
 - 2026-07-08 **Sprint 3 종결**. 발주+입고 도메인 완성. 신규 모델: PurchaseOrderBatch(#), POAdjustmentLog(#), ReceivingDiscrepancy(#). 신규 enum: POBatchMode, POAdjustmentAction, DiscrepancyType. 헌법 P5·P9 재정정, 계층분리 원칙 명시. 상세 → SPRINT3.md.
 - 2026-06-30 **D30 (입고 확정 통합) 스키마 + 서비스 완료**: `DiscrepancyType` enum + `ReceivingDiscrepancy` 모델 추가, `ReceivingNote.confirmedAt/confirmedByUserId` 추가, `confirmReceivingNote` 서비스(단일 트랜잭션으로 InventoryLot 생성 + PO RECEIVED 전이 + 불일치 스냅샷) 구현. 테스트 10/10 PASS. P5·P9 재정정(2026-06-30) 반영: 입고 확정 = 재고 생성 + PO 종결 통합, 단가는 PO 확정 시점 고정. 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta`. 커밋 `67a60e34`, `35773f1b`, `64924006`, `f8764185`. 모델 #41 ReceivingNote ⬜→🔄. 액션·UI(C-3) 미착수.
 - 2026-06-29 **Phase 4-C2 UI 완료 + D25-4 정리**: Step 4 라인업 다축 집계 뷰 (`GroupByTabs`) — 4축 탭(공장/제조라인/공급업체/라인업) + `scopeLevel` prop 체인 + 라인업/기준량(g) 컬럼. `POItemCandidate.lineupId`/`lineupName` 전파, `loadPOWizardDataAction` 에서 MR.lineup include. 쓰기 경로 무수정 (PC2/DC4 보존). D25-4: 레거시 `StepSplitPreview` 삭제 → `NewModePreview` 단일 SSOT. 커밋 `bf103b1a`, `{Stage1_SHA}`. 누적 22/22 PASS. 모델 #38 상태는 변동 없음 (✅ 유지).
