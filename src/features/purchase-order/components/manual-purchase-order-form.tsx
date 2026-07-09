@@ -8,13 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -352,64 +346,54 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             <Label>
               공장 <span className="text-red-500">*</span>
             </Label>
-            <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger>
-                <SelectValue placeholder="공장 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                {locations.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name}
-                    <span className="ml-1 text-xs text-gray-400">({l.code})</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+            options={locations.map((l) => ({
+                id: l.id,
+                label: l.name,
+                sublabel: l.code,
+            }))}
+            value={locationId}
+            onChange={setLocationId}
+            placeholder="공장 선택"
+            searchPlaceholder="공장명 또는 코드 검색..."
+            />
           </div>
 
           <div>
             <Label>
               라인업 <span className="text-red-500">*</span>
-              <span className="ml-1 text-xs text-gray-400">
-                (P1&apos; 수동 발주 필수)
-              </span>
             </Label>
-            <Select value={lineupId} onValueChange={setLineupId}>
-              <SelectTrigger>
-                <SelectValue placeholder="라인업 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                {lineups.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+            options={lineups.map((l) => ({
+                id: l.id,
+                label: l.name,
+            }))}
+            value={lineupId}
+            onChange={setLineupId}
+            placeholder="라인업 선택"
+            searchPlaceholder="라인업명 검색..."
+            />
           </div>
 
           <div>
             <Label>생산라인 (선택)</Label>
-            <Select
-              value={productionLineId}
-              onValueChange={setProductionLineId}
-              disabled={!locationId}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    !locationId ? "먼저 공장 선택" : "생산라인 선택 (선택)"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredLines.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+            options={filteredLines.map((p) => ({
+                id: p.id,
+                label: p.name,
+                sublabel: p.code,
+            }))}
+            value={productionLineId}
+            onChange={setProductionLineId}
+            disabled={!locationId}
+            placeholder={
+                !locationId ? "공장 미선택" : "생산라인 선택 (선택)"
+            }
+            searchPlaceholder="라인명 또는 코드 검색..."
+            allowClear
+            clearLabel="선택 안 함"
+            />
+
           </div>
 
           <div>
@@ -462,13 +446,13 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[220px]">자재</TableHead>
-              <TableHead>공급업체 · 공급 품목</TableHead>
-              <TableHead className="w-[120px]">수량</TableHead>
-              <TableHead className="w-[80px]">단위</TableHead>
-              <TableHead className="w-[140px]">단가</TableHead>
-              <TableHead className="w-[140px] text-right">합계</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+                <TableHead className="w-[220px]">자재</TableHead>
+                <TableHead>공급업체 · 공급 품목</TableHead>
+                <TableHead className="w-[140px]">단가</TableHead>
+                <TableHead className="w-[80px]">단위</TableHead>
+                <TableHead className="w-[120px]">수량</TableHead>
+                <TableHead className="w-[140px] text-right">합계</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -486,87 +470,75 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
                 return (
                   <TableRow key={r.key}>
                     <TableCell>
-                      <Select
-                        value={r.materialMasterId}
-                        onValueChange={(v) => handleMaterialChange(r.key, v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="자재 선택" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {materials.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name}
-                              <span className="ml-1 text-xs text-gray-400">
-                                ({m.code})
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <SearchableSelect
+                            options={materials.map((m) => ({
+                            id: m.id,
+                            label: m.name,
+                            sublabel: m.code,
+                            }))}
+                            value={r.materialMasterId}
+                            onChange={(v) => handleMaterialChange(r.key, v)}
+                            placeholder="자재 선택"
+                            searchPlaceholder="자재명 또는 코드 검색..."
+                            emptyText="검색 결과가 없습니다"
+                        />
                     </TableCell>
 
                     <TableCell>
-                      <Select
-                        value={r.supplierItemId}
-                        onValueChange={(v) => handleSupplierItemChange(r.key, v)}
-                        disabled={
-                          !r.materialMasterId ||
-                          r.loading ||
-                          r.supplierItems.length === 0
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue
+                        <SearchableSelect
+                            options={r.supplierItems.map((si) => ({
+                            id: si.id,
+                            label: `[${si.supplier.name}] ${si.productName}`,
+                            rightLabel: `${si.currentPrice.toLocaleString()}원`,
+                            }))}
+                            value={r.supplierItemId}
+                            onChange={(v) => handleSupplierItemChange(r.key, v)}
+                            disabled={
+                            !r.materialMasterId ||
+                            r.loading ||
+                            r.supplierItems.length === 0
+                            }
                             placeholder={
-                              !r.materialMasterId
+                            !r.materialMasterId
                                 ? "먼저 자재 선택"
                                 : r.loading
-                                  ? "불러오는 중..."
-                                  : r.supplierItems.length === 0
+                                ? "불러오는 중..."
+                                : r.supplierItems.length === 0
                                     ? "등록된 공급 품목 없음"
                                     : "공급업체·품목 선택"
                             }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {r.supplierItems.map((si) => (
-                            <SelectItem key={si.id} value={si.id}>
-                              [{si.supplier.name}] {si.productName} —{" "}
-                              {si.currentPrice.toLocaleString()}원
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                            searchPlaceholder="공급업체 또는 품목명 검색..."
+                            emptyText="검색 결과가 없습니다"
+                        />
                     </TableCell>
 
                     <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={r.quantity}
-                        onChange={(e) =>
-                          patchRow(r.key, { quantity: e.target.value })
-                        }
-                        placeholder="0"
-                      />
+                        <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={r.unitPrice}
+                            onChange={(e) =>
+                            patchRow(r.key, { unitPrice: e.target.value })
+                            }
+                        />
                     </TableCell>
 
                     <TableCell className="text-sm text-gray-600">
-                      {r.supplyUnitLabel || "-"}
+                        {r.supplyUnitLabel || "-"}
                     </TableCell>
 
                     <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={r.unitPrice}
-                        onChange={(e) =>
-                          patchRow(r.key, { unitPrice: e.target.value })
-                        }
-                      />
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={r.quantity}
+                            onChange={(e) =>
+                            patchRow(r.key, { quantity: e.target.value })
+                            }
+                            placeholder="0"
+                        />
                     </TableCell>
 
                     <TableCell className="text-right font-mono">
