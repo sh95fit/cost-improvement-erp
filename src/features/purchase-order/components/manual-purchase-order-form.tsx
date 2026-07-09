@@ -119,9 +119,9 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
   useEffect(() => {
     (async () => {
       const [matRes, locRes, plRes, lnRes] = await Promise.all([
-        getMaterialsAction({ page: 1, limit: 500, isActive: true }),
+        getMaterialsAction({ page: 1, limit: 100, isActive: true }),
         getFactoryLocationOptionsAction(),
-        getProductionLinesAction({ page: 1, limit: 500 }),
+        getProductionLinesAction({ page: 1, limit: 200 }),
         getLineupsAction({ page: 1, limit: 200, isActive: true }),
       ]);
 
