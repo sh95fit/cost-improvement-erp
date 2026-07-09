@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Trash2, Plus, ArrowLeft } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,471 +23,593 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Trash2, Plus } from "lucide-react";
-import { createPurchaseOrderAction } from "../actions/purchase-order.action";
+
+import { createPurchaseOrdersBatchAction } from "@/features/purchase-order/actions/purchase-order.action";
 import { getMaterialsAction } from "@/features/material/actions/material.action";
-import { getSuppliersAction } from "@/features/supplier/actions/supplier.action";
-import { getLocationsAction } from "@/features/location/actions/location.action";
-import { getProductionLinesAction } from "@/features/production-line/actions/production-line.action";
+import {
+  getSupplierItemsByMaterialAction,
+  type SupplierItemWithSupplier,
+} from "@/features/supplier/actions/supplier.action";
+import {
+  getFactoryLocationOptionsAction,
+  getProductionLinesAction,
+} from "@/features/production-line/actions/production-line.action";
 import { getLineupsAction } from "@/features/lineup/actions/lineup.action";
-import { SupplierItemPicker } from "./wizard/supplier-item-picker";
-import type { SupplierItemWithSupplier } from "@/features/supplier/actions/supplier.action";
 
-// ────────────────────────────────────────
-// 옵션 타입 (액션 반환에서 필요한 필드만 사용)
-// ────────────────────────────────────────
-type MaterialOption = { id: string; name: string; code: string };
-type SupplierOption = { id: string; name: string; code: string };
-type LocationOption = { id: string; name: string; code: string };
-type ProductionLineOption = {
-  id: string;
-  name: string;
-  locationId: string;
-};
-type LineupOption = { id: string; name: string; code: string };
-
-// ────────────────────────────────────────
-// 아이템 행 로컬 상태
-// ────────────────────────────────────────
-type ItemRow = {
-  key: string;
-  materialMasterId: string | null;
-  materialName: string;
-  supplierItemId: string | null;
-  supplierItemLabel: string;
-  quantity: number;
-  unitPrice: number;
-};
-
-type Props = {
+// ─────────────────────────────────────
+// Props (page.tsx 와 일치)
+// ─────────────────────────────────────
+interface Props {
   onCreated: (id: string) => void;
   onCancel: () => void;
-};
+}
 
-// ────────────────────────────────────────
+// ─────────────────────────────────────
+// 내부 타입
+// ─────────────────────────────────────
+interface MaterialOption {
+  id: string;
+  name: string;
+  code: string;
+}
+interface LocationOption {
+  id: string;
+  name: string;
+  code: string;
+}
+interface ProductionLineOption {
+  id: string;
+  name: string;
+  code: string;
+  locationId: string;
+}
+interface LineupOption {
+  id: string;
+  name: string;
+}
+
+interface Row {
+  key: string;
+  materialMasterId: string;
+  materialName: string;
+  supplierItemId: string;
+  supplierId: string;
+  supplierName: string;
+  productName: string;
+  supplyUnitLabel: string;
+  quantity: string;
+  unitPrice: string;
+  supplierItems: SupplierItemWithSupplier[];
+  loading: boolean;
+}
+
+// 외부 의존 없는 간이 uuid
+function uuid(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// ─────────────────────────────────────
 // 컴포넌트
-// ────────────────────────────────────────
+// ─────────────────────────────────────
 export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
+  // 헤더 상태
+  const [locationId, setLocationId] = useState<string>("");
+  const [productionLineId, setProductionLineId] = useState<string>("");
+  const [lineupId, setLineupId] = useState<string>("");
+  const [orderDate, setOrderDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [outboundDate, setOutboundDate] = useState<string>("");
+  const [note, setNote] = useState<string>("");
+
+  // 옵션 로드
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [productionLines, setProductionLines] = useState<ProductionLineOption[]>([]);
   const [lineups, setLineups] = useState<LineupOption[]>([]);
 
-  const [supplierId, setSupplierId] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [productionLineId, setProductionLineId] = useState("");
-  const [lineupId, setLineupId] = useState("");
-  const [orderDate, setOrderDate] = useState<string>(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [outboundDate, setOutboundDate] = useState<string>("");
-  const [note, setNote] = useState<string>("");
-  const [items, setItems] = useState<ItemRow[]>([]);
+  // 행
+  const [rows, setRows] = useState<Row[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  // 초기 옵션 로드
+  // 컴포넌트 마운트 시 1회 생성되는 멱등성 키
+  const [idempotencyKey] = useState<string>(() => `manual-${uuid()}`);
+
+  // ─── 옵션 로드 ────────────────────────
   useEffect(() => {
-    Promise.all([
-      getMaterialsAction({ page: 1, limit: 200, isActive: true }),
-      getSuppliersAction({ page: 1, limit: 200 }),
-      getLocationsAction({ page: 1, limit: 100, isActive: true }),
-      getProductionLinesAction({ page: 1, limit: 200 }),
-      getLineupsAction({ page: 1, limit: 200, isActive: true }),
-    ])
-      .then(([mRes, sRes, lRes, plRes, luRes]) => {
-        if (mRes.success) {
-          setMaterials(
-            mRes.data.items.map((m) => ({
-              id: m.id,
-              name: m.name,
-              code: m.code,
-            })),
-          );
-        } else {
-          toast.error(mRes.error.message);
-        }
-        if (sRes.success) {
-          setSuppliers(
-            sRes.data.items.map((s) => ({
-              id: s.id,
-              name: s.name,
-              code: s.code,
-            })),
-          );
-        } else {
-          toast.error(sRes.error.message);
-        }
-        if (lRes.success) {
-          setLocations(
-            lRes.data.items.map((l) => ({
-              id: l.id,
-              name: l.name,
-              code: l.code,
-            })),
-          );
-        } else {
-          toast.error(lRes.error.message);
-        }
-        if (plRes.success) {
-          setProductionLines(
-            plRes.data.items.map((pl) => ({
-              id: pl.id,
-              name: pl.name,
-              locationId: pl.locationId,
-            })),
-          );
-        } else {
-          toast.error(plRes.error.message);
-        }
-        if (luRes.success) {
-          setLineups(
-            luRes.data.items.map((lu) => ({
-              id: lu.id,
-              name: lu.name,
-              code: lu.code,
-            })),
-          );
-        } else {
-          toast.error(luRes.error.message);
-        }
-      })
-      .catch((err) => {
-        toast.error(err instanceof Error ? err.message : "옵션 조회 실패");
-      });
+    (async () => {
+      const [matRes, locRes, plRes, lnRes] = await Promise.all([
+        getMaterialsAction({ page: 1, limit: 500, isActive: true }),
+        getFactoryLocationOptionsAction(),
+        getProductionLinesAction({ page: 1, limit: 500 }),
+        getLineupsAction({ page: 1, limit: 200, isActive: true }),
+      ]);
+
+      if (matRes.success) {
+        setMaterials(
+          matRes.data.items.map((m) => ({
+            id: m.id,
+            name: m.name,
+            code: m.code,
+          }))
+        );
+      } else {
+        toast.error(matRes.error.message);
+      }
+
+      if (locRes.success) {
+        setLocations(
+          locRes.data.map((l) => ({ id: l.id, name: l.name, code: l.code }))
+        );
+      } else {
+        toast.error(locRes.error.message);
+      }
+
+      if (plRes.success) {
+        setProductionLines(
+          plRes.data.items.map((p) => ({
+            id: p.id,
+            name: p.name,
+            code: p.code,
+            locationId: p.locationId,
+          }))
+        );
+      } else {
+        toast.error(plRes.error.message);
+      }
+
+      if (lnRes.success) {
+        setLineups(
+          lnRes.data.items.map((l) => ({ id: l.id, name: l.name }))
+        );
+      } else {
+        toast.error(lnRes.error.message);
+      }
+    })();
   }, []);
 
-  // 파생 값
-  const filteredProductionLines = productionLines.filter(
-    (pl) => !locationId || pl.locationId === locationId,
-  );
-  const totalAmount = items.reduce(
-    (sum, it) => sum + it.quantity * it.unitPrice,
-    0,
+  // 공장이 바뀌면 productionLine 초기화
+  useEffect(() => {
+    setProductionLineId("");
+  }, [locationId]);
+
+  const filteredLines = useMemo(
+    () =>
+      productionLines.filter(
+        (p) => !locationId || p.locationId === locationId
+      ),
+    [productionLines, locationId]
   );
 
-  // 아이템 조작
-  const addItem = () => {
-    setItems((prev) => [
+  // ─── 행 조작 ─────────────────────────
+  const addRow = () => {
+    setRows((prev) => [
       ...prev,
       {
-        key: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        materialMasterId: null,
+        key: uuid(),
+        materialMasterId: "",
         materialName: "",
-        supplierItemId: null,
-        supplierItemLabel: "",
-        quantity: 0,
-        unitPrice: 0,
+        supplierItemId: "",
+        supplierId: "",
+        supplierName: "",
+        productName: "",
+        supplyUnitLabel: "",
+        quantity: "",
+        unitPrice: "",
+        supplierItems: [],
+        loading: false,
       },
     ]);
   };
 
-  const updateItem = (key: string, patch: Partial<ItemRow>) => {
-    setItems((prev) =>
-      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+  const removeRow = (key: string) =>
+    setRows((prev) => prev.filter((r) => r.key !== key));
+
+  const patchRow = useCallback((key: string, patch: Partial<Row>) => {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }, []);
+
+  const handleMaterialChange = useCallback(
+    async (key: string, materialMasterId: string) => {
+      const mat = materials.find((m) => m.id === materialMasterId);
+      patchRow(key, {
+        materialMasterId,
+        materialName: mat?.name ?? "",
+        supplierItemId: "",
+        supplierId: "",
+        supplierName: "",
+        productName: "",
+        supplyUnitLabel: "",
+        unitPrice: "",
+        supplierItems: [],
+        loading: true,
+      });
+      const res = await getSupplierItemsByMaterialAction(materialMasterId);
+      if (res.success) {
+        const active = res.data.filter((si) => si.isActive);
+        patchRow(key, { supplierItems: active, loading: false });
+      } else {
+        toast.error(res.error.message);
+        patchRow(key, { loading: false });
+      }
+    },
+    [materials, patchRow]
+  );
+
+  const handleSupplierItemChange = (key: string, supplierItemId: string) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        const si = r.supplierItems.find((s) => s.id === supplierItemId);
+        if (!si) return { ...r, supplierItemId };
+        return {
+          ...r,
+          supplierItemId,
+          supplierId: si.supplier.id,
+          supplierName: si.supplier.name,
+          productName: si.productName,
+          supplyUnitLabel: si.supplyUnit?.name ?? si.supplyUnit?.code ?? "",
+          unitPrice: String(si.currentPrice ?? 0),
+        };
+      })
     );
   };
 
-  const removeItem = (key: string) => {
-    setItems((prev) => prev.filter((row) => row.key !== key));
-  };
+  // ─── 합계 계산 ────────────────────────
+  const totalAmount = useMemo(
+    () =>
+      rows.reduce((sum, r) => {
+        const q = Number(r.quantity) || 0;
+        const p = Number(r.unitPrice) || 0;
+        return sum + q * p;
+      }, 0),
+    [rows]
+  );
 
-  const selectMaterial = (key: string, materialId: string) => {
-    const mat = materials.find((m) => m.id === materialId);
-    if (!mat) return;
-    updateItem(key, {
-      materialMasterId: mat.id,
-      materialName: mat.name,
-      supplierItemId: null,
-      supplierItemLabel: "",
-      unitPrice: 0,
-    });
-  };
-
-  // ★ SupplierItemWithSupplier: supplier.name / productName / currentPrice
-  const selectSupplierItem = (key: string, si: SupplierItemWithSupplier) => {
-    updateItem(key, {
-      supplierItemId: si.id,
-      supplierItemLabel: `${si.supplier.name} · ${si.productName}`,
-      unitPrice: si.currentPrice ?? 0,
-    });
-  };
-
-  // 검증
-  const validate = (): string | null => {
-    if (!supplierId) return "공급업체를 선택하세요";
-    if (!locationId) return "공장/창고를 선택하세요";
-    if (!lineupId) return "라인업을 선택하세요 (수동 발주 필수)";
-    if (!orderDate) return "발주일을 입력하세요";
-    if (items.length === 0) return "발주 품목을 1개 이상 추가하세요";
-    for (const [i, it] of items.entries()) {
-      if (!it.materialMasterId) return `${i + 1}번 행: 자재를 선택하세요`;
-      if (!it.supplierItemId) return `${i + 1}번 행: 공급 품목을 선택하세요`;
-      if (!(it.quantity > 0)) return `${i + 1}번 행: 수량은 0보다 커야 합니다`;
-      if (!(it.unitPrice >= 0)) return `${i + 1}번 행: 단가는 0 이상이어야 합니다`;
+  // supplier 그룹 미리보기 (몇 건의 PO가 생성될지 안내)
+  const supplierGroupCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (r.supplierId) set.add(r.supplierId);
     }
-    return null;
-  };
+    return set.size;
+  }, [rows]);
 
+  // ─── 저장 ────────────────────────────
   const handleSubmit = async () => {
-    const err = validate();
-    if (err) {
-      toast.error(err);
-      return;
+    if (!locationId) return toast.error("공장(Location)을 선택하세요.");
+    if (!lineupId) return toast.error("라인업(Lineup)은 필수입니다.");
+    if (rows.length === 0) return toast.error("품목을 1개 이상 추가하세요.");
+
+    for (const [idx, r] of rows.entries()) {
+      const rowNo = idx + 1;
+      if (!r.materialMasterId)
+        return toast.error(`${rowNo}번 행: 자재를 선택하세요.`);
+      if (!r.supplierItemId)
+        return toast.error(`${rowNo}번 행: 공급 품목을 선택하세요.`);
+      const q = Number(r.quantity);
+      const p = Number(r.unitPrice);
+      if (!(q > 0)) return toast.error(`${rowNo}번 행: 수량은 0보다 커야 합니다.`);
+      if (!(p >= 0)) return toast.error(`${rowNo}번 행: 단가는 0 이상이어야 합니다.`);
     }
+
     setSubmitting(true);
     try {
-      const result = await createPurchaseOrderAction({
-        supplierId,
-        locationId,
-        productionLineId: productionLineId || null,
-        lineupId,
-        orderDate,
-        outboundDate: outboundDate || undefined,
+      const res = await createPurchaseOrdersBatchAction({
+        // companyId / createdByUserId 는 서버 액션이 세션에서 강제 주입
+        idempotencyKey,
+        mode: "NEW",
+        isManual: true,
+        countSource: "ESTIMATED",
+        basedOnPOIds: [],
+        orderDate: new Date(orderDate),
+        outboundDate: outboundDate ? new Date(outboundDate) : undefined,
         note: note || undefined,
-        isManual: true, // ★ 핵심
-        items: items.map((it) => ({
-          supplierItemId: it.supplierItemId!,
+        items: rows.map((r) => ({
+          supplierId: r.supplierId,
+          supplierItemId: r.supplierItemId,
           itemType: "MATERIAL" as const,
-          materialMasterId: it.materialMasterId!,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          sourceType: "MANUAL",
+          materialMasterId: r.materialMasterId,
+          locationId,
+          productionLineId: productionLineId || null,
+          lineupId, // ★ P1' 수동 발주 필수
+          quantity: Number(r.quantity),
+          unitPrice: Number(r.unitPrice),
+          setAsDefault: false, // ★ P9' 수동 발주는 마스터 미변경
         })),
       });
-      if (result.success) {
-        toast.success("수동 발주서가 생성되었습니다 (DRAFT)");
-        onCreated(result.data.id);
-      } else {
-        toast.error(result.error.message);
+
+      if (!res.success) {
+        toast.error(res.error.message);
+        return;
       }
+
+      const created = res.data.createdPurchaseOrders;
+      if (created.length === 0) {
+        toast.error("발주가 생성되지 않았습니다.");
+        return;
+      }
+
+      toast.success(
+        created.length === 1
+          ? "수동 발주가 생성되었습니다."
+          : `수동 발주 ${created.length}건이 생성되었습니다. 첫 발주서 상세로 이동합니다.`
+      );
+
+      onCreated(created[0].id);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ─── 렌더 ────────────────────────────
   return (
     <div className="space-y-6">
-      {/* 헤더 정보 */}
-      <section className="grid gap-4 rounded-md border bg-white p-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="space-y-1">
-          <Label>공급업체 *</Label>
-          <Select value={supplierId} onValueChange={setSupplierId}>
-            <SelectTrigger>
-              <SelectValue placeholder="선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {suppliers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name} ({s.code})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* 헤더 */}
+      <div className="rounded-md border bg-white p-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div>
+            <Label>
+              공장 <span className="text-red-500">*</span>
+            </Label>
+            <Select value={locationId} onValueChange={setLocationId}>
+              <SelectTrigger>
+                <SelectValue placeholder="공장 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                    <span className="ml-1 text-xs text-gray-400">({l.code})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1">
-          <Label>공장/창고 *</Label>
-          <Select
-            value={locationId}
-            onValueChange={(v) => {
-              setLocationId(v);
-              setProductionLineId("");
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {locations.map((l) => (
-                <SelectItem key={l.id} value={l.id}>
-                  {l.name} ({l.code})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div>
+            <Label>
+              라인업 <span className="text-red-500">*</span>
+              <span className="ml-1 text-xs text-gray-400">
+                (P1&apos; 수동 발주 필수)
+              </span>
+            </Label>
+            <Select value={lineupId} onValueChange={setLineupId}>
+              <SelectTrigger>
+                <SelectValue placeholder="라인업 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {lineups.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1">
-          <Label>생산 라인 (선택)</Label>
-          <Select
-            value={productionLineId}
-            onValueChange={setProductionLineId}
-            disabled={!locationId}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="선택 안 함" />
-            </SelectTrigger>
-            <SelectContent>
-              {filteredProductionLines.map((pl) => (
-                <SelectItem key={pl.id} value={pl.id}>
-                  {pl.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div>
+            <Label>생산라인 (선택)</Label>
+            <Select
+              value={productionLineId}
+              onValueChange={setProductionLineId}
+              disabled={!locationId}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    !locationId ? "먼저 공장 선택" : "생산라인 선택 (선택)"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredLines.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1">
-          <Label>
-            라인업 *{" "}
-            <span className="text-xs text-purple-700">(수동 발주 필수)</span>
-          </Label>
-          <Select value={lineupId} onValueChange={setLineupId}>
-            <SelectTrigger>
-              <SelectValue placeholder="선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {lineups.map((lu) => (
-                <SelectItem key={lu.id} value={lu.id}>
-                  {lu.name} ({lu.code})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div>
+            <Label>
+              발주일 <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              type="date"
+              value={orderDate}
+              onChange={(e) => setOrderDate(e.target.value)}
+            />
+          </div>
 
-        <div className="space-y-1">
-          <Label>발주일 *</Label>
-          <Input
-            type="date"
-            value={orderDate}
-            onChange={(e) => setOrderDate(e.target.value)}
-          />
-        </div>
+          <div>
+            <Label>출고 예정일</Label>
+            <Input
+              type="date"
+              value={outboundDate}
+              onChange={(e) => setOutboundDate(e.target.value)}
+            />
+          </div>
 
-        <div className="space-y-1">
-          <Label>출고일 (선택)</Label>
-          <Input
-            type="date"
-            value={outboundDate}
-            onChange={(e) => setOutboundDate(e.target.value)}
-          />
+          <div className="md:col-span-3">
+            <Label>비고</Label>
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              maxLength={1000}
+            />
+          </div>
         </div>
-
-        <div className="space-y-1 sm:col-span-2 lg:col-span-3">
-          <Label>비고</Label>
-          <Textarea
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="발주 비고 (선택)"
-          />
-        </div>
-      </section>
+      </div>
 
       {/* 품목 테이블 */}
-      <section className="rounded-md border bg-white">
-        <div className="flex items-center justify-between border-b px-4 py-2">
-          <h3 className="text-sm font-medium">발주 품목 *</h3>
-          <Button onClick={addItem} size="sm" variant="outline">
-            <Plus className="mr-1 h-3.5 w-3.5" /> 품목 추가
+      <div className="rounded-md border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="text-lg font-semibold">발주 품목</h2>
+            <p className="text-xs text-gray-500">
+              자재를 먼저 선택한 뒤 공급업체·품목을 고르세요. 공급업체가 서로
+              달라도 저장 시 자동으로 공급업체 단위로 분리되어 발주서가 생성됩니다.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={addRow}>
+            <Plus className="mr-1 h-4 w-4" /> 품목 추가
           </Button>
         </div>
+
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[220px]">자재</TableHead>
-              <TableHead>공급 품목</TableHead>
-              <TableHead className="w-[100px]">수량</TableHead>
-              <TableHead className="w-[120px]">단가</TableHead>
-              <TableHead className="w-[120px] text-right">합계</TableHead>
+              <TableHead>공급업체 · 공급 품목</TableHead>
+              <TableHead className="w-[120px]">수량</TableHead>
+              <TableHead className="w-[80px]">단위</TableHead>
+              <TableHead className="w-[140px]">단가</TableHead>
+              <TableHead className="w-[140px] text-right">합계</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 ? (
+            {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-20 text-center text-gray-500">
-                  &apos;품목 추가&apos; 버튼을 눌러 시작하세요
+                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                  아직 품목이 없습니다. 우측 상단 &quot;품목 추가&quot; 버튼을
+                  클릭하세요.
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((row) => (
-                <TableRow key={row.key}>
-                  <TableCell>
-                    <Select
-                      value={row.materialMasterId ?? ""}
-                      onValueChange={(v) => selectMaterial(row.key, v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="자재 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    {row.materialMasterId ? (
-                      <SupplierItemPicker
-                        materialMasterId={row.materialMasterId}
-                        value={row.supplierItemId}
-                        onSelect={(si) => selectSupplierItem(row.key, si)}
+              rows.map((r) => {
+                const rowTotal =
+                  (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0);
+                return (
+                  <TableRow key={r.key}>
+                    <TableCell>
+                      <Select
+                        value={r.materialMasterId}
+                        onValueChange={(v) => handleMaterialChange(r.key, v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="자재 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {materials.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                              <span className="ml-1 text-xs text-gray-400">
+                                ({m.code})
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell>
+                      <Select
+                        value={r.supplierItemId}
+                        onValueChange={(v) => handleSupplierItemChange(r.key, v)}
+                        disabled={
+                          !r.materialMasterId ||
+                          r.loading ||
+                          r.supplierItems.length === 0
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              !r.materialMasterId
+                                ? "먼저 자재 선택"
+                                : r.loading
+                                  ? "불러오는 중..."
+                                  : r.supplierItems.length === 0
+                                    ? "등록된 공급 품목 없음"
+                                    : "공급업체·품목 선택"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {r.supplierItems.map((si) => (
+                            <SelectItem key={si.id} value={si.id}>
+                              [{si.supplier.name}] {si.productName} —{" "}
+                              {si.currentPrice.toLocaleString()}원
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={r.quantity}
+                        onChange={(e) =>
+                          patchRow(r.key, { quantity: e.target.value })
+                        }
+                        placeholder="0"
                       />
-                    ) : (
-                      <span className="text-xs text-gray-400">자재 먼저 선택</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={row.quantity}
-                      onChange={(e) =>
-                        updateItem(row.key, { quantity: Number(e.target.value) })
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={row.unitPrice}
-                      onChange={(e) =>
-                        updateItem(row.key, { unitPrice: Number(e.target.value) })
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {(row.quantity * row.unitPrice).toLocaleString()} 원
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeItem(row.key)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+
+                    <TableCell className="text-sm text-gray-600">
+                      {r.supplyUnitLabel || "-"}
+                    </TableCell>
+
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={r.unitPrice}
+                        onChange={(e) =>
+                          patchRow(r.key, { unitPrice: e.target.value })
+                        }
+                      />
+                    </TableCell>
+
+                    <TableCell className="text-right font-mono">
+                      {rowTotal.toLocaleString()}원
+                    </TableCell>
+
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeRow(r.key)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
-        <div className="flex items-center justify-end border-t px-4 py-2 text-sm">
-          <span className="text-gray-600">
-            총 합계:{" "}
-            <span className="font-semibold text-gray-900">
-              {totalAmount.toLocaleString()} 원
-            </span>
-          </span>
-        </div>
-      </section>
+      </div>
 
-      {/* 액션 버튼 */}
+      {/* 요약 + 액션 */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border bg-gray-50 p-4">
+        <div className="text-sm text-gray-600">
+          공급업체 <span className="font-semibold">{supplierGroupCount}</span>곳
+          → 발주서 <span className="font-semibold">{supplierGroupCount}</span>건
+          생성 예정
+        </div>
+        <div className="text-lg font-semibold">
+          합계{" "}
+          <span className="ml-2 font-mono">{totalAmount.toLocaleString()}원</span>
+        </div>
+      </div>
+
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel} disabled={submitting}>
+          <ArrowLeft className="mr-1 h-4 w-4" />
           취소
         </Button>
         <Button onClick={handleSubmit} disabled={submitting}>
-          {submitting ? "생성 중..." : "DRAFT 저장"}
+          {submitting ? "생성 중..." : "발주 생성 (DRAFT)"}
         </Button>
       </div>
     </div>
