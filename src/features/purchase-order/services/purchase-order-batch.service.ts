@@ -75,6 +75,12 @@ export const PO_BATCH_ERRORS = {
   // ★ R1-b3
   DELTA_BLOCKED_BY_APPROVED_PO: "DELTA_BLOCKED_BY_APPROVED_PO",
   DELTA_MISSING_BASED_ON_POS: "DELTA_MISSING_BASED_ON_POS",
+  // ★ Sprint 3.5 Phase S3.5-2b (Option A): 수동 발주 관련
+  MANUAL_PO_ONLY_NEW_MODE: "MANUAL_PO_ONLY_NEW_MODE",
+  LINEUP_REQUIRED_FOR_MANUAL: "LINEUP_REQUIRED_FOR_MANUAL",
+  LINEUP_NOT_FOUND: "LINEUP_NOT_FOUND",
+  LINEUP_COMPANY_MISMATCH: "LINEUP_COMPANY_MISMATCH",
+  LINEUP_INACTIVE: "LINEUP_INACTIVE",
 } as const;
 
 // ============================================================
@@ -91,6 +97,8 @@ export const batchPOItemSchema = z
     subsidiaryMasterId: z.string().min(1).optional(),
     locationId: z.string().min(1),
     productionLineId: z.string().min(1).nullable().optional(),
+    // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주는 서비스에서 NOT NULL 강제 (P1')
+    lineupId: z.string().min(1).nullable().optional(),
     quantity: z.number().positive(),
     unitPrice: z.number().nonnegative(),
     // 시스템 추적 정보
@@ -123,10 +131,8 @@ export const createPurchaseOrdersBatchSchema = z.object({
   mealPlanGroupId: z.string().min(1).nullable().optional(),
   createdByUserId: z.string().optional(),
   orderDate: z.coerce.date(),
-  // ★ Phase 1.6 (D15-1): deliveryDate → outboundDate
   outboundDate: z.coerce.date().optional(),
   note: z.string().max(1000).optional(),
-  // ★ R1-b1: 멱등성 키 + 모드 (옵션 — 미지정 시 멱등 가드 비활성, 항상 신규 생성)
   idempotencyKey: z
     .string()
     .min(8, "위저드 세션 키는 8자 이상이어야 합니다")
@@ -135,6 +141,9 @@ export const createPurchaseOrdersBatchSchema = z.object({
   countSource: z.nativeEnum(MealCountSource).default("ESTIMATED"),
   mode: z.nativeEnum(POBatchMode).default("NEW"),
   basedOnPOIds: z.array(z.string()).default([]),
+  // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주 여부 (Option A: 다중 공급업체 그룹핑 지원)
+  //   true 면 mode=NEW 로만 허용, items 의 lineupId 필수, sourceType=MANUAL, mealPlanGroupId 무시
+  isManual: z.boolean().default(false),
   items: z.array(batchPOItemSchema).min(1, "발주 항목은 1개 이상이어야 합니다"),
 });
 
@@ -180,8 +189,11 @@ export interface CreatePurchaseOrdersBatchResult {
 // ============================================================
 // 그룹 키 생성 (supplierId × locationId × productionLineId)
 // ============================================================
-function makeGroupKey(item: BatchPOItem): string {
-  return `${item.supplierId}|${item.locationId}|${item.productionLineId ?? "_"}`;
+function makeGroupKey(item: BatchPOItem, isManual: boolean): string {
+  const base = `${item.supplierId}|${item.locationId}|${item.productionLineId ?? "_"}`;
+  // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주는 lineupId 도 그룹 축에 포함
+  //   같은 supplier·location·line 이라도 lineup 이 다르면 별도 PO 로 분리 (P1' 준수)
+  return isManual ? `${base}|${item.lineupId ?? "_"}` : base;
 }
 
 // ============================================================
@@ -273,6 +285,36 @@ async function assertSuppliersAndItems(
 }
 
 // ============================================================
+// ★ Sprint 3.5 Phase S3.5-2b: 수동 발주용 라인업 일괄 검증 (P1')
+// ============================================================
+async function assertLineupsForManualBatch(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  items: BatchPOItem[],
+) {
+  // 모든 items 에 lineupId 존재 확인
+  for (const it of items) {
+    if (!it.lineupId) throw new Error("LINEUP_REQUIRED_FOR_MANUAL");
+  }
+  const uniqueLineupIds = Array.from(
+    new Set(items.map((i) => i.lineupId).filter((v): v is string => !!v)),
+  );
+  if (uniqueLineupIds.length === 0) return;
+
+  const lineups = await tx.lineup.findMany({
+    where: { id: { in: uniqueLineupIds }, deletedAt: null },
+    select: { id: true, companyId: true, isActive: true },
+  });
+  const lineupMap = new Map(lineups.map((l) => [l.id, l]));
+  for (const lid of uniqueLineupIds) {
+    const l = lineupMap.get(lid);
+    if (!l) throw new Error("LINEUP_NOT_FOUND");
+    if (l.companyId !== companyId) throw new Error("LINEUP_COMPANY_MISMATCH");
+    if (!l.isActive) throw new Error("LINEUP_INACTIVE");
+  }
+}
+
+// ============================================================
 // ★ Phase 1.6 (D15-2): expectedReceiveDate 계산 헬퍼 (배치용)
 // ============================================================
 // PO 1건(=그룹) 의 items 의 supplierItem.leadTimeDays MAX 를 outboundDate 에 더해 산출.
@@ -355,6 +397,12 @@ export async function createPurchaseOrdersBatch(
   input: CreatePurchaseOrdersBatchInput,
 ): Promise<CreatePurchaseOrdersBatchResult> {
   if (input.items.length === 0) throw new Error("EMPTY_ITEMS");
+
+  // ★ Sprint 3.5 Phase S3.5-2b (Option A):
+  //   수동 발주는 NEW 모드로만 허용 (DELTA/REPLACE 는 위저드 전용 경로)
+  if (input.isManual && input.mode !== "NEW") {
+    throw new Error("MANUAL_PO_ONLY_NEW_MODE");
+  }
 
   return prisma.$transaction(async (tx) => {
     // ★ R1-b1: 멱등성 키가 있으면 동일 키로 이미 생성된 batch 조회.
@@ -474,13 +522,14 @@ export async function createPurchaseOrdersBatch(
       }
       return await executeReplaceMode(tx, input, batch?.id ?? null);
     }
-    // NEW: 이하 기존 그룹핑·검증·채번·생성 로직 (변경 없음)
+    // NEW: 이하 기존 그룹핑·검증·채번·생성 로직
 
     // ── 이하 기존 그룹핑·검증·채번·생성 로직 ──
     // 1) 그룹핑
+    //    ★ Sprint 3.5 Phase S3.5-2b: 수동 발주면 lineupId 도 그룹 축에 포함
     const groups = new Map<string, BatchPOItem[]>();
     for (const item of input.items) {
-      const key = makeGroupKey(item);
+      const key = makeGroupKey(item, input.isManual);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(item);
     }
@@ -492,6 +541,11 @@ export async function createPurchaseOrdersBatch(
     }));
     await assertLocationsAndLines(tx, input.companyId, groupHeaders);
     await assertSuppliersAndItems(tx, input.companyId, input.items);
+
+    // ★ Sprint 3.5 Phase S3.5-2b (P1'): 수동 발주는 lineup 정합성 필수 검증
+    if (input.isManual) {
+      await assertLineupsForManualBatch(tx, input.companyId, input.items);
+    }
 
     // 3) 각 그룹을 PO로 변환 + 채번 + 생성
     const usedOrderNumbers = new Set<string>();
@@ -528,6 +582,8 @@ export async function createPurchaseOrdersBatch(
           supplierId: first.supplierId,
           locationId: first.locationId,
           productionLineId: first.productionLineId ?? null,
+          // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주면 그룹의 lineupId 를 헤더에 반영
+          lineupId: input.isManual ? (first.lineupId ?? null) : null,
           batchId: batch?.id ?? null,              // ★ R1-b1
           orderNumber,
           status: "DRAFT",
@@ -535,8 +591,10 @@ export async function createPurchaseOrdersBatch(
           outboundDate: input.outboundDate,        // ★ Phase 1.6
           expectedReceiveDate,                     // ★ Phase 1.6
           note: input.note,
-          isManual: false, // 위저드 = 시스템 발주
-          mealPlanGroupId: input.mealPlanGroupId ?? null,
+          // ★ Sprint 3.5 Phase S3.5-2b: 입력에서 전달받은 isManual 그대로 반영
+          isManual: input.isManual,
+          // ★ 수동 발주는 식단 그룹 미귀속 (P1')
+          mealPlanGroupId: input.isManual ? null : (input.mealPlanGroupId ?? null),
           createdByUserId: input.createdByUserId,
           totalAmount,
           items: {
@@ -551,8 +609,10 @@ export async function createPurchaseOrdersBatch(
               systemQuantity: it.systemQuantity,
               adjustedQuantity: it.adjustedQuantity,
               adjustmentReason: it.adjustmentReason,
-              sourceType: "WIZARD_AUTO",
-              materialRequirementId: it.materialRequirementId,
+              // ★ Sprint 3.5 Phase S3.5-2b: 소스 구분
+              sourceType: input.isManual ? "MANUAL" : "WIZARD_AUTO",
+              // ★ 수동 발주는 MR 참조 없음
+              materialRequirementId: input.isManual ? null : it.materialRequirementId,
             })),
           },
         },
@@ -579,7 +639,11 @@ export async function createPurchaseOrdersBatch(
     }
 
     // ★ D19 (D-DEFAULT-SUPPLIER): setAsDefault=true 행에 대해 MaterialMaster.defaultSupplierItemId 갱신
-    await applyDefaultSupplierUpdates(tx, input.items);
+    // ★ Sprint 3.5 Phase S3.5-2b (P9'): 수동 발주는 마스터 default 갱신 금지
+    //   — 수동 발주는 unitPrice 도 마스터에 영향 주지 않음. 정책 일관성 유지.
+    if (!input.isManual) {
+      await applyDefaultSupplierUpdates(tx, input.items);
+    }
 
     return {
       createdPurchaseOrders,
@@ -587,7 +651,10 @@ export async function createPurchaseOrdersBatch(
       totalAmount: grandTotal,
       isIdempotentReplay: false,
       batchId: batch?.id ?? null,
-      defaultSupplierUpdates: collectDefaultSupplierUpdates(input.items),
+      // ★ Sprint 3.5 Phase S3.5-2b (P9'): 수동 발주는 default supplier 변경 없음
+      defaultSupplierUpdates: input.isManual
+        ? []
+        : collectDefaultSupplierUpdates(input.items),
     };
   });
 }
@@ -1057,7 +1124,10 @@ async function executeReplaceMode(
   // 3) NEW 모드와 동일한 그룹핑·검증·채번·생성
   const groups = new Map<string, BatchPOItem[]>();
   for (const item of input.items) {
-    const key = makeGroupKey(item);
+    // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주 시 lineupId 축 포함
+    //   (REPLACE 는 위저드 전용이므로 input.isManual 은 항상 false 가 정상이지만,
+    //    시그니처 정합성을 위해 명시적으로 전달)
+    const key = makeGroupKey(item, input.isManual);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
   }

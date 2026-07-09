@@ -442,6 +442,12 @@ export async function createPurchaseOrdersBatchAction(
         "결재 승인 이상 상태의 PO가 포함되어 변경할 수 없습니다. 부족분은 신규 발주로, 오배송·과다는 재고 실사로 처리하세요",
       DELTA_MISSING_BASED_ON_POS:
         "차분 발주 대상 PO가 지정되지 않았습니다",
+      // ★ Sprint 3.5 Phase S3.5-2b (Option A): 수동 발주 관련
+      MANUAL_PO_ONLY_NEW_MODE: "수동 발주는 신규(NEW) 모드로만 생성할 수 있습니다",
+      LINEUP_REQUIRED_FOR_MANUAL: "수동 발주는 라인업 지정이 필수입니다",
+      LINEUP_NOT_FOUND: "지정한 라인업을 찾을 수 없습니다",
+      LINEUP_COMPANY_MISMATCH: "라인업이 현재 회사에 속하지 않습니다",
+      LINEUP_INACTIVE: "비활성 라인업은 사용할 수 없습니다",
     });
   }
 }
