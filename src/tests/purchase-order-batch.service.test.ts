@@ -26,6 +26,8 @@ const mockTx = {
   pOAdjustmentLog: { create: vi.fn() },
   // ★ R1-b1: 멱등성 batch 모델
   purchaseOrderBatch: { findUnique: vi.fn(), create: vi.fn() },
+  // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주용 lineup 검증
+  lineup: { findMany: vi.fn() },
 };
 
 vi.mock("@/lib/prisma", () => ({
@@ -123,6 +125,11 @@ beforeEach(() => {
   });
   mockTx.purchaseOrderItem.findMany.mockResolvedValue([]);
   mockTx.pOAdjustmentLog.create.mockResolvedValue({ id: "log_1" });
+  // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주 lineup mock 기본값 (활성·같은 회사)
+  mockTx.lineup.findMany.mockResolvedValue([
+    { id: "lu_1", companyId: COMPANY_ID, isActive: true },
+    { id: "lu_2", companyId: COMPANY_ID, isActive: true },
+  ]);  
 });
 
 describe("createPurchaseOrdersBatch", () => {
@@ -943,6 +950,188 @@ describe("createPurchaseOrdersBatch", () => {
       const newPOCall = mockTx.purchaseOrder.create.mock.calls[0][0];
       expect(newPOCall.data.status).toBe("DRAFT");
       expect(newPOCall.data.isManual).toBe(false);
+    });
+  });
+
+  // ════════════════════════════════════════════════════════
+  // ★ Sprint 3.5 Phase S3.5-2b (Option A): 수동 발주 모드
+  // ════════════════════════════════════════════════════════
+  describe("Manual mode (S3.5-2b)", () => {
+    function makeManualItem(overrides: Partial<{
+      supplierId: string;
+      supplierItemId: string;
+      locationId: string;
+      productionLineId: string | null;
+      materialMasterId: string;
+      lineupId: string | null;
+      quantity: number;
+      unitPrice: number;
+      setAsDefault: boolean;
+      materialRequirementId: string;
+    }> = {}) {
+      return {
+        ...makeItem(overrides),
+        lineupId: overrides.lineupId === undefined ? "lu_1" : overrides.lineupId,
+        ...(overrides.setAsDefault !== undefined && {
+          setAsDefault: overrides.setAsDefault,
+        }),
+        ...(overrides.materialRequirementId !== undefined && {
+          materialRequirementId: overrides.materialRequirementId,
+        }),
+      };
+    }
+
+    function makeManualInput(
+      items: any[],
+      overrides: Partial<CreatePurchaseOrdersBatchInput> = {},
+    ): CreatePurchaseOrdersBatchInput {
+      return {
+        companyId: COMPANY_ID,
+        orderDate: ORDER_DATE,
+        countSource: "ESTIMATED",
+        mode: "NEW",
+        basedOnPOIds: [],
+        isManual: true,
+        items,
+        ...overrides,
+      };
+    }
+
+    // ── 입력 검증: lineupId 필수 (P1') ──
+    it("isManual=true 이지만 lineupId 누락 → LINEUP_REQUIRED_FOR_MANUAL", async () => {
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem({ lineupId: null })]),
+        ),
+      ).rejects.toThrow("LINEUP_REQUIRED_FOR_MANUAL");
+    });
+
+    // ── 라인업 검증 ──
+    it("존재하지 않는 lineupId → LINEUP_NOT_FOUND", async () => {
+      // lu_ghost 는 findMany 결과에 없음
+      mockTx.lineup.findMany.mockResolvedValue([]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem({ lineupId: "lu_ghost" })]),
+        ),
+      ).rejects.toThrow("LINEUP_NOT_FOUND");
+    });
+
+    it("타 회사 소속 lineupId → LINEUP_COMPANY_MISMATCH", async () => {
+      mockTx.lineup.findMany.mockResolvedValue([
+        { id: "lu_1", companyId: "co_other", isActive: true },
+      ]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem({ lineupId: "lu_1" })]),
+        ),
+      ).rejects.toThrow("LINEUP_COMPANY_MISMATCH");
+    });
+
+    it("비활성 lineupId → LINEUP_INACTIVE", async () => {
+      mockTx.lineup.findMany.mockResolvedValue([
+        { id: "lu_1", companyId: COMPANY_ID, isActive: false },
+      ]);
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem({ lineupId: "lu_1" })]),
+        ),
+      ).rejects.toThrow("LINEUP_INACTIVE");
+    });
+
+    // ── 모드 제약 (Option A) ──
+    it("isManual=true + mode='DELTA' → MANUAL_PO_ONLY_NEW_MODE", async () => {
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem()], {
+            mode: "DELTA",
+            basedOnPOIds: ["po_any"],
+          }),
+        ),
+      ).rejects.toThrow("MANUAL_PO_ONLY_NEW_MODE");
+    });
+
+    it("isManual=true + mode='REPLACE' → MANUAL_PO_ONLY_NEW_MODE", async () => {
+      await expect(
+        createPurchaseOrdersBatch(
+          makeManualInput([makeManualItem()], {
+            mode: "REPLACE",
+            basedOnPOIds: ["po_any"],
+          }),
+        ),
+      ).rejects.toThrow("MANUAL_PO_ONLY_NEW_MODE");
+    });
+
+    // ── 정상: 다중 공급업체 그룹핑 ──
+    it("다른 공급업체 items → 공급업체별 PO 분리 + sourceType='MANUAL'", async () => {
+      const r = await createPurchaseOrdersBatch(
+        makeManualInput([
+          makeManualItem({ supplierId: "sup_1", supplierItemId: "si_1" }),
+          makeManualItem({ supplierId: "sup_2", supplierItemId: "si_2" }),
+        ]),
+      );
+
+      expect(r.count).toBe(2);
+      const supplierIds = r.createdPurchaseOrders
+        .map((p) => p.supplierId)
+        .sort();
+      expect(supplierIds).toEqual(["sup_1", "sup_2"]);
+
+      // 모든 생성 호출에서 isManual=true, sourceType='MANUAL', mealPlanGroupId=null 확인
+      for (const call of mockTx.purchaseOrder.create.mock.calls) {
+        const data = call[0].data;
+        expect(data.isManual).toBe(true);
+        expect(data.mealPlanGroupId).toBeNull();
+        for (const itemCreate of data.items.create) {
+          expect(itemCreate.sourceType).toBe("MANUAL");
+          expect(itemCreate.materialRequirementId).toBeNull();
+        }
+      }
+    });
+
+    // ── P9': setAsDefault 무시 ──
+    it("setAsDefault=true 여도 MaterialMaster.defaultSupplierItemId 미변경 (P9')", async () => {
+      const materialMasterUpdateMany = vi.fn().mockResolvedValue({ count: 0 });
+      (mockTx as any).materialMaster = { updateMany: materialMasterUpdateMany };
+
+      const r = await createPurchaseOrdersBatch(
+        makeManualInput([
+          makeManualItem({ setAsDefault: true, materialMasterId: "mat_1" }),
+        ]),
+      );
+
+      expect(materialMasterUpdateMany).not.toHaveBeenCalled();
+      expect(r.defaultSupplierUpdates).toEqual([]);
+    });
+
+    // ── 그룹키에 lineupId 포함 ──
+    it("같은 supplier·location·line 이라도 lineupId 가 다르면 별도 PO 로 분리", async () => {
+      const r = await createPurchaseOrdersBatch(
+        makeManualInput([
+          makeManualItem({
+            supplierId: "sup_1",
+            supplierItemId: "si_1",
+            locationId: "loc_1",
+            productionLineId: null,
+            lineupId: "lu_1",
+          }),
+          makeManualItem({
+            supplierId: "sup_1",
+            supplierItemId: "si_3",
+            locationId: "loc_1",
+            productionLineId: null,
+            lineupId: "lu_2",
+          }),
+        ]),
+      );
+
+      expect(r.count).toBe(2);
+
+      // 각 PO 헤더에 lineupId 가 올바르게 반영됐는지 확인
+      const lineupIds = mockTx.purchaseOrder.create.mock.calls
+        .map((c: any) => c[0].data.lineupId)
+        .sort();
+      expect(lineupIds).toEqual(["lu_1", "lu_2"]);
     });
   });
 });
