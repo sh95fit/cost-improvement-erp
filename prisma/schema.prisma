@@ -678,7 +678,7 @@ model MaterialMaster {
   stockGradeUpdatedAt   DateTime?    @map("stock_grade_updated_at")
   isActive              Boolean      @default(true) @map("is_active") // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
-  isStockKeeping  Boolean  @default(false)  // P12 — SK 발주 우선 노출 대상 (OEM 등)  
+  isStockKeeping  Boolean  @default(false)  @map("is_stock_keeping")  // P12 — SK 발주 우선 노출 대상 (OEM 등)  
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
   deletedAt             DateTime?    @map("deleted_at")
@@ -1441,7 +1441,7 @@ model PurchaseOrder {
   productionLineId    String?             @map("production_line_id")
   // ★ Sprint 3.5 Phase S3.5-0 — 라인업 귀속 축 (P1' 준수, 수동 발주 시 필수)
   lineupId            String?             @map("lineup_id")
-  purchaseKind    PurchaseKind  @default(WIZARD)  // P12 — 발주 축 분류  
+  purchaseKind    PurchaseKind  @default(WIZARD)  @map("purchase_kind")  // P12 — 발주 축 분류  
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
   // ★ R1-b1: 위저드 batch 추적 (NEW/DELTA/REPLACE 어느 모드든 batch 에 묶임)
@@ -1812,7 +1812,7 @@ model ConsumptionItem {
   unit               String
   consumedDate       DateTime               @map("consumed_date") @db.Date
   status             ConsumptionStatus      @default(DRAFT)
-  sourceType   ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  // P13 — 레이어 분류  
+  sourceType   ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  @map("source_type")  // P13 — 레이어 분류  
   // ★ Sprint 4 Phase 10 — 처분 유형 정책
   disposition        ConsumptionDisposition @default(USED) @map("disposition")
   disposalReason     DisposalReason?        @map("disposal_reason")
