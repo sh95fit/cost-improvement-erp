@@ -1606,6 +1606,7 @@ model InventoryLot {
   lotNumber           String    @map("lot_number")
   initialQty          Float     @map("initial_qty")
   remainingQty        Float     @map("remaining_qty")
+  purchaseKind    PurchaseKind? @map("purchase_kind")  
   unitPrice           Float     @map("unit_price")
   expirationDate      DateTime? @map("expiration_date") @db.Date
   receivedAt          DateTime  @default(now()) @map("received_at")
@@ -1626,6 +1627,7 @@ model InventoryLot {
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([lotNumber])
+  @@index([purchaseKind])  
   @@map("inventory_lots")
 }
 
