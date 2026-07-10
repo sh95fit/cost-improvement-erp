@@ -81,7 +81,7 @@ export async function confirmReceivingNote(
   },
 ) {
   return withTransaction(   
-    async (tx) => {
+    async (tx: Tx) => {
       // 1) 입고서 로드 + 검증
       const note = await tx.receivingNote.findUnique({
         where: { id: receivingNoteId },
