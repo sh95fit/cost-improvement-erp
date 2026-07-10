@@ -179,6 +179,7 @@ export async function confirmReceivingNote(
             lotNumber: `${note.receiveNumber}-${rItem.id.slice(-6)}`,
             initialQty: receivedQty,
             remainingQty: receivedQty,
+            purchaseKind: po.purchaseKind, // Phase S4-0-c: reservation eligibility
             unitPrice: poItem.unitPrice, // ★ P9: PO 단가 고정
             receivedAt: note.receivedDate,
           },
