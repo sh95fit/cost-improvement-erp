@@ -79,6 +79,8 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- **2026-07-10 (S4-0-c)**: `InventoryLot.purchaseKind PurchaseKind?` 추가(@@index), 40행 백필(모두 WIZARD). `InventoryReservation`은 스키마 변경 없음.
+- **2026-07-10 (S4-0-c-2)**: S4-0-a-2 rename에서 유실된 `purchase_orders.purchase_kind='MANUAL_JIT'` 4행 재백필. Prisma column rename 시 raw ALTER 사용 원칙 문서화.
 - 2026-07-10 **Sprint 4 Phase S4-0-b 완료**: InventoryTransaction 확장 — itemType(default MATERIAL, indexed) 추가, materialMasterId nullable 전환, subsidiaryMasterId FK 추가(indexed), SubsidiaryMaster.inventoryTransactions 역참조 추가, XOR CHECK inventory_transactions_item_type_xor 적용. 기존 40건 MATERIAL 자동 백필. 마이그레이션 20260710023135_s4_0_b_extend_inventory_transaction_for_subsidiary, 커밋 e37a477.
 - 2026-07-10 **Sprint 4 Phase S4-0-a 완료** — `PurchaseKind` / `ConsumptionSourceType` enum 도입, `MaterialMaster.isStockKeeping` / `PurchaseOrder.purchaseKind` / `ConsumptionItem.sourceType` 필드 + 인덱스 추가. 컬럼명은 프로젝트 규약(snake_case)에 맞춰 `@map` 지시자로 매핑 (`is_stock_keeping`, `purchase_kind`, `source_type`). 백필: 기존 `isManual=true` → `purchaseKind=MANUAL_JIT` (4건), 나머지 default `WIZARD` (35건). 마이그레이션: `20260710015720_s4_0_a_add_purchase_kind_and_source_type` (초기 추가 + 백필), `20260710020509_s4_0_a_2_rename_new_columns_to_snake_case` (컬럼명 규약 정정). 커밋: `b288df6`, `6007c03`. 모델 상태: #9 MaterialMaster / #39 PurchaseOrder / #52 ConsumptionItem 갱신. (P12/P13)
 - 2026-07-09 **Sprint 3.5 종결** — 수동 발주 보완 완료. `PurchaseOrder.lineupId` 필드 추가(마이그레이션 `add_purchase_order_lineup`), 서비스 레이어에서 `isManual=true` 시 lineupId NOT NULL 강제. `PurchaseOrder` 모델 커버리지 갱신 없음(기존 완료 상태 유지). 상세: `docs/progress/SPRINT3.5.md`, `docs/progress/MANUAL_PURCHASE_ORDER.md`.

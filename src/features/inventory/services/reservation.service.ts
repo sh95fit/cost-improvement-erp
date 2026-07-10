@@ -183,7 +183,7 @@ export async function releaseReservation(
   existingTx?: Prisma.TransactionClient
 ): Promise<InventoryReservation> {
   return withTransaction(
-    async (tx) => {
+    async (tx: Tx) => {
       const reservation = await tx.inventoryReservation.findUnique({
         where: { id: input.reservationId },
         select: { id: true, releasedAt: true },

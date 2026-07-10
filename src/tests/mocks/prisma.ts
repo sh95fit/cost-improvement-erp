@@ -67,7 +67,9 @@ export const mockPrisma = {
   // ★ D30 (2026-06-30): 입고 확정 시 재고/불일치 스냅샷
   receivingDiscrepancy: createModelMock(),
   inventoryLot: createModelMock(),
-  inventoryTransaction: createModelMock(),  
+  inventoryTransaction: createModelMock(),
+  // ★ Sprint 4 Phase S4-0-c: 예약 도메인
+  inventoryReservation: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn().mockResolvedValue([]),
 };
