@@ -276,6 +276,19 @@ enum SubsidiaryType {
   @@map("subsidiary_type")
 }
 
+// P12 — 이원 발주 흐름 (Dual Purchase Flow)
+enum PurchaseKind {
+  WIZARD         // 식단 위저드 (β-1) — JIT
+  MANUAL_JIT     // 수동 JIT (β-2) — 라인업·출고일 NOT NULL
+  STOCK_KEEPING  // 재고 확보 (α) — 라인업·출고일 무귀속
+}
+
+// P13 — 사용 처리 이중 레이어
+enum ConsumptionSourceType {
+  MEAL_PLAN_AUTO   // Layer A — 식단 자동 산출 (의무)
+  MANUAL_ADDITION  // Layer B — 사용자 수동 추가 (선택)
+}
+
 enum ConsumptionMode {
   PER_MEAL_COUNT
   FIXED_QUANTITY
@@ -665,6 +678,7 @@ model MaterialMaster {
   stockGradeUpdatedAt   DateTime?    @map("stock_grade_updated_at")
   isActive              Boolean      @default(true) @map("is_active") // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
+  isStockKeeping  Boolean  @default(false)  // P12 — SK 발주 우선 노출 대상 (OEM 등)  
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
   deletedAt             DateTime?    @map("deleted_at")
@@ -691,6 +705,7 @@ model MaterialMaster {
   @@unique([companyId, code])
   @@index([companyId])
   @@index([isActive]) // ★ M-Fix-R1 (D14-7)
+  @@index([isStockKeeping])  
   @@map("material_masters")
 }
 
@@ -1426,6 +1441,7 @@ model PurchaseOrder {
   productionLineId    String?             @map("production_line_id")
   // ★ Sprint 3.5 Phase S3.5-0 — 라인업 귀속 축 (P1' 준수, 수동 발주 시 필수)
   lineupId            String?             @map("lineup_id")
+  purchaseKind    PurchaseKind  @default(WIZARD)  // P12 — 발주 축 분류  
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
   // ★ R1-b1: 위저드 batch 추적 (NEW/DELTA/REPLACE 어느 모드든 batch 에 묶임)
@@ -1457,6 +1473,7 @@ model PurchaseOrder {
   @@index([lineupId]) // ★ Sprint 3.5 Phase S3.5-0
   @@index([outboundDate]) // ★ Phase 1.6
   @@index([expectedReceiveDate]) // ★ Phase 1.6 (입고 예정 리스트 정렬용)
+  @@index([purchaseKind])  
   @@map("purchase_orders")
 }
 
@@ -1795,6 +1812,7 @@ model ConsumptionItem {
   unit               String
   consumedDate       DateTime               @map("consumed_date") @db.Date
   status             ConsumptionStatus      @default(DRAFT)
+  sourceType   ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  // P13 — 레이어 분류  
   // ★ Sprint 4 Phase 10 — 처분 유형 정책
   disposition        ConsumptionDisposition @default(USED) @map("disposition")
   disposalReason     DisposalReason?        @map("disposal_reason")
@@ -1815,6 +1833,7 @@ model ConsumptionItem {
   @@index([consumedDate])
   @@index([disposition])
   @@index([disposition, consumedDate])
+  @@index([sourceType])  
   @@map("consumption_items")
 }
 
