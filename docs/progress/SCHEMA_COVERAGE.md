@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-06-29 (Phase 4-C2 UI 완료 — Step 4 다축 집계 뷰)
+> 마지막 갱신: 2026-07-10 (Sprint 4 Phase S4-0-a 완료 — PurchaseKind/ConsumptionSourceType enum + 3개 필드 추가)
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -16,7 +16,7 @@
 | 6 | PermissionSet | S7 | P3-4 | ⬜ |
 | 7 | PermissionSetItem | S7 | P3-4 | ⬜ |
 | 8 | Invitation | S7 | P5-6 | ⬜ |
-| 9 | MaterialMaster | 구현완료 | — | ✅ |
+| 9 | MaterialMaster | 구현완료 / S4 | — / S4-0-a | ✅ (S4-0-a: `isStockKeeping` 추가 — P12 SK 발주 우선 노출 대상 마커) |
 | 10 | SubsidiaryMaster | 구현완료 | — | ✅ |
 | 11 | Supplier | 구현완료 | — | ✅ |
 | 12 | SupplierItem | 구현완료 | — | ✅ |
@@ -46,7 +46,7 @@
 | 36 | LineupLocationMap | S6 | P5 | ⬜ |
 | 37 | AutoGenLog | S8 | P7 | ⬜ |
 | 38 | MaterialRequirement | S2 / S3 | P9 / P4-C2-pre | ✅ (Phase 9-A~D + Phase 4-C2 pre 완료: lineupId 추가, 5컬럼 unique, getLineupBreakdown 액션. GAP-1 종결) |
-| 39 | PurchaseOrder | S3 | P1-4 / P1.5 / P4-B' | 🔄 (Phase 1.5 에서 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 + 위저드 액션 완료) |
+| 39 | PurchaseOrder | S3 / S3.5 / S4 | P1-4 / P1.5 / P4-B' / S3.5-0 / S4-0-a | 🔄 (Phase 1.5 locationId NOT NULL + productionLineId 추가, Phase 4-B' 위저드 백엔드 4단계 완료, S3.5-0 lineupId 추가, S4-0-a `purchaseKind` 추가 — P12 축 분류) |
 | 40 | PurchaseOrderItem | S3 | P1-4 / P4-B' | 🔄 (Phase 4-B' 배치 생성 서비스 + PriceHistory 적층 정책 적용) |
 | 41 | ReceivingNote | S3 | P5-8 / D30 | 🔄 (D30: `confirmedAt`/`confirmedByUserId` 추가, `confirmReceivingNote` 서비스 완료. 액션·UI 미착수) |
 | 42 | ReceivingNoteItem | S3 | P5-8 | ⬜ |
@@ -59,7 +59,7 @@
 | 49 | StockTakeItem | S4 | P6-7 | ⬜ |
 | 50 | ShippingOrder | S4 | P8-9 | ⬜ |
 | 51 | ShippingOrderItem | S4 | P8-9 | ⬜ |
-| 52 | ConsumptionItem | S4 | P10-11 | ⬜ |
+| 52 | ConsumptionItem | S4 | P10-11 / S4-0-a | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류. 본체 구현은 P10-11 예정) |
 | 53 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
 | 54 | CookingPlan | S4 | P12-13 | ⬜ |
 | 55 | CookingPlanItem | S4 | P12-13 | ⬜ |
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-07-10 **Sprint 4 Phase S4-0-a 완료** — `PurchaseKind` / `ConsumptionSourceType` enum 도입, `MaterialMaster.isStockKeeping` / `PurchaseOrder.purchaseKind` / `ConsumptionItem.sourceType` 필드 + 인덱스 추가. 컬럼명은 프로젝트 규약(snake_case)에 맞춰 `@map` 지시자로 매핑 (`is_stock_keeping`, `purchase_kind`, `source_type`). 백필: 기존 `isManual=true` → `purchaseKind=MANUAL_JIT` (4건), 나머지 default `WIZARD` (35건). 마이그레이션: `20260710015720_s4_0_a_add_purchase_kind_and_source_type` (초기 추가 + 백필), `{s4_0_a_2 timestamp}_s4_0_a_2_rename_new_columns_to_snake_case` (컬럼명 규약 정정). 커밋: `{sha1}`, `{sha2}`. 모델 상태: #9 MaterialMaster / #39 PurchaseOrder / #52 ConsumptionItem 갱신. (P12/P13)
 - 2026-07-09 **Sprint 3.5 종결** — 수동 발주 보완 완료. `PurchaseOrder.lineupId` 필드 추가(마이그레이션 `add_purchase_order_lineup`), 서비스 레이어에서 `isManual=true` 시 lineupId NOT NULL 강제. `PurchaseOrder` 모델 커버리지 갱신 없음(기존 완료 상태 유지). 상세: `docs/progress/SPRINT3.5.md`, `docs/progress/MANUAL_PURCHASE_ORDER.md`.
 - 2026-07-08 **Sprint 3 종결**. 발주+입고 도메인 완성. 신규 모델: PurchaseOrderBatch(#), POAdjustmentLog(#), ReceivingDiscrepancy(#). 신규 enum: POBatchMode, POAdjustmentAction, DiscrepancyType. 헌법 P5·P9 재정정, 계층분리 원칙 명시. 상세 → SPRINT3.md.
 - 2026-06-30 **D30 (입고 확정 통합) 스키마 + 서비스 완료**: `DiscrepancyType` enum + `ReceivingDiscrepancy` 모델 추가, `ReceivingNote.confirmedAt/confirmedByUserId` 추가, `confirmReceivingNote` 서비스(단일 트랜잭션으로 InventoryLot 생성 + PO RECEIVED 전이 + 불일치 스냅샷) 구현. 테스트 10/10 PASS. P5·P9 재정정(2026-06-30) 반영: 입고 확정 = 재고 생성 + PO 종결 통합, 단가는 PO 확정 시점 고정. 마이그레이션 `phase_3_d30_receiving_discrepancy_and_confirmed_meta`. 커밋 `67a60e34`, `35773f1b`, `64924006`, `f8764185`. 모델 #41 ReceivingNote ⬜→🔄. 액션·UI(C-3) 미착수.

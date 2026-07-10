@@ -4,7 +4,7 @@
 > 종결된 Sprint 의 상세 이력은 `docs/progress/SPRINT{n}.md` 로 이관한다.
 > 모델 구현 현황은 `docs/progress/SCHEMA_COVERAGE.md` 에서 관리한다.
 >
-> 마지막 갱신: 2026-07-10 (Sprint 4 착수 준비 — P12/P13 헌법 조항 신설, 이원 발주 흐름 확정)
+> 마지막 갱신: 2026-07-10 (Sprint 4 Phase S4-0-a 완료 — PurchaseKind/ConsumptionSourceType enum + 3개 필드 추가·백필·컬럼명 규약 정정)
 
 ---
 
@@ -443,7 +443,7 @@ SK 발주 대상을 부자재·OEM 로 국한하지 않는다. 부자재 전체 
 
 ## 📍 현재 상태 요약
 
-- **현재 진행 중 Sprint**: Sprint 4 (착수 준비 — 헌법 P12/P13 조항 신설 후 S4-0-a 진입)
+- **현재 진행 중 Sprint**: Sprint 4 (Phase S4-0-a 완료, S4-0-b 착수 대기)
 - **직전 종결 Sprint**: Sprint 3.5 (수동 발주 보완, 2026-07-08 ~ 2026-07-09)
   > 상세 이력 → `docs/progress/SPRINT3.5.md`
   >
@@ -452,7 +452,15 @@ SK 발주 대상을 부자재·OEM 로 국한하지 않는다. 부자재 전체 
 - **최근 완료 항목**:
   - Sprint 3.5 종결 아카이브 (`docs/progress/SPRINT3.5.md`) ✅
   - Sprint 4 착수 준비: **헌법 P12(이원 발주 흐름) · P13(사용 처리 이중 레이어) 신설** — 2026-07-10 ✅
-- **다음 착수 항목**: **Sprint 4 Phase S4-0-a (스키마 보강)** — `MaterialMaster.isStockKeeping`, `PurchaseOrder.purchaseKind`, `ConsumptionItem.sourceType` 도입 + 마이그레이션
+  - Sprint 4 Phase S4-0-a 완료 — 2026-07-10 ✅
+    - `PurchaseKind` / `ConsumptionSourceType` enum 도입
+    - `MaterialMaster.isStockKeeping` / `PurchaseOrder.purchaseKind` / `ConsumptionItem.sourceType` 필드 + 인덱스 추가
+    - 백필: `isManual=true → purchaseKind=MANUAL_JIT` (4건) / 나머지 default `WIZARD` (35건)
+    - 프로젝트 snake_case 규약 정정: `@map("purchase_kind")`, `@map("is_stock_keeping")`, `@map("source_type")` 추가 + 컬럼 rename 보정 마이그레이션
+    - 마이그레이션: `20260710015720_s4_0_a_add_purchase_kind_and_source_type`, `20260710020509_s4_0_a_2_rename_new_columns_to_snake_case`
+    - 커밋: `b288df6`, `6007c03`
+- **다음 착수 항목**: **Sprint 4 Phase S4-0-b (`InventoryTransaction` 부자재 확장 + XOR CHECK constraint)**
+
 
 ---
 
