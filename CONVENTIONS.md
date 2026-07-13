@@ -41,3 +41,35 @@
 ## 작업 프로세스 규칙
 11. **PROGRESS.md 갱신 없이 다음 Phase 진행 금지** — 매 Phase 완료 시 PROGRESS.md의 해당 Phase를 ✅로 변경하고, 변경 내용·계획 대비 변경·발견된 이슈를 기록한 후 커밋한다.
 12. **6단계 프로세스 미준수 금지** — 모든 Phase는 깃 배포 → 레포 검증 → 프로세스 검증 → 테스트 → 보완 → PROGRESS.md 갱신 순서를 따른다.
+
+
+## 감사 로그 (AuditLog) 사용 원칙
+
+Sprint 4 Phase S4-0-d 에서 표준화. 감사 로그는 항상 상태 변경 대상과 동일한 원자성 경계 안에서 기록되어야 한다.
+
+### 서비스 레이어 (트랜잭션 내부)
+
+`writeAuditLog(tx, params)` — `src/lib/utils/audit.ts`
+
+- 서비스 함수는 `actorUserId: string` 파라미터를 명시적으로 받는다.
+- 트랜잭션 콜백 내부에서 상태 변경 직후 `writeAuditLog(tx, {...})` 호출.
+- 실패 시 throw → 전체 트랜잭션 롤백. 상태 변경과 감사 로그는 원자적으로 커밋된다.
+
+### Actions 레이어 (트랜잭션 외부)
+
+`createAuditLog({session, ...})` — `src/lib/utils/audit.ts`
+
+- Server Action 안에서 서비스 호출 성공 후 세션 기반으로 기록.
+- 내부적으로 `writeAuditLog(prisma, ...)` 를 호출.
+- 실패해도 `logger.error` 만 남기고 통과 (Actions 레이어는 후처리 관점).
+- 서비스에서 이미 `writeAuditLog(tx)` 로 기록했다면 Actions 레이어 중복 호출 금지.
+
+### AuditAction enum 매핑 가이드
+
+- `CREATE` — 신규 엔티티 생성
+- `UPDATE` — 필드 갱신 (예약 해제, 상태 필드 변경 포함)
+- `DELETE` — 삭제 (soft delete 포함)
+- `APPROVE` / `REJECT` — 승인 워크플로우
+- `STATUS_CHANGE` — 명시적 상태 전이 (PO 상태 등 도메인 상태 머신)
+- `LOGIN` — 인증 이벤트
+- `OVERRIDE` — 정책 우회 (관리자 강제 조치)

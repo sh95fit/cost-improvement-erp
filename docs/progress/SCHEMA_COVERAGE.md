@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- **2026-07-10 (S4-0-d)**: `writeAuditLog(tx)` 헬퍼 신설 및 예약 도메인 서비스에 감사 로그 훅 통합. `AuditLog` 스키마 변경 없음. `AuditAction` enum 확장 없이 기존 8종 활용(CREATE/UPDATE로 매핑).
 - **2026-07-10 (S4-0-c)**: `InventoryLot.purchaseKind PurchaseKind?` 추가(@@index), 40행 백필(모두 WIZARD). `InventoryReservation`은 스키마 변경 없음.
 - **2026-07-10 (S4-0-c-2)**: S4-0-a-2 rename에서 유실된 `purchase_orders.purchase_kind='MANUAL_JIT'` 4행 재백필. Prisma column rename 시 raw ALTER 사용 원칙 문서화.
 - 2026-07-10 **Sprint 4 Phase S4-0-b 완료**: InventoryTransaction 확장 — itemType(default MATERIAL, indexed) 추가, materialMasterId nullable 전환, subsidiaryMasterId FK 추가(indexed), SubsidiaryMaster.inventoryTransactions 역참조 추가, XOR CHECK inventory_transactions_item_type_xor 적용. 기존 40건 MATERIAL 자동 백필. 마이그레이션 20260710023135_s4_0_b_extend_inventory_transaction_for_subsidiary, 커밋 e37a477.

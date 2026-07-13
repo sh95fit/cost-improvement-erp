@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma, InventoryReservation } from "@prisma/client";
 import { withTransaction } from "@/lib/auth/transaction";
+import { writeAuditLog } from "@/lib/utils/audit";
 import { isReservationEligibleLot } from "../lib/reservation-eligibility";
 
 type Tx = Prisma.TransactionClient;
@@ -115,6 +116,7 @@ export interface CreateReservationInput {
   useDate: Date;
   referenceType: string; // e.g. "MEAL_PLAN_SLOT", "MANUAL"
   referenceId: string;
+  actorUserId: string; // ★ Sprint 4 Phase S4-0-d: 감사 로그 기록 대상 사용자
 }
 
 export async function createReservation(
@@ -153,7 +155,7 @@ export async function createReservation(
         throw new InsufficientAvailableQtyError(lot.id, input.quantity, available);
       }
 
-      return tx.inventoryReservation.create({
+      const reservation = await tx.inventoryReservation.create({
         data: {
           companyId: input.companyId,
           inventoryLotId: input.inventoryLotId,
@@ -164,6 +166,18 @@ export async function createReservation(
           useDate: input.useDate,
         },
       });
+
+      // ★ Sprint 4 Phase S4-0-d: 트랜잭션 내부 감사 로그 기록
+      await writeAuditLog(tx, {
+        companyId: input.companyId,
+        userId: input.actorUserId,
+        action: "CREATE",
+        entityType: "InventoryReservation",
+        entityId: reservation.id,
+        after: reservation as unknown as Record<string, unknown>,
+      });
+
+      return reservation;
     },
     { existingTx }
   );
@@ -176,6 +190,7 @@ export async function createReservation(
 export interface ReleaseReservationInput {
   reservationId: string;
   reason: "CONSUMED" | "MANUAL_CANCEL" | "AUTO_EXPIRED";
+  actorUserId: string; // ★ Sprint 4 Phase S4-0-d: 감사 로그 기록 대상 사용자
 }
 
 export async function releaseReservation(
@@ -186,20 +201,39 @@ export async function releaseReservation(
     async (tx: Tx) => {
       const reservation = await tx.inventoryReservation.findUnique({
         where: { id: input.reservationId },
-        select: { id: true, releasedAt: true },
+        select: { id: true, companyId: true, releasedAt: true, releaseReason: true },
       });
       if (!reservation) throw new ReservationNotFoundError(input.reservationId);
       if (reservation.releasedAt !== null) {
         throw new ReservationAlreadyReleasedError(input.reservationId);
       }
 
-      return tx.inventoryReservation.update({
+      const updated = await tx.inventoryReservation.update({
         where: { id: input.reservationId },
         data: {
           releasedAt: new Date(),
           releaseReason: input.reason,
         },
       });
+
+      // ★ Sprint 4 Phase S4-0-d: 트랜잭션 내부 감사 로그 기록
+      await writeAuditLog(tx, {
+        companyId: reservation.companyId,
+        userId: input.actorUserId,
+        action: "UPDATE",
+        entityType: "InventoryReservation",
+        entityId: updated.id,
+        before: {
+          releasedAt: reservation.releasedAt,
+          releaseReason: reservation.releaseReason,
+        },
+        after: {
+          releasedAt: updated.releasedAt,
+          releaseReason: updated.releaseReason,
+        },
+      });
+
+      return updated;
     },
     { existingTx }
   );

@@ -22,6 +22,7 @@ const COMPANY_ID = "company-1";
 const LOT_ID = "lot-1";
 const MM_ID = "mm-1";
 const RES_ID = "res-1";
+const ACTOR_ID = "user-1"; // ★ Sprint 4 Phase S4-0-d
 
 function baseLot() {
   return {
@@ -43,6 +44,7 @@ function baseCreateInput() {
     useDate: new Date("2026-07-15"),
     referenceType: "MEAL_PLAN_SLOT",
     referenceId: "slot-1",
+    actorUserId: ACTOR_ID, // ★ Sprint 4 Phase S4-0-d
   };
 }
 
@@ -124,7 +126,12 @@ describe("getAvailableQty", () => {
 describe("createReservation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPrisma.inventoryReservation.create.mockResolvedValue({ id: RES_ID });
+    mockPrisma.inventoryReservation.create.mockResolvedValue({
+      id: RES_ID,
+      companyId: COMPANY_ID,
+      quantity: 10,
+    });
+    mockPrisma.auditLog.create.mockResolvedValue({ id: "audit-1" });
   });
 
   it("정상: 가용 수량 충분 시 예약 생성", async () => {
@@ -212,25 +219,64 @@ describe("createReservation", () => {
       LotNotEligibleForReservationError,
     );
   });
+
+  it("정상 생성 시 AuditLog(CREATE, InventoryReservation) 기록", async () => {
+    mockPrisma.inventoryLot.findUnique.mockResolvedValue(baseLot());
+    mockPrisma.inventoryReservation.aggregate.mockResolvedValue({
+      _sum: { quantity: 0 },
+    });
+
+    await createReservation(baseCreateInput());
+
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyId: COMPANY_ID,
+        userId: ACTOR_ID,
+        action: "CREATE",
+        entityType: "InventoryReservation",
+        entityId: RES_ID,
+      }),
+    });
+  });
+
+  it("검증 실패 시 AuditLog 미기록", async () => {
+    mockPrisma.inventoryLot.findUnique.mockResolvedValue(baseLot());
+    mockPrisma.inventoryReservation.aggregate.mockResolvedValue({
+      _sum: { quantity: 95 },
+    });
+
+    await expect(createReservation(baseCreateInput())).rejects.toBeInstanceOf(
+      InsufficientAvailableQtyError,
+    );
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("releaseReservation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.auditLog.create.mockResolvedValue({ id: "audit-1" });
   });
 
   it("정상: releasedAt=null 예약 해제 (CONSUMED)", async () => {
     mockPrisma.inventoryReservation.findUnique.mockResolvedValue({
       id: RES_ID,
+      companyId: COMPANY_ID,
       releasedAt: null,
+      releaseReason: null,
     });
     mockPrisma.inventoryReservation.update.mockResolvedValue({
       id: RES_ID,
+      companyId: COMPANY_ID,
       releasedAt: new Date(),
       releaseReason: "CONSUMED",
     });
 
-    await releaseReservation({ reservationId: RES_ID, reason: "CONSUMED" });
+    await releaseReservation({
+      reservationId: RES_ID,
+      reason: "CONSUMED",
+      actorUserId: ACTOR_ID,
+    });
 
     expect(mockPrisma.inventoryReservation.update).toHaveBeenCalledWith({
       where: { id: RES_ID },
@@ -241,24 +287,74 @@ describe("releaseReservation", () => {
     });
   });
 
-  it("이미 해제된 예약: ReservationAlreadyReleasedError", async () => {
+  it("정상 해제 시 AuditLog(UPDATE, InventoryReservation) 기록", async () => {
     mockPrisma.inventoryReservation.findUnique.mockResolvedValue({
       id: RES_ID,
+      companyId: COMPANY_ID,
+      releasedAt: null,
+      releaseReason: null,
+    });
+    mockPrisma.inventoryReservation.update.mockResolvedValue({
+      id: RES_ID,
+      companyId: COMPANY_ID,
       releasedAt: new Date(),
+      releaseReason: "MANUAL_CANCEL",
+    });
+
+    await releaseReservation({
+      reservationId: RES_ID,
+      reason: "MANUAL_CANCEL",
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyId: COMPANY_ID,
+        userId: ACTOR_ID,
+        action: "UPDATE",
+        entityType: "InventoryReservation",
+        entityId: RES_ID,
+        before: expect.objectContaining({
+          releasedAt: null,
+          releaseReason: null,
+        }),
+        after: expect.objectContaining({
+          releaseReason: "MANUAL_CANCEL",
+        }),
+      }),
+    });
+  });
+
+  it("이미 해제된 예약: ReservationAlreadyReleasedError (AuditLog 미기록)", async () => {
+    mockPrisma.inventoryReservation.findUnique.mockResolvedValue({
+      id: RES_ID,
+      companyId: COMPANY_ID,
+      releasedAt: new Date(),
+      releaseReason: "CONSUMED",
     });
 
     await expect(
-      releaseReservation({ reservationId: RES_ID, reason: "MANUAL_CANCEL" }),
+      releaseReservation({
+        reservationId: RES_ID,
+        reason: "MANUAL_CANCEL",
+        actorUserId: ACTOR_ID,
+      }),
     ).rejects.toBeInstanceOf(ReservationAlreadyReleasedError);
     expect(mockPrisma.inventoryReservation.update).not.toHaveBeenCalled();
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("존재하지 않는 예약: ReservationNotFoundError", async () => {
     mockPrisma.inventoryReservation.findUnique.mockResolvedValue(null);
 
     await expect(
-      releaseReservation({ reservationId: RES_ID, reason: "CONSUMED" }),
+      releaseReservation({
+        reservationId: RES_ID,
+        reason: "CONSUMED",
+        actorUserId: ACTOR_ID,
+      }),
     ).rejects.toBeInstanceOf(ReservationNotFoundError);
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
   });
 });
 

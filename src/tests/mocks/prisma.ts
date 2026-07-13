@@ -70,6 +70,8 @@ export const mockPrisma = {
   inventoryTransaction: createModelMock(),
   // ★ Sprint 4 Phase S4-0-c: 예약 도메인
   inventoryReservation: createModelMock(),
+  // ★ Sprint 4 Phase S4-0-d: 감사 로그
+  auditLog: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn().mockResolvedValue([]),
 };
