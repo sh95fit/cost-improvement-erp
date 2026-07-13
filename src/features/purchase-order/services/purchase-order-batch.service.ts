@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ItemType } from "@prisma/client";
-import { POBatchMode, MealCountSource } from "@prisma/client";
+import { POBatchMode, MealCountSource, PurchaseKind } from "@prisma/client";
 import {
   computeDeltaPlan,
   type ExistingPOItemForDelta,
@@ -81,6 +81,12 @@ export const PO_BATCH_ERRORS = {
   LINEUP_NOT_FOUND: "LINEUP_NOT_FOUND",
   LINEUP_COMPANY_MISMATCH: "LINEUP_COMPANY_MISMATCH",
   LINEUP_INACTIVE: "LINEUP_INACTIVE",
+  // ☑ Sprint 4 Phase S4-1-e: PurchaseKind 통합 검증 에러
+  PURCHASE_KIND_LINEUP_MISMATCH: "PURCHASE_KIND_LINEUP_MISMATCH",
+  PURCHASE_KIND_OUTBOUND_MISMATCH: "PURCHASE_KIND_OUTBOUND_MISMATCH",
+  STOCK_KEEPING_REQUIRES_LOCATION: "STOCK_KEEPING_REQUIRES_LOCATION",
+  MANUAL_JIT_REQUIRES_LINEUP: "MANUAL_JIT_REQUIRES_LINEUP",
+  WIZARD_REQUIRES_MEAL_PLAN_GROUP: "WIZARD_REQUIRES_MEAL_PLAN_GROUP",  
 } as const;
 
 // ============================================================
@@ -144,7 +150,87 @@ export const createPurchaseOrdersBatchSchema = z.object({
   // ★ Sprint 3.5 Phase S3.5-2b: 수동 발주 여부 (Option A: 다중 공급업체 그룹핑 지원)
   //   true 면 mode=NEW 로만 허용, items 의 lineupId 필수, sourceType=MANUAL, mealPlanGroupId 무시
   isManual: z.boolean().default(false),
+  // ☑ Sprint 4 Phase S4-1-e: PurchaseKind 통합 (P12)
+  //   WIZARD  = 식단 기반 (mealPlanGroupId NOT NULL, isManual=false)
+  //   MANUAL_JIT = 수동 즉시 (lineupId/outboundDate NOT NULL, isManual=true)
+  //   STOCK_KEEPING = 재고 비축 (lineupId/outboundDate/mealPlanGroupId 모두 NULL, isManual=true)
+  purchaseKind: z.nativeEnum(PurchaseKind).default("WIZARD"),
   items: z.array(batchPOItemSchema).min(1, "발주 항목은 1개 이상이어야 합니다"),
+}).superRefine((data, ctx) => {
+  // isManual ↔ purchaseKind 정합성
+  if (data.purchaseKind === "WIZARD" && data.isManual) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["isManual"],
+      message: "WIZARD 발주는 isManual=false 여야 합니다",
+    });
+  }
+  if (
+    (data.purchaseKind === "MANUAL_JIT" || data.purchaseKind === "STOCK_KEEPING") &&
+    !data.isManual
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["isManual"],
+      message: "MANUAL_JIT / STOCK_KEEPING 발주는 isManual=true 여야 합니다",
+    });
+  }
+
+  // WIZARD: mealPlanGroupId 필수
+  if (data.purchaseKind === "WIZARD" && !data.mealPlanGroupId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["mealPlanGroupId"],
+      message: "WIZARD 발주는 mealPlanGroupId 가 필수입니다",
+    });
+  }
+
+  // MANUAL_JIT: 모든 items 에 lineupId 필수, outboundDate 필수
+  if (data.purchaseKind === "MANUAL_JIT") {
+    if (!data.outboundDate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["outboundDate"],
+        message: "MANUAL_JIT 발주는 outboundDate 가 필수입니다",
+      });
+    }
+    data.items.forEach((it, idx) => {
+      if (!it.lineupId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["items", idx, "lineupId"],
+          message: "MANUAL_JIT 발주는 각 item 에 lineupId 가 필수입니다",
+        });
+      }
+    });
+  }
+
+  // STOCK_KEEPING: lineupId / outboundDate / mealPlanGroupId 모두 NULL
+  if (data.purchaseKind === "STOCK_KEEPING") {
+    if (data.mealPlanGroupId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["mealPlanGroupId"],
+        message: "STOCK_KEEPING 발주는 mealPlanGroupId 를 지정할 수 없습니다",
+      });
+    }
+    if (data.outboundDate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["outboundDate"],
+        message: "STOCK_KEEPING 발주는 outboundDate 를 지정할 수 없습니다",
+      });
+    }
+    data.items.forEach((it, idx) => {
+      if (it.lineupId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["items", idx, "lineupId"],
+          message: "STOCK_KEEPING 발주는 lineupId 를 지정할 수 없습니다",
+        });
+      }
+    });
+  }
 });
 
 export type BatchPOItem = z.infer<typeof batchPOItemSchema>;

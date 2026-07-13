@@ -68,8 +68,10 @@ function makeInput(items: any[]): CreatePurchaseOrdersBatchInput {
     countSource: "ESTIMATED",
     mode: "NEW",
     basedOnPOIds: [],
-    // ★ Sprint 3.5 Phase S3.5-2b: default(false) 지만 z.infer 결과 타입에서 required 이므로 명시
-    isManual: false,    
+    // ☑ Sprint 3.5 Phase S3.5-2b: default(false) 지만 z.infer 결과 타입에서 required 이므로 명시
+    isManual: false,
+    // ☑ Sprint 4 Phase S4-1-e: purchaseKind 도 default("WIZARD") 이지만 z.infer 출력 타입에서 required
+    purchaseKind: "WIZARD",
     items,
   };
 }
@@ -355,6 +357,7 @@ describe("createPurchaseOrdersBatch", () => {
         mode: "DELTA",
         basedOnPOIds,
         isManual: false, // ★ Sprint 3.5 Phase S3.5-2b
+        purchaseKind: "WIZARD",
         items,
       };
     }
@@ -766,6 +769,7 @@ describe("createPurchaseOrdersBatch", () => {
         mode: "REPLACE",
         basedOnPOIds,
         isManual: false, // ★ Sprint 3.5 Phase S3.5-2b
+        purchaseKind: "WIZARD",
         items,
       };
     }
@@ -992,6 +996,7 @@ describe("createPurchaseOrdersBatch", () => {
         mode: "NEW",
         basedOnPOIds: [],
         isManual: true,
+        purchaseKind: "WIZARD",
         items,
         ...overrides,
       };
