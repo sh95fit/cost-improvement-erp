@@ -62,6 +62,23 @@ export const locationListQuerySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("asc"),
 });
 
+// ☑ Sprint 4 Phase S4-1-c: 옵션(드롭다운) 조회 쿼리
+//    JIT/SK 발주 UI 에서 LocationType 필터로 사용
+//    - types 미지정: 전체 활성 Location (soft-delete 제외)
+//    - types 지정 : 지정된 LocationType 만 (예: SK 는 ["FACTORY","WAREHOUSE","HYBRID"], JIT 는 ["FACTORY","HYBRID"])
+export const locationOptionsQuerySchema = z.object({
+  types: z.array(LocationTypeEnum).min(1).optional(),
+  includeInactive: z.coerce.boolean().optional().default(false),
+});
+
+export type LocationOptionsQuery = z.infer<typeof locationOptionsQuerySchema>;
+export type LocationOption = {
+  id: string;
+  code: string;
+  name: string;
+  type: LocationTypeValue;
+};
+
 // ============================================================
 // 2. 타입 추출
 // ============================================================

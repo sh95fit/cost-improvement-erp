@@ -11,6 +11,7 @@ import {
   createLocationSchema,
   updateLocationSchema,
   locationListQuerySchema,
+  locationOptionsQuerySchema,
 } from "../schemas/location.schema";
 import * as locationService from "../services/location.service";
 import type { Location } from "@prisma/client";
@@ -57,6 +58,28 @@ export async function getLocationByIdAction(
     return actionOk(location);
   } catch (error) {
     return handleActionError(error, "위치 조회에 실패했습니다");
+  }
+}
+
+// ============================================================
+// ☑ Sprint 4 Phase S4-1-c: 옵션(드롭다운) 조회
+// ============================================================
+export async function getLocationOptionsAction(
+  rawQuery: Record<string, unknown> = {}
+): Promise<
+  ActionResult<Awaited<ReturnType<typeof locationService.getLocationOptions>>>
+> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "location", "READ");
+    const query = locationOptionsQuerySchema.parse(rawQuery);
+    const result = await locationService.getLocationOptions(
+      session.companyId,
+      query
+    );
+    return actionOk(result);
+  } catch (error) {
+    return handleActionError(error, "위치 옵션 조회에 실패했습니다");
   }
 }
 

@@ -4,6 +4,8 @@ import type {
   CreateLocationInput,
   UpdateLocationInput,
   LocationListQuery,
+  LocationOptionsQuery,
+  LocationOption,
 } from "../schemas/location.schema";
 
 // ============================================================
@@ -97,6 +99,29 @@ export async function getLocationById(companyId: string, id: string) {
   return prisma.location.findFirst({
     where: { id, companyId, deletedAt: null },
   });
+}
+
+// ============================================================
+// ☑ Sprint 4 Phase S4-1-c: 옵션(드롭다운) 조회
+// ============================================================
+export async function getLocationOptions(
+  companyId: string,
+  query: LocationOptionsQuery = { includeInactive: false }
+): Promise<LocationOption[]> {
+  const { types, includeInactive } = query;
+
+  const items = await prisma.location.findMany({
+    where: {
+      companyId,
+      deletedAt: null,
+      ...(includeInactive ? {} : { isActive: true }),
+      ...(types && types.length > 0 ? { type: { in: types } } : {}),
+    },
+    select: { id: true, code: true, name: true, type: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
+  return items;
 }
 
 export async function createLocation(
