@@ -126,4 +126,37 @@ describe("createPurchaseOrdersBatchSchema — purchaseKind 통합 (S4-1-e)", () 
       expect(r.success).toBe(false);
     });
   });
+
+  describe("purchaseKind 파싱값 (S4-1-e-2 대비)", () => {
+    it("WIZARD default 로 파싱된다", () => {
+      const r = createPurchaseOrdersBatchSchema.safeParse({
+        ...baseInput,
+        mealPlanGroupId: "mpg-1",
+      });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.purchaseKind).toBe("WIZARD");
+    });
+
+    it("MANUAL_JIT 명시 시 그대로 유지된다", () => {
+      const r = createPurchaseOrdersBatchSchema.safeParse({
+        ...baseInput,
+        purchaseKind: "MANUAL_JIT",
+        isManual: true,
+        outboundDate: new Date("2026-07-16"),
+        items: [{ ...baseItem, lineupId: "lu-1" }],
+      });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.purchaseKind).toBe("MANUAL_JIT");
+    });
+
+    it("STOCK_KEEPING 명시 시 그대로 유지된다", () => {
+      const r = createPurchaseOrdersBatchSchema.safeParse({
+        ...baseInput,
+        purchaseKind: "STOCK_KEEPING",
+        isManual: true,
+      });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.purchaseKind).toBe("STOCK_KEEPING");
+    });
+  });
 });

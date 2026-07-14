@@ -629,10 +629,11 @@ export async function createPurchaseOrdersBatch(
     await assertSuppliersAndItems(tx, input.companyId, input.items);
 
     // ★ Sprint 3.5 Phase S3.5-2b (P1'): 수동 발주는 lineup 정합성 필수 검증
-    if (input.isManual) {
+    // ☑ Sprint 4 Phase S4-1-e-2 (P12): STOCK_KEEPING 은 lineup 무귀속이므로 MANUAL_JIT 로 제한
+    if (input.isManual && input.purchaseKind === "MANUAL_JIT") {
       await assertLineupsForManualBatch(tx, input.companyId, input.items);
     }
-
+    
     // 3) 각 그룹을 PO로 변환 + 채번 + 생성
     const usedOrderNumbers = new Set<string>();
     const createdPurchaseOrders: CreatePurchaseOrdersBatchResult["createdPurchaseOrders"] =
@@ -681,6 +682,9 @@ export async function createPurchaseOrdersBatch(
           isManual: input.isManual,
           // ★ 수동 발주는 식단 그룹 미귀속 (P1')
           mealPlanGroupId: input.isManual ? null : (input.mealPlanGroupId ?? null),
+          // ☑ Sprint 4 Phase S4-1-e-2 (P12): 발주 종류 헤더 반영
+          //   NEW 모드는 WIZARD/MANUAL_JIT/STOCK_KEEPING 모두 진입 가능하므로 입력값 그대로
+          purchaseKind: input.purchaseKind,
           createdByUserId: input.createdByUserId,
           totalAmount,
           items: {
@@ -1031,6 +1035,9 @@ async function executeDeltaMode(
           note: input.note,
           isManual: false,
           mealPlanGroupId: input.mealPlanGroupId ?? null,
+          // ☑ Sprint 4 Phase S4-1-e-2 (P12): DELTA newGroups 는 위저드 재산정 흐름 전용
+          //   (executeDeltaMode 자체가 WIZARD 경로이며 isManual=false 로 하드코딩됨)
+          purchaseKind: "WIZARD",
           createdByUserId: input.createdByUserId,
           totalAmount,
           items: {
@@ -1277,6 +1284,9 @@ async function executeReplaceMode(
         note: noteForThisPO || null,
         isManual: false,
         mealPlanGroupId: input.mealPlanGroupId ?? null,
+        // ☑ Sprint 4 Phase S4-1-e-2 (P12): REPLACE 는 WIZARD 재생성 흐름 전용
+        //   (executeReplaceMode 는 위저드 진입점에서만 호출, isManual=false 하드코딩)
+        purchaseKind: "WIZARD",
         createdByUserId: input.createdByUserId,
         totalAmount,
         items: {

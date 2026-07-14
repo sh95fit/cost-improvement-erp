@@ -996,7 +996,10 @@ describe("createPurchaseOrdersBatch", () => {
         mode: "NEW",
         basedOnPOIds: [],
         isManual: true,
-        purchaseKind: "WIZARD",
+        // ☑ Sprint 4 Phase S4-1-e-2: 수동 발주 기본은 MANUAL_JIT (라인업·출고일 정합)
+        //   기존 makeManualItem 이 lineupId="lu_1" 을 부여하므로 outboundDate 만 기본값에 추가.
+        purchaseKind: "MANUAL_JIT",
+        outboundDate: new Date("2026-06-21"),
         items,
         ...overrides,
       };
@@ -1137,6 +1140,90 @@ describe("createPurchaseOrdersBatch", () => {
         .map((c: any) => c[0].data.lineupId)
         .sort();
       expect(lineupIds).toEqual(["lu_1", "lu_2"]);
+    });
+  });
+
+  // ═════════════════════════════════════════════════════════
+  // ☑ Sprint 4 Phase S4-1-e-2: purchaseKind 저장 검증 (P12)
+  // ═════════════════════════════════════════════════════════
+  describe("purchaseKind 저장 (S4-1-e-2)", () => {
+    it("NEW · WIZARD → PO.purchaseKind='WIZARD' 로 저장", async () => {
+      await createPurchaseOrdersBatch(makeInput([makeItem()]));
+
+      expect(mockTx.purchaseOrder.create).toHaveBeenCalledTimes(1);
+      const data = mockTx.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.purchaseKind).toBe("WIZARD");
+      expect(data.isManual).toBe(false);
+      expect(data.lineupId).toBeNull();
+    });
+
+    it("NEW · MANUAL_JIT → PO.purchaseKind='MANUAL_JIT' + lineupId 반영", async () => {
+      await createPurchaseOrdersBatch({
+        companyId: COMPANY_ID,
+        orderDate: ORDER_DATE,
+        countSource: "ESTIMATED",
+        mode: "NEW",
+        basedOnPOIds: [],
+        isManual: true,
+        purchaseKind: "MANUAL_JIT",
+        outboundDate: new Date("2026-06-21"),
+        items: [
+          {
+            supplierId: "sup_1",
+            supplierItemId: "si_1",
+            itemType: "MATERIAL" as const,
+            materialMasterId: "mat_1",
+            locationId: "loc_1",
+            productionLineId: null,
+            lineupId: "lu_1",
+            quantity: 1,
+            unitPrice: 50000,
+            setAsDefault: false,
+          },
+        ],
+      });
+
+      expect(mockTx.purchaseOrder.create).toHaveBeenCalledTimes(1);
+      const data = mockTx.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.purchaseKind).toBe("MANUAL_JIT");
+      expect(data.isManual).toBe(true);
+      expect(data.lineupId).toBe("lu_1");
+      expect(data.mealPlanGroupId).toBeNull();
+    });
+
+    it("NEW · STOCK_KEEPING → purchaseKind='STOCK_KEEPING' + lineup 검증 스킵", async () => {
+      // lineupId 없어도 lineup 검증이 스킵되어 통과해야 함
+      await createPurchaseOrdersBatch({
+        companyId: COMPANY_ID,
+        orderDate: ORDER_DATE,
+        countSource: "ESTIMATED",
+        mode: "NEW",
+        basedOnPOIds: [],
+        isManual: true,
+        purchaseKind: "STOCK_KEEPING",
+        items: [
+          {
+            supplierId: "sup_1",
+            supplierItemId: "si_1",
+            itemType: "MATERIAL" as const,
+            materialMasterId: "mat_1",
+            locationId: "loc_1",
+            productionLineId: null,
+            quantity: 1,
+            unitPrice: 50000,
+            setAsDefault: false,
+          },
+        ],
+      });
+
+      expect(mockTx.purchaseOrder.create).toHaveBeenCalledTimes(1);
+      const data = mockTx.purchaseOrder.create.mock.calls[0][0].data;
+      expect(data.purchaseKind).toBe("STOCK_KEEPING");
+      expect(data.isManual).toBe(true);
+      expect(data.lineupId).toBeNull();
+      expect(data.mealPlanGroupId).toBeNull();
+      // lineup.findMany 는 호출되지 않아야 함 (STOCK_KEEPING 은 lineup 검증 스킵)
+      expect(mockTx.lineup.findMany).not.toHaveBeenCalled();
     });
   });
 });
