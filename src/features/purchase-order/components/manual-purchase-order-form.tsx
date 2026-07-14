@@ -29,6 +29,7 @@ import {
   getProductionLinesAction,
 } from "@/features/production-line/actions/production-line.action";
 import { getLineupsAction } from "@/features/lineup/actions/lineup.action";
+import { PurchaseKind } from "@prisma/client";
 
 // ─────────────────────────────────────
 // Props (page.tsx 와 일치)
@@ -294,6 +295,7 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
         idempotencyKey,
         mode: "NEW",
         isManual: true,
+        purchaseKind: "MANUAL_JIT", // ★ S4-1-e-2: P12 이원 발주 흐름 명시
         countSource: "ESTIMATED",
         basedOnPOIds: [],
         orderDate: new Date(orderDate),
