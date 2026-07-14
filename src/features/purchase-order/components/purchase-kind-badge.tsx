@@ -23,7 +23,7 @@ interface Props {
 export function PurchaseKindBadge({ purchaseKind, className = "" }: Props) {
   return (
     <span
-      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${PURCHASE_KIND_COLORS[purchaseKind]} ${className}`}
+      className={`inline-flex w-20 items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium ${PURCHASE_KIND_COLORS[purchaseKind]} ${className}`}
     >
       {PURCHASE_KIND_LABELS[purchaseKind]}
     </span>
