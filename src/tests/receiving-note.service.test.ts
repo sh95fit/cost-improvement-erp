@@ -241,15 +241,54 @@ describe("confirmReceivingNote", () => {
     ).rejects.toBeInstanceOf(ReceivingNoteNotFoundError);
   });
 
-  it("SUBSIDIARY 항목은 현 스키마에서 차단", async () => {
+  it("SUBSIDIARY 항목: Lot / Transaction 모두 subsidiaryMasterId 로 대칭 생성 (S4-2-a)", async () => {
     const note = buildNote() as any;
     note.purchaseOrder.items[0].itemType = "SUBSIDIARY";
     note.purchaseOrder.items[0].materialMasterId = null;
     note.purchaseOrder.items[0].subsidiaryMasterId = "sm-1";
     mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
-  
+
+    await confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID);
+
+    expect(mockPrisma.inventoryLot.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          itemType: "SUBSIDIARY",
+          materialMasterId: null,
+          subsidiaryMasterId: "sm-1",
+        }),
+      }),
+    );
+    expect(mockPrisma.inventoryTransaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          itemType: "SUBSIDIARY",
+          materialMasterId: null,
+          subsidiaryMasterId: "sm-1",
+        }),
+      }),
+    );
+  });
+
+  it("XOR 위반: MATERIAL 인데 subsidiaryMasterId 가 설정되면 에러 (S4-2-a)", async () => {
+    const note = buildNote() as any;
+    note.purchaseOrder.items[0].subsidiaryMasterId = "sm-x"; // itemType=MATERIAL 유지
+    mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
+
     await expect(
       confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID),
-    ).rejects.toBeInstanceOf(UnsupportedSubsidiaryReceivingError);
+    ).rejects.toThrow(/XOR 위반/);
+  });
+
+  it("XOR 위반: SUBSIDIARY 인데 materialMasterId 가 설정되면 에러 (S4-2-a)", async () => {
+    const note = buildNote() as any;
+    note.purchaseOrder.items[0].itemType = "SUBSIDIARY";
+    note.purchaseOrder.items[0].subsidiaryMasterId = "sm-1";
+    // materialMasterId = "mm-1" 유지 (XOR 위반)
+    mockPrisma.receivingNote.findUnique.mockResolvedValue(note);
+
+    await expect(
+      confirmReceivingNote(COMPANY_ID, NOTE_ID, ACTOR_ID),
+    ).rejects.toThrow(/XOR 위반/);
   });
 });

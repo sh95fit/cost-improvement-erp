@@ -64,6 +64,15 @@ export async function confirmReceivingNoteAction(
     if (!noteMeta) throw new Error("NOT_FOUND");
     assertScope(session, "LOCATION", noteMeta.purchaseOrder.locationId);
 
+    // S4-2-a: 입고 확정은 창고형 위치(WAREHOUSE/HYBRID)에서만 가능
+    const loc = await prisma.location.findUnique({
+      where: { id: noteMeta.purchaseOrder.locationId },
+      select: { type: true },
+    });
+    if (!loc || (loc.type !== "WAREHOUSE" && loc.type !== "HYBRID")) {
+      throw new Error("NOT_WAREHOUSE");
+    }    
+
     let updated: Awaited<ReturnType<typeof confirmReceivingNote>>;
     try {
       updated = await confirmReceivingNote(
@@ -77,7 +86,6 @@ export async function confirmReceivingNoteAction(
       if (err instanceof ReceivingNoteNotFoundError) throw new Error("NOT_FOUND");
       if (err instanceof ReceivingNoteAlreadyConfirmedError) throw new Error("ALREADY_CONFIRMED");
       if (err instanceof ReceivingNoteCompanyMismatchError) throw new Error("FORBIDDEN");
-      if (err instanceof UnsupportedSubsidiaryReceivingError) throw new Error("UNSUPPORTED_SUBSIDIARY");
       throw err;
     }
 
@@ -99,8 +107,8 @@ export async function confirmReceivingNoteAction(
     return handleActionError(error, "입고서 확정에 실패했습니다", {
       NOT_FOUND: "입고서를 찾을 수 없습니다",
       ALREADY_CONFIRMED: "이미 확정된 입고서입니다",
-      UNSUPPORTED_SUBSIDIARY:
-        "부자재 입고 확정은 현재 지원되지 않습니다 (Sprint 4 Phase 10 예정)",
+      FORBIDDEN: "권한이 없습니다",
+      NOT_WAREHOUSE: "창고(WAREHOUSE/HYBRID) 위치가 아닙니다",
     });
   }
 }

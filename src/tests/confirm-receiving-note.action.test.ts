@@ -6,6 +6,9 @@ vi.mock("@/lib/prisma", () => ({
     receivingNote: {
       findFirst: vi.fn(),
     },
+    location: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 vi.mock("next/cache", () => ({
@@ -43,7 +46,6 @@ import {
   confirmReceivingNote,
   ReceivingNoteNotFoundError,
   ReceivingNoteAlreadyConfirmedError,
-  UnsupportedSubsidiaryReceivingError,
 } from "@/features/receiving-note/services/receiving-note.service";
 
 // cuid 형식 (스키마의 z.string().cuid() 검증 통과용)
@@ -71,6 +73,10 @@ describe("confirmReceivingNoteAction", () => {
     (prisma.receivingNote.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: VALID_CUID,
       purchaseOrder: { id: "po-1", locationId: "loc-1" },
+    });
+    // S4-2-a: 창고 위치 검증 통과 기본값
+    (prisma.location.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "WAREHOUSE",
     });
   });
 
@@ -124,19 +130,6 @@ describe("confirmReceivingNoteAction", () => {
     }
   });
 
-  it("부자재 입고: UNSUPPORTED_SUBSIDIARY 로 매핑", async () => {
-    (confirmReceivingNote as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new UnsupportedSubsidiaryReceivingError("poi-1"),
-    );
-
-    const res = await confirmReceivingNoteAction({ receivingNoteId: VALID_CUID });
-
-    expect(res.success).toBe(false);
-    if (!res.success) {
-      expect(res.error.code).toBe("UNSUPPORTED_SUBSIDIARY");
-    }
-  });
-
   it("권한 없음: FORBIDDEN 으로 매핑 (assertPermission이 throw)", async () => {
     (assertPermission as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error("FORBIDDEN");
@@ -186,6 +179,36 @@ describe("confirmReceivingNoteAction", () => {
       expect(res.error.code).toBe("FORBIDDEN");
     }
     expect(confirmReceivingNote).not.toHaveBeenCalled();
+  });
+
+
+  it("창고가 아닌 위치 (RESTAURANT): NOT_WAREHOUSE 로 매핑 (S4-2-a)", async () => {
+    (prisma.location.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "RESTAURANT",
+    });
+
+    const res = await confirmReceivingNoteAction({ receivingNoteId: VALID_CUID });
+
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("NOT_WAREHOUSE");
+    }
+    expect(confirmReceivingNote).not.toHaveBeenCalled();
+  });
+
+  it("HYBRID 위치는 입고 확정 통과 (S4-2-a)", async () => {
+    (prisma.location.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "HYBRID",
+    });
+    (confirmReceivingNote as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: VALID_CUID,
+      status: "CONFIRMED",
+    });
+
+    const res = await confirmReceivingNoteAction({ receivingNoteId: VALID_CUID });
+
+    expect(res.success).toBe(true);
+    expect(confirmReceivingNote).toHaveBeenCalled();
   });
 
   // ★ D30 C-3-d3: 품목별 사유 (discrepancyReasons) 및 통일 사유(discrepancyReason)

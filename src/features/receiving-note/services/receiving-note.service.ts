@@ -28,10 +28,15 @@ export class ReceivingNoteCompanyMismatchError extends Error {
   }
 }
 
+/**
+ * @deprecated S4-2-a (2026-07-14): InventoryTransaction 스키마가 itemType/subsidiaryMasterId 를
+ * 지원하도록 확장되어 더 이상 throw 되지 않음. 하위 호환(외부 코드의 instanceof 체크, action 계층의
+ * 에러 매핑) 을 위해 클래스 정의만 보존. 다음 스프린트에서 참조 0 확인 후 제거.
+ */
 export class UnsupportedSubsidiaryReceivingError extends Error {
   constructor(poItemId: string) {
     super(
-      `Subsidiary 입고 트랜잭션은 현재 스키마에서 지원하지 않음 (Sprint 4 Phase 10에서 보강 예정). poItemId=${poItemId}`,
+      `Subsidiary 입고 트랜잭션은 현재 스키마에서 지원하지 않음. poItemId=${poItemId}`,
     );
     this.name = "UnsupportedSubsidiaryReceivingError";
   }
@@ -52,10 +57,9 @@ export class UnsupportedSubsidiaryReceivingError extends Error {
  *
  * 원자성: 어느 단계라도 실패 시 전체 롤백.
  *
- * 제약 (현 스키마 기준):
- *  - InventoryTransaction.materialMasterId 가 NOT NULL 이고 subsidiaryMasterId 컬럼이 없음
- *  - 따라서 SUBSIDIARY 항목 입고 확정은 Sprint 4 Phase 10 스키마 보강 후 지원
- *  - 현재는 SUBSIDIARY 발견 시 UnsupportedSubsidiaryReceivingError throw
+ * 제약:
+ *  - InventoryLot / InventoryTransaction 모두 itemType + (materialMasterId | subsidiaryMasterId) XOR 구조
+ *  - MATERIAL / SUBSIDIARY 모두 입고 확정 지원 (S4-2-a, 2026-07-14)
  *
  * 용어 주의:
  *  - ReceivingNoteItem 의 "입고 수량" 컬럼은 `receivedQty`
@@ -156,15 +160,29 @@ export async function confirmReceivingNote(
 
         matchedPoItemIds.add(poItem.id);
 
-        // 부자재는 현 스키마에서 InventoryTransaction 기록 불가 → 차단
-        if (poItem.itemType === "SUBSIDIARY") {
-          throw new UnsupportedSubsidiaryReceivingError(poItem.id);
-        }
-        // MATERIAL 필수 검증
-        if (!poItem.materialMasterId) {
-          throw new Error(
-            `PurchaseOrderItem ${poItem.id}: MATERIAL 이지만 materialMasterId 가 없음`,
-          );
+        // itemType XOR 검증 (P: 데이터 무결성) — S4-2-a
+        if (poItem.itemType === "MATERIAL") {
+          if (!poItem.materialMasterId) {
+            throw new Error(
+              `PurchaseOrderItem ${poItem.id}: MATERIAL 이지만 materialMasterId 가 없음`,
+            );
+          }
+          if (poItem.subsidiaryMasterId) {
+            throw new Error(
+              `PurchaseOrderItem ${poItem.id}: MATERIAL 인데 subsidiaryMasterId 가 설정됨 (XOR 위반)`,
+            );
+          }
+        } else if (poItem.itemType === "SUBSIDIARY") {
+          if (!poItem.subsidiaryMasterId) {
+            throw new Error(
+              `PurchaseOrderItem ${poItem.id}: SUBSIDIARY 이지만 subsidiaryMasterId 가 없음`,
+            );
+          }
+          if (poItem.materialMasterId) {
+            throw new Error(
+              `PurchaseOrderItem ${poItem.id}: SUBSIDIARY 인데 materialMasterId 가 설정됨 (XOR 위반)`,
+            );
+          }
         }
 
         // 2-1) InventoryLot 생성 (P9: 단가는 PO 단가 고정)
@@ -185,12 +203,14 @@ export async function confirmReceivingNote(
           },
         });
 
-        // 2-2) InventoryTransaction(PURCHASE) 기록
+        // 2-2) InventoryTransaction(PURCHASE) 기록 — MATERIAL/SUBSIDIARY 대칭 (S4-2-a)
         await tx.inventoryTransaction.create({
           data: {
             companyId,
             locationId: po.locationId,
+            itemType: poItem.itemType,
             materialMasterId: poItem.materialMasterId,
+            subsidiaryMasterId: poItem.subsidiaryMasterId,
             inventoryLotId: lot.id,
             transactionType: TransactionType.PURCHASE,
             quantity: receivedQty,
