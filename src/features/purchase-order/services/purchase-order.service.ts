@@ -139,6 +139,8 @@ export async function getPurchaseOrders(
 ) {
   const {
     page, limit, search, status, excludeCancelled, isManual,
+    // ★ S4-1-f (P12): purchaseKind 필터
+    purchaseKind,
     supplierId, dateFrom, dateTo, sortBy, sortOrder,
   } = query;
   const skip = (page - 1) * limit;
@@ -153,6 +155,8 @@ export async function getPurchaseOrders(
         : {}),
     // ★ Sprint 3.5 Phase S3.5-2: isManual 필터 (undefined 면 전체)
     ...(isManual !== undefined && { isManual }),
+    // ★ S4-1-f (P12): purchaseKind 필터 (undefined 면 전체)
+    ...(purchaseKind !== undefined && { purchaseKind }),
     ...(supplierId && { supplierId }),
     ...(search && {
       OR: [

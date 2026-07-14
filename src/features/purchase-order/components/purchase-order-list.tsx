@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import type { POStatus } from "@prisma/client";
+import type { POStatus, PurchaseKind } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,6 +37,7 @@ import {
 } from "../actions/purchase-order.action";
 import { PO_STATUS_LABELS } from "../schemas/purchase-order.schema";
 import { PurchaseOrderStatusBadge } from "./purchase-order-status-badge";
+import { PurchaseKindBadge } from "./purchase-kind-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkActionBar } from "./bulk-action-bar";
 
@@ -44,6 +45,8 @@ export type PurchaseOrderRow = {
   id: string;
   orderNumber: string;
   status: POStatus;
+  // ★ S4-1-f (P12): 발주 유형
+  purchaseKind: PurchaseKind;
   orderDate: Date;
   outboundDate: Date | null;
   expectedReceiveDate: Date | null;
@@ -104,8 +107,8 @@ export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: 
   });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
-  // ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 필터
-  const [manualFilter, setManualFilter] = useState<"all" | "manual" | "auto">("all");
+  // ★ S4-1-f (P12): 발주 유형 필터 (WIZARD / MANUAL_JIT / STOCK_KEEPING)
+  const [purchaseKindFilter, setPurchaseKindFilter] = useState<"all" | PurchaseKind>("all");
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseOrderRow | null>(null);
 
@@ -144,11 +147,9 @@ export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: 
               ? undefined
               : statusFilter,
           excludeCancelled: statusFilter === "active" ? true : undefined,
-          // ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 필터
-          isManual:
-            manualFilter === "all"
-              ? undefined
-              : manualFilter === "manual",
+          // ★ S4-1-f (P12): purchaseKind 필터
+          purchaseKind:
+            purchaseKindFilter === "all" ? undefined : purchaseKindFilter,
           sortBy: "orderDate",
           sortOrder: "desc",
         });
@@ -167,7 +168,7 @@ export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: 
         setLoading(false);
       }
     },
-    [search, statusFilter, manualFilter]
+    [search, statusFilter, purchaseKindFilter]
   );
 
   useEffect(() => {
@@ -225,18 +226,21 @@ export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: 
             ))}
           </SelectContent>
         </Select>
-        {/* ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 발주 필터 */}
+        {/* ★ S4-1-f (P12): purchaseKind 3분할 필터 */}
         <Select
-          value={manualFilter}
-          onValueChange={(v) => setManualFilter(v as "all" | "manual" | "auto")}
+          value={purchaseKindFilter}
+          onValueChange={(v) =>
+            setPurchaseKindFilter(v as "all" | PurchaseKind)
+          }
         >
-          <SelectTrigger className="w-[130px]">
+          <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="발주 유형" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">전체 유형</SelectItem>
-            <SelectItem value="auto">식단 기반</SelectItem>
-            <SelectItem value="manual">수동 발주</SelectItem>
+            <SelectItem value="WIZARD">식단</SelectItem>
+            <SelectItem value="MANUAL_JIT">수동 JIT</SelectItem>
+            <SelectItem value="STOCK_KEEPING">재고 확보</SelectItem>
           </SelectContent>
         </Select>
         <Button onClick={onManualNew} variant="outline" className="ml-auto">
@@ -343,10 +347,14 @@ export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: 
                     )}
                   </TableCell>
                   <TableCell>
-                    {item.mealPlanGroup?.planDate
-                      ? formatDate(item.mealPlanGroup.planDate)
-                      : <span className="text-amber-600">수동 발주</span>
-                    }
+                    <div className="flex flex-col gap-1">
+                      <PurchaseKindBadge purchaseKind={item.purchaseKind} />
+                      {item.mealPlanGroup?.planDate && (
+                        <span className="text-xs text-gray-500">
+                          {formatDate(item.mealPlanGroup.planDate)}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   {/* ★ Phase 1.6 (D15-1) */}
                   <TableCell className="text-sm">

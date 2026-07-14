@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { POStatus, ItemType } from '@prisma/client'
+import { POStatus, ItemType, PurchaseKind } from '@prisma/client'
 
 // ============================================================
 // 운영 라벨 (UI 매핑)
@@ -168,7 +168,9 @@ export const purchaseOrderListQuerySchema = z.object({
   excludeCancelled: z.coerce.boolean().optional(),
   // ★ Sprint 3.5 Phase S3.5-2: 수동/식단 기반 발주 필터
   //   지정 시 해당 값만, 미지정 시 모두 반환
-  isManual: z.coerce.boolean().optional(),  
+  isManual: z.coerce.boolean().optional(),
+  // ★ S4-1-f (P12): 발주 유형 필터 (WIZARD / MANUAL_JIT / STOCK_KEEPING)
+  purchaseKind: z.nativeEnum(PurchaseKind).optional(),
   supplierId: z.string().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
