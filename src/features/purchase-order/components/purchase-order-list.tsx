@@ -62,6 +62,8 @@ type Props = {
   onNew: () => void;
   // ★ Sprint 3.5 Phase S3.5-2: 수동 발주 진입점
   onManualNew: () => void;
+  // ★ S4-1-b (P12): STOCK_KEEPING 발주 진입점
+  onStockNew: () => void;
   onSelect: (po: PurchaseOrderRow) => void;
 };
 
@@ -92,7 +94,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "CANCELLED", label: PO_STATUS_LABELS.CANCELLED },
 ];
 
-export function PurchaseOrderList({ onNew, onManualNew, onSelect }: Props) {
+export function PurchaseOrderList({ onNew, onManualNew, onStockNew, onSelect }: Props) {
   const [items, setItems] = useState<PurchaseOrderRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -240,6 +242,11 @@ export function PurchaseOrderList({ onNew, onManualNew, onSelect }: Props) {
         <Button onClick={onManualNew} variant="outline" className="ml-auto">
           <Plus className="mr-2 h-4 w-4" />
           수동 발주
+        </Button>
+        {/* ★ S4-1-b (P12): STOCK_KEEPING 발주 진입점 */}
+        <Button onClick={onStockNew} variant="outline">
+          <Plus className="mr-2 h-4 w-4" />
+          재고 확보 발주
         </Button>
         <Button onClick={onNew}>
           <Plus className="mr-2 h-4 w-4" />

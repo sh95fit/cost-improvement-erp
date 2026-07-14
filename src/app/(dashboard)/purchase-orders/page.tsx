@@ -18,6 +18,7 @@ export default function PurchaseOrdersPage() {
       <PurchaseOrderList
         onNew={() => router.push("/purchase-orders/new")}
         onManualNew={() => router.push("/purchase-orders/manual/new")}
+        onStockNew={() => router.push("/purchase-orders/stock/new")}
         onSelect={(po) => router.push(`/purchase-orders/${po.id}`)}
       />
     </div>

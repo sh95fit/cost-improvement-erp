@@ -33,11 +33,14 @@ import { PurchaseKind } from "@prisma/client";
 
 // ─────────────────────────────────────
 // Props (page.tsx 와 일치)
+// ★ S4-1-b: purchaseKind 로 두 모드(MANUAL_JIT / STOCK_KEEPING) 공용화
 // ─────────────────────────────────────
 interface Props {
-    onCreated: () => void;
-    onCancel: () => void;
-  }
+  onCreated: () => void;
+  onCancel: () => void;
+  /** 발주 유형 (P12). default = MANUAL_JIT */
+  purchaseKind?: "MANUAL_JIT" | "STOCK_KEEPING";
+}
 
 // ─────────────────────────────────────
 // 내부 타입
@@ -86,7 +89,12 @@ function uuid(): string {
 // ─────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────
-export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
+export function ManualPurchaseOrderForm({
+  onCreated,
+  onCancel,
+  purchaseKind = "MANUAL_JIT",
+}: Props) {
+  const isStockKeeping = purchaseKind === "STOCK_KEEPING";
   // 헤더 상태
   const [locationId, setLocationId] = useState<string>("");
   const [productionLineId, setProductionLineId] = useState<string>("");
@@ -273,7 +281,9 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
   // ─── 저장 ────────────────────────────
   const handleSubmit = async () => {
     if (!locationId) return toast.error("공장(Location)을 선택하세요.");
-    if (!lineupId) return toast.error("라인업(Lineup)은 필수입니다.");
+    // ★ S4-1-b (P12): MANUAL_JIT 만 라인업 필수. STOCK_KEEPING 은 lineup 무귀속.
+    if (!isStockKeeping && !lineupId)
+      return toast.error("라인업(Lineup)은 필수입니다.");
     if (rows.length === 0) return toast.error("품목을 1개 이상 추가하세요.");
 
     for (const [idx, r] of rows.entries()) {
@@ -295,11 +305,13 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
         idempotencyKey,
         mode: "NEW",
         isManual: true,
-        purchaseKind: "MANUAL_JIT", // ★ S4-1-e-2: P12 이원 발주 흐름 명시
+        purchaseKind, // ★ S4-1-b (P12): MANUAL_JIT | STOCK_KEEPING
         countSource: "ESTIMATED",
         basedOnPOIds: [],
         orderDate: new Date(orderDate),
-        outboundDate: outboundDate ? new Date(outboundDate) : undefined,
+        // ★ S4-1-b (P12): STOCK_KEEPING 은 outboundDate 무귀속
+        outboundDate:
+          !isStockKeeping && outboundDate ? new Date(outboundDate) : undefined,
         note: note || undefined,
         items: rows.map((r) => ({
           supplierId: r.supplierId,
@@ -308,7 +320,8 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
           materialMasterId: r.materialMasterId,
           locationId,
           productionLineId: productionLineId || null,
-          lineupId, // ★ P1' 수동 발주 필수
+          // ★ S4-1-b (P12): STOCK_KEEPING 은 lineupId 무귀속
+          lineupId: isStockKeeping ? null : lineupId,
           quantity: Number(r.quantity),
           unitPrice: Number(r.unitPrice),
           setAsDefault: false, // ★ P9' 수동 발주는 마스터 미변경
@@ -328,10 +341,11 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
         return;
       }
 
+      const label = isStockKeeping ? "재고 확보 발주" : "수동 발주";
       toast.success(
         created.length === 1
-          ? "수동 발주가 생성되었습니다."
-          : `수동 발주 ${created.length}건이 생성되었습니다.`
+          ? `${label}가 생성되었습니다.`
+          : `${label} ${created.length}건이 생성되었습니다.`
       );
       
       onCreated();
@@ -365,21 +379,24 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>
-              라인업 <span className="text-red-500">*</span>
-            </Label>
-            <SearchableSelect
-            options={lineups.map((l) => ({
-                id: l.id,
-                label: l.name,
-            }))}
-            value={lineupId}
-            onChange={setLineupId}
-            placeholder="라인업 선택"
-            searchPlaceholder="라인업명 검색..."
-            />
-          </div>
+          {/* ★ S4-1-b (P12): STOCK_KEEPING 은 lineup 무귀속 → 필드 자체를 렌더링하지 않음 */}
+          {!isStockKeeping && (
+            <div className="space-y-1.5">
+              <Label>
+                라인업 <span className="text-red-500">*</span>
+              </Label>
+              <SearchableSelect
+              options={lineups.map((l) => ({
+                  id: l.id,
+                  label: l.name,
+              }))}
+              value={lineupId}
+              onChange={setLineupId}
+              placeholder="라인업 선택"
+              searchPlaceholder="라인업명 검색..."
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>생산라인 (선택)</Label>
@@ -413,14 +430,17 @@ export function ManualPurchaseOrderForm({ onCreated, onCancel }: Props) {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>출고 예정일</Label>
-            <Input
-              type="date"
-              value={outboundDate}
-              onChange={(e) => setOutboundDate(e.target.value)}
-            />
-          </div>
+          {/* ★ S4-1-b (P12): STOCK_KEEPING 은 outboundDate 무귀속 → 필드 자체를 렌더링하지 않음 */}
+          {!isStockKeeping && (
+            <div className="space-y-1.5">
+              <Label>출고 예정일</Label>
+              <Input
+                type="date"
+                value={outboundDate}
+                onChange={(e) => setOutboundDate(e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="space-y-1.5 md:col-span-3">
             <Label>비고</Label>
