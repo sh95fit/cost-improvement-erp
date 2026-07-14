@@ -19,9 +19,13 @@ import {
 } from "@/components/ui/table";
 
 import { createPurchaseOrdersBatchAction } from "@/features/purchase-order/actions/purchase-order.action";
-import { getMaterialsAction } from "@/features/material/actions/material.action";
+import {
+  getMaterialsAction,
+  getSubsidiariesAction,
+} from "@/features/material/actions/material.action";
 import {
   getSupplierItemsByMaterialAction,
+  getSupplierItemsBySubsidiaryAction,
   type SupplierItemWithSupplier,
 } from "@/features/supplier/actions/supplier.action";
 import {
@@ -50,6 +54,11 @@ interface MaterialOption {
   name: string;
   code: string;
 }
+interface SubsidiaryOption {
+  id: string;
+  name: string;
+  code: string;
+}
 interface LocationOption {
   id: string;
   name: string;
@@ -66,10 +75,14 @@ interface LineupOption {
   name: string;
 }
 
+// ★ S4-1-a: itemType 축 추가.
+//   SUBSIDIARY 인 경우 itemMasterId 는 subsidiaryMasterId 값을 담고,
+//   itemName 은 부자재 명을 담음. 제출 시 payload 에서만 분기.
 interface Row {
   key: string;
-  materialMasterId: string;
-  materialName: string;
+  itemType: "MATERIAL" | "SUBSIDIARY";
+  itemMasterId: string;
+  itemName: string;
   supplierItemId: string;
   supplierId: string;
   supplierName: string;
@@ -107,6 +120,7 @@ export function ManualPurchaseOrderForm({
 
   // 옵션 로드
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [subsidiaries, setSubsidiaries] = useState<SubsidiaryOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [productionLines, setProductionLines] = useState<ProductionLineOption[]>([]);
   const [lineups, setLineups] = useState<LineupOption[]>([]);
@@ -121,8 +135,9 @@ export function ManualPurchaseOrderForm({
   // ─── 옵션 로드 ────────────────────────
   useEffect(() => {
     (async () => {
-      const [matRes, locRes, plRes, lnRes] = await Promise.all([
+      const [matRes, subRes, locRes, plRes, lnRes] = await Promise.all([
         getMaterialsAction({ page: 1, limit: 100, isActive: true }),
+        getSubsidiariesAction({ page: 1, limit: 100, isActive: true }),
         getFactoryLocationOptionsAction(),
         getProductionLinesAction({ page: 1, limit: 200 }),
         getLineupsAction({ page: 1, limit: 200, isActive: true }),
@@ -138,6 +153,19 @@ export function ManualPurchaseOrderForm({
         );
       } else {
         toast.error(matRes.error.message);
+      }
+
+      // ★ S4-1-a: 부자재 옵션 로드
+      if (subRes.success) {
+        setSubsidiaries(
+          subRes.data.items.map((s) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code,
+          }))
+        );
+      } else {
+        toast.error(subRes.error.message);
       }
 
       if (locRes.success) {
@@ -190,8 +218,9 @@ export function ManualPurchaseOrderForm({
       ...prev,
       {
         key: uuid(),
-        materialMasterId: "",
-        materialName: "",
+        itemType: "MATERIAL",
+        itemMasterId: "",
+        itemName: "",
         supplierItemId: "",
         supplierId: "",
         supplierName: "",
@@ -212,12 +241,40 @@ export function ManualPurchaseOrderForm({
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }, []);
 
-  const handleMaterialChange = useCallback(
-    async (key: string, materialMasterId: string) => {
-      const mat = materials.find((m) => m.id === materialMasterId);
+  // ★ S4-1-a: itemType 전환 시 관련 필드 전부 초기화
+  const handleItemTypeChange = useCallback(
+    (key: string, itemType: "MATERIAL" | "SUBSIDIARY") => {
       patchRow(key, {
-        materialMasterId,
-        materialName: mat?.name ?? "",
+        itemType,
+        itemMasterId: "",
+        itemName: "",
+        supplierItemId: "",
+        supplierId: "",
+        supplierName: "",
+        productName: "",
+        supplyUnitLabel: "",
+        unitPrice: "",
+        supplierItems: [],
+        loading: false,
+      });
+    },
+    [patchRow]
+  );
+
+  // ★ S4-1-a: 자재/부자재 통합 핸들러
+  const handleItemMasterChange = useCallback(
+    async (
+      key: string,
+      itemType: "MATERIAL" | "SUBSIDIARY",
+      itemMasterId: string
+    ) => {
+      const found =
+        itemType === "MATERIAL"
+          ? materials.find((m) => m.id === itemMasterId)
+          : subsidiaries.find((s) => s.id === itemMasterId);
+      patchRow(key, {
+        itemMasterId,
+        itemName: found?.name ?? "",
         supplierItemId: "",
         supplierId: "",
         supplierName: "",
@@ -227,7 +284,10 @@ export function ManualPurchaseOrderForm({
         supplierItems: [],
         loading: true,
       });
-      const res = await getSupplierItemsByMaterialAction(materialMasterId);
+      const res =
+        itemType === "MATERIAL"
+          ? await getSupplierItemsByMaterialAction(itemMasterId)
+          : await getSupplierItemsBySubsidiaryAction(itemMasterId);
       if (res.success) {
         const active = res.data.filter((si) => si.isActive);
         patchRow(key, { supplierItems: active, loading: false });
@@ -236,7 +296,7 @@ export function ManualPurchaseOrderForm({
         patchRow(key, { loading: false });
       }
     },
-    [materials, patchRow]
+    [materials, subsidiaries, patchRow]
   );
 
   const handleSupplierItemChange = (key: string, supplierItemId: string) => {
@@ -288,8 +348,10 @@ export function ManualPurchaseOrderForm({
 
     for (const [idx, r] of rows.entries()) {
       const rowNo = idx + 1;
-      if (!r.materialMasterId)
-        return toast.error(`${rowNo}번 행: 자재를 선택하세요.`);
+      if (!r.itemMasterId)
+        return toast.error(
+          `${rowNo}번 행: ${r.itemType === "MATERIAL" ? "자재" : "부자재"}를 선택하세요.`
+        );
       if (!r.supplierItemId)
         return toast.error(`${rowNo}번 행: 공급 품목을 선택하세요.`);
       const q = Number(r.quantity);
@@ -313,11 +375,15 @@ export function ManualPurchaseOrderForm({
         outboundDate:
           !isStockKeeping && outboundDate ? new Date(outboundDate) : undefined,
         note: note || undefined,
+        // ★ S4-1-a: itemType 분기로 materialMasterId / subsidiaryMasterId 를 상호배타적으로 전송
         items: rows.map((r) => ({
           supplierId: r.supplierId,
           supplierItemId: r.supplierItemId,
-          itemType: "MATERIAL" as const,
-          materialMasterId: r.materialMasterId,
+          itemType: r.itemType,
+          materialMasterId:
+            r.itemType === "MATERIAL" ? r.itemMasterId : undefined,
+          subsidiaryMasterId:
+            r.itemType === "SUBSIDIARY" ? r.itemMasterId : undefined,
           locationId,
           productionLineId: productionLineId || null,
           // ★ S4-1-b (P12): STOCK_KEEPING 은 lineupId 무귀속
@@ -332,7 +398,7 @@ export function ManualPurchaseOrderForm({
         toast.error(res.error.message);
         setSubmitting(false);
         return;
-      }    
+      }
 
       const created = res.data.createdPurchaseOrders;
       if (created.length === 0) {
@@ -347,7 +413,7 @@ export function ManualPurchaseOrderForm({
           ? `${label}가 생성되었습니다.`
           : `${label} ${created.length}건이 생성되었습니다.`
       );
-      
+
       onCreated();
       // 성공 시 setSubmitting(false) 호출하지 않음 → 리다이렉트까지 버튼 비활성 유지
     } catch (e) {
@@ -460,7 +526,7 @@ export function ManualPurchaseOrderForm({
           <div>
             <h2 className="text-lg font-semibold">발주 품목</h2>
             <p className="text-xs text-gray-500">
-              자재를 먼저 선택한 뒤 공급업체·품목을 고르세요. 공급업체가 서로
+              자재 또는 부자재를 먼저 선택한 뒤 공급업체·품목을 고르세요. 공급업체가 서로
               달라도 저장 시 자동으로 공급업체 단위로 분리되어 발주서가 생성됩니다.
             </p>
           </div>
@@ -472,7 +538,9 @@ export function ManualPurchaseOrderForm({
         <Table>
           <TableHeader>
             <TableRow>
-                <TableHead className="w-[220px]">자재</TableHead>
+                {/* ★ S4-1-a: 품목 유형 컬럼 추가 */}
+                <TableHead className="w-[140px]">품목 유형</TableHead>
+                <TableHead className="w-[220px]">품목</TableHead>
                 <TableHead>공급업체 · 공급 품목</TableHead>
                 <TableHead className="w-[140px]">단가</TableHead>
                 <TableHead className="w-[80px]">단위</TableHead>
@@ -484,7 +552,7 @@ export function ManualPurchaseOrderForm({
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-gray-500">
+                <TableCell colSpan={8} className="h-24 text-center text-gray-500">
                   아직 품목이 없습니다. 우측 상단 &quot;품목 추가&quot; 버튼을
                   클릭하세요.
                 </TableCell>
@@ -493,19 +561,61 @@ export function ManualPurchaseOrderForm({
               rows.map((r) => {
                 const rowTotal =
                   (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0);
+                const itemOptions =
+                  r.itemType === "MATERIAL"
+                    ? materials.map((m) => ({
+                        id: m.id,
+                        label: m.name,
+                        sublabel: m.code,
+                      }))
+                    : subsidiaries.map((s) => ({
+                        id: s.id,
+                        label: s.name,
+                        sublabel: s.code,
+                      }));
                 return (
                   <TableRow key={r.key}>
+                    {/* ★ S4-1-a: 자재 / 부자재 토글 */}
+                    <TableCell>
+                      <div className="inline-flex rounded-md border p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleItemTypeChange(r.key, "MATERIAL")}
+                          className={`px-2.5 py-1 text-xs rounded ${
+                            r.itemType === "MATERIAL"
+                              ? "bg-gray-900 text-white"
+                              : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          자재
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleItemTypeChange(r.key, "SUBSIDIARY")}
+                          className={`px-2.5 py-1 text-xs rounded ${
+                            r.itemType === "SUBSIDIARY"
+                              ? "bg-gray-900 text-white"
+                              : "text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          부자재
+                        </button>
+                      </div>
+                    </TableCell>
+
                     <TableCell>
                         <SearchableSelect
-                            options={materials.map((m) => ({
-                            id: m.id,
-                            label: m.name,
-                            sublabel: m.code,
-                            }))}
-                            value={r.materialMasterId}
-                            onChange={(v) => handleMaterialChange(r.key, v)}
-                            placeholder="자재 선택"
-                            searchPlaceholder="자재명 또는 코드 검색..."
+                            options={itemOptions}
+                            value={r.itemMasterId}
+                            onChange={(v) => handleItemMasterChange(r.key, r.itemType, v)}
+                            placeholder={
+                              r.itemType === "MATERIAL" ? "자재 선택" : "부자재 선택"
+                            }
+                            searchPlaceholder={
+                              r.itemType === "MATERIAL"
+                                ? "자재명 또는 코드 검색..."
+                                : "부자재명 또는 코드 검색..."
+                            }
                             emptyText="검색 결과가 없습니다"
                         />
                     </TableCell>
@@ -520,13 +630,13 @@ export function ManualPurchaseOrderForm({
                             value={r.supplierItemId}
                             onChange={(v) => handleSupplierItemChange(r.key, v)}
                             disabled={
-                            !r.materialMasterId ||
+                            !r.itemMasterId ||
                             r.loading ||
                             r.supplierItems.length === 0
                             }
                             placeholder={
-                            !r.materialMasterId
-                                ? "먼저 자재 선택"
+                            !r.itemMasterId
+                                ? `먼저 ${r.itemType === "MATERIAL" ? "자재" : "부자재"} 선택`
                                 : r.loading
                                 ? "불러오는 중..."
                                 : r.supplierItems.length === 0
