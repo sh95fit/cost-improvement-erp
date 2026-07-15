@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -14,6 +16,7 @@ import {
 import type { buildConsumptionDraftAction } from "../actions/build-consumption-draft.action";
 import type { LayerBItem } from "../types/layer-b-item.type";
 import { ConsumptionLayerBEditor } from "./consumption-layer-b-editor";
+import { confirmConsumptionAction } from "../actions/confirm-consumption.action";
 
 type DraftData = Extract<
   Awaited<ReturnType<typeof buildConsumptionDraftAction>>,
@@ -29,12 +32,54 @@ type Props = {
 const numberFmt = (v: number) =>
   new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(v);
 
-export function ConsumptionDraftForm({ draft, targetDate, locationId: _locationId }: Props) {
+export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
   // S4-3-c-2 — Layer B 클라이언트 상태
   const [layerBItems, setLayerBItems] = useState<LayerBItem[]>([]);
+
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();  
   
   const hasInvalidLayerB = layerBItems.some((it) => it.quantity <= 0);
     
+  const isConfirmDisabled = isPending || hasInvalidLayerB;
+  
+  function handleConfirm() {
+    startTransition(async () => {
+      const result = await confirmConsumptionAction({
+        targetDate,
+        locationId,
+        layerAItems: draft.layerAItems.map((it) => ({
+          itemType: it.itemType,
+          itemId: it.itemId,
+          expectedQty: it.expectedQty,
+        })),
+        layerBItems: layerBItems.map((b) => ({
+          itemType: b.itemType,
+          itemId: b.itemId,
+          quantity: b.quantity,
+          note: b.note,
+        })),
+      });
+  
+      if (!result.success) {
+        if (result.error.code === "STALE_DRAFT") {
+          toast.error(result.error.message, {
+            action: {
+              label: "새로고침",
+              onClick: () => router.refresh(),
+            },
+          });
+          return;
+        }
+        toast.error(result.error.message || "사용 처리 확정에 실패했습니다");
+        return;
+      }
+  
+      toast.success(`사용 처리 확정 완료 (${result.data.totalItemCount}건)`);
+      router.push("/consumption");
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -102,20 +147,21 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId: _locationI
       />
 
 
-      {/* 확정 버튼 — c-1 은 비활성 */}
+      {/* 확정 버튼 — S4-3-d */}
       <div className="flex justify-end gap-2">
         <Link href="/consumption">
-          <Button variant="outline">취소</Button>
+          <Button variant="outline" disabled={isPending}>취소</Button>
         </Link>
         <Button
-          disabled
+          disabled={isConfirmDisabled}
+          onClick={handleConfirm}
           title={
             hasInvalidLayerB
               ? "Layer B 수량 오류 항목이 있습니다"
-              : "S4-3-d 에서 활성화"
+              : undefined
           }
         >
-          사용 처리 확정 (미구현)
+          {isPending ? "확정 중..." : "사용 처리 확정"}
         </Button>
       </div>
     </div>

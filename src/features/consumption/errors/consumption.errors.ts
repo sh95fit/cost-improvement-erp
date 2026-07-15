@@ -1,10 +1,12 @@
 /**
- * Sprint 4 Phase S4-3-d — Consumption 확정 서비스 전용 에러 계열.
- * ActionResult.error.message 로 노출되는 사용자 메시지와, code 기반 클라이언트 분기용 code 값을 함께 정의.
+ * ════════════════════════════════════════
+ * Sprint 4 Phase S4-3-d — Consumption 확정 서비스 전용 에러
+ * ════════════════════════════════════════
+ * message 는 handleActionError 매핑을 위한 코드 문자열 (또는 "코드:상세" 접두사 형태).
+ * 상세 페이로드는 프로퍼티로 보존하여 서버 로그·향후 확장에 활용.
  */
 
 export class StaleDraftError extends Error {
-    readonly code = "STALE_DRAFT";
     constructor(
       public readonly diffs: Array<{
         itemType: "MATERIAL" | "SUBSIDIARY";
@@ -14,15 +16,12 @@ export class StaleDraftError extends Error {
         serverQty: number;
       }>,
     ) {
-      super(
-        `Layer A 재계산 결과가 클라이언트 상태와 다릅니다 (${diffs.length}건). 페이지를 새로고침해 주세요.`,
-      );
+      super("STALE_DRAFT");
       this.name = "StaleDraftError";
     }
   }
   
   export class InsufficientStockError extends Error {
-    readonly code = "INSUFFICIENT_STOCK";
     constructor(
       public readonly shortages: Array<{
         itemType: "MATERIAL" | "SUBSIDIARY";
@@ -33,13 +32,12 @@ export class StaleDraftError extends Error {
         available: number;
       }>,
     ) {
-      super(`재고 부족 항목 ${shortages.length}건`);
+      super(formatShortagesMessage(shortages));
       this.name = "InsufficientStockError";
     }
   }
   
   export class InvalidLayerBItemError extends Error {
-    readonly code = "INVALID_LAYER_B_ITEM";
     constructor(
       public readonly reason:
         | "ITEM_NOT_FOUND"
@@ -47,10 +45,26 @@ export class StaleDraftError extends Error {
         | "QUANTITY_NON_POSITIVE"
         | "UNIT_MISMATCH",
       public readonly itemId: string,
-      message?: string,
     ) {
-      super(message ?? `유효하지 않은 Layer B 항목 (${reason})`);
+      super(`INVALID_LAYER_B_ITEM:${reason}`);
       this.name = "InvalidLayerBItemError";
     }
+  }
+  
+  // ────────────────────────────────────────
+  function formatShortagesMessage(
+    shortages: Array<{
+      itemName: string;
+      unit: string;
+      required: number;
+      available: number;
+    }>,
+  ): string {
+    const preview = shortages.slice(0, 5).map((s) => {
+      const short = s.required - s.available;
+      return `${s.itemName}(${short.toFixed(3)} ${s.unit} 부족)`;
+    });
+    const rest = shortages.length > 5 ? ` 외 ${shortages.length - 5}건` : "";
+    return `INSUFFICIENT_STOCK:재고 부족 - ${preview.join(", ")}${rest}`;
   }
   

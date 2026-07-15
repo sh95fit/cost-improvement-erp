@@ -13,6 +13,8 @@ export const CONSUMPTION_ERRORS = {
     MEAL_PLAN_GROUP_NOT_FOUND: "MEAL_PLAN_GROUP_NOT_FOUND",
     /** S4-3-d: 사용량 + 폐기량 > availableQty (P11 Pre-flight 실패) */
     INSUFFICIENT_STOCK: "INSUFFICIENT_STOCK",
+    STALE_DRAFT: "STALE_DRAFT",
+    INVALID_LAYER_B_ITEM: "INVALID_LAYER_B_ITEM",    
   } as const;
   
   export type ConsumptionErrorCode =
