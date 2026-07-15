@@ -381,14 +381,13 @@ describe("checkLineupDependencies", () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(0);
     mockPrisma.mealCount.count.mockResolvedValue(0);
-    mockPrisma.shippingOrder.count.mockResolvedValue(0);
 
     const result = await checkLineupDependencies(COMPANY_ID, LINEUP_ID);
 
     expect(result).toEqual({
       canDelete: true,
       reasons: [],
-      counts: { mealPlans: 0, mealCounts: 0, shippingOrders: 0 },
+      counts: { mealPlans: 0, mealCounts: 0 },
     });
   });
 
@@ -396,7 +395,6 @@ describe("checkLineupDependencies", () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(3);
     mockPrisma.mealCount.count.mockResolvedValue(0);
-    mockPrisma.shippingOrder.count.mockResolvedValue(0);
 
     const result = await checkLineupDependencies(COMPANY_ID, LINEUP_ID);
 
@@ -410,16 +408,14 @@ describe("checkLineupDependencies", () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(2);
     mockPrisma.mealCount.count.mockResolvedValue(5);
-    mockPrisma.shippingOrder.count.mockResolvedValue(1);
 
     const result = await checkLineupDependencies(COMPANY_ID, LINEUP_ID);
 
     expect(result.canDelete).toBe(false);
-    expect(result.reasons).toHaveLength(3);
+    expect(result.reasons).toHaveLength(2);
     expect(result.counts).toEqual({
       mealPlans: 2,
       mealCounts: 5,
-      shippingOrders: 1,
     });
   });
 
@@ -442,7 +438,6 @@ describe("deleteLineup", () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(0);
     mockPrisma.mealCount.count.mockResolvedValue(0);
-    mockPrisma.shippingOrder.count.mockResolvedValue(0);
 
     mockPrisma.lineup.update.mockResolvedValue({
       id: LINEUP_ID,
@@ -462,7 +457,6 @@ describe("deleteLineup", () => {
     mockPrisma.lineup.findFirst.mockResolvedValue({ id: LINEUP_ID });
     mockPrisma.mealPlan.count.mockResolvedValue(1);
     mockPrisma.mealCount.count.mockResolvedValue(0);
-    mockPrisma.shippingOrder.count.mockResolvedValue(0);
 
     await expect(deleteLineup(COMPANY_ID, LINEUP_ID)).rejects.toThrow(
       "DEPENDENCY_EXISTS"

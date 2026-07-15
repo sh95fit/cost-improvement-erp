@@ -57,7 +57,6 @@ export const mockPrisma = {
   productionLine: createModelMock(),
   // ★ Phase 9-A: 소요량 산출 대상
   materialRequirement: createModelMock(),
-  shippingOrder: createModelMock(),
   // ★ Sprint 3 Phase 2: 발주
   purchaseOrder: createModelMock(),
   purchaseOrderItem: createModelMock(),

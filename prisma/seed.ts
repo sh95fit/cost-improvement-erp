@@ -79,7 +79,7 @@ async function main() {
     "company", "user", "material", "subsidiary", "supplier",
     "recipe", "bom", "meal-plan", "meal-template", "lineup",
     "inventory", "purchasing", "receiving-note",
-    "shipping", "consumption",  // ← 추가 (shipping 은 S4-3-INT 에서 제거)
+    "consumption",
     "cost", "month-end", "notification", "audit-log",
   ];
   const sysAdminActions = ["CREATE", "READ", "UPDATE", "DELETE", "APPROVE", "EXPORT"] as const;

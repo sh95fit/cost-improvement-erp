@@ -145,7 +145,6 @@ export type LineupDependencyCheck = {
   counts: {
     mealPlans: number;
     mealCounts: number;
-    shippingOrders: number;
   };
 };
 
@@ -159,15 +158,12 @@ export async function checkLineupDependencies(
   });
   if (!lineup) throw new Error("NOT_FOUND");
 
-  const [mealPlans, mealCounts, shippingOrders] = await Promise.all([
+  const [mealPlans, mealCounts] = await Promise.all([
     prisma.mealPlan.count({
       where: { lineupId: id, deletedAt: null },
     }),
     prisma.mealCount.count({
       where: { lineupId: id, deletedAt: null },
-    }),
-    prisma.shippingOrder.count({
-      where: { lineupId: id },
     }),
   ]);
 
@@ -176,13 +172,11 @@ export async function checkLineupDependencies(
     reasons.push(`식단 ${mealPlans}건이 이 라인업을 사용 중입니다`);
   if (mealCounts > 0)
     reasons.push(`식수 ${mealCounts}건이 이 라인업을 사용 중입니다`);
-  if (shippingOrders > 0)
-    reasons.push(`출고 ${shippingOrders}건이 이 라인업을 사용 중입니다`);
 
   return {
     canDelete: reasons.length === 0,
     reasons,
-    counts: { mealPlans, mealCounts, shippingOrders },
+    counts: { mealPlans, mealCounts },
   };
 }
 

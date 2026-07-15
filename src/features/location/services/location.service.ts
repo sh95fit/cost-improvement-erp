@@ -181,7 +181,6 @@ export type LocationDependencyCheck = {
     stockTakes: number;
     transfersFrom: number;
     transfersTo: number;
-    shippingOrders: number;
   };
 };
 
@@ -202,7 +201,6 @@ export async function checkLocationDependencies(
     stockTakes,
     transfersFrom,
     transfersTo,
-    shippingOrders,
   ] = await Promise.all([
     prisma.productionLine.count({
       where: { locationId: id, deletedAt: null },
@@ -212,7 +210,6 @@ export async function checkLocationDependencies(
     prisma.stockTake.count({ where: { locationId: id } }),
     prisma.inventoryTransfer.count({ where: { fromLocationId: id } }),
     prisma.inventoryTransfer.count({ where: { toLocationId: id } }),
-    prisma.shippingOrder.count({ where: { locationId: id } }),
   ]);
 
   const reasons: string[] = [];
@@ -228,8 +225,6 @@ export async function checkLocationDependencies(
     reasons.push(
       `이 위치가 포함된 재고 이동 ${transfersFrom + transfersTo}건이 있습니다`
     );
-  if (shippingOrders > 0)
-    reasons.push(`이 위치의 출고 ${shippingOrders}건이 있습니다`);
 
   return {
     canDelete: reasons.length === 0,
@@ -241,7 +236,6 @@ export async function checkLocationDependencies(
       stockTakes,
       transfersFrom,
       transfersTo,
-      shippingOrders,
     },
   };
 }

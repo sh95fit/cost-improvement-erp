@@ -16,7 +16,6 @@ vi.mock("@/lib/prisma", () => ({
     inventoryTransaction: { count: vi.fn() },
     stockTake: { count: vi.fn() },
     inventoryTransfer: { count: vi.fn() },
-    shippingOrder: { count: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -104,7 +103,6 @@ describe("Location service", () => {
       (prisma.inventoryTransaction.count as any).mockResolvedValue(0);
       (prisma.stockTake.count as any).mockResolvedValue(0);
       (prisma.inventoryTransfer.count as any).mockResolvedValue(0);
-      (prisma.shippingOrder.count as any).mockResolvedValue(0);
 
       const result = await locationService.checkLocationDependencies(
         COMPANY_ID,
@@ -122,7 +120,6 @@ describe("Location service", () => {
       (prisma.inventoryTransaction.count as any).mockResolvedValue(0);
       (prisma.stockTake.count as any).mockResolvedValue(0);
       (prisma.inventoryTransfer.count as any).mockResolvedValue(0);
-      (prisma.shippingOrder.count as any).mockResolvedValue(0);
 
       const result = await locationService.checkLocationDependencies(
         COMPANY_ID,
@@ -142,7 +139,6 @@ describe("Location service", () => {
       (prisma.inventoryTransfer.count as any)
         .mockResolvedValueOnce(2) // fromLocationId
         .mockResolvedValueOnce(3); // toLocationId
-      (prisma.shippingOrder.count as any).mockResolvedValue(0);
 
       const result = await locationService.checkLocationDependencies(
         COMPANY_ID,
@@ -170,7 +166,6 @@ describe("Location service", () => {
       (prisma.inventoryTransaction.count as any).mockResolvedValue(0);
       (prisma.stockTake.count as any).mockResolvedValue(0);
       (prisma.inventoryTransfer.count as any).mockResolvedValue(0);
-      (prisma.shippingOrder.count as any).mockResolvedValue(0);
 
       await expect(
         locationService.deleteLocation(COMPANY_ID, LOC_ID)
@@ -184,7 +179,6 @@ describe("Location service", () => {
       (prisma.inventoryTransaction.count as any).mockResolvedValue(0);
       (prisma.stockTake.count as any).mockResolvedValue(0);
       (prisma.inventoryTransfer.count as any).mockResolvedValue(0);
-      (prisma.shippingOrder.count as any).mockResolvedValue(0);
       (prisma.location.update as any).mockResolvedValue({
         id: LOC_ID,
         deletedAt: new Date(),

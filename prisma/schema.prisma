@@ -131,16 +131,6 @@ enum StockTakeStatus {
   @@map("stock_take_status")
 }
 
-enum ShippingStatus {
-  PENDING
-  CONFIRMED
-  SHIPPED
-  DELIVERED
-  CANCELLED
-
-  @@map("shipping_status")
-}
-
 enum CookingPlanStatus {
   DRAFT
   CONFIRMED
@@ -479,7 +469,6 @@ model Company {
   inventoryReservations  InventoryReservation[]
   inventoryTransfers     InventoryTransfer[]
   stockTakes             StockTake[]
-  shippingOrders         ShippingOrder[]
   cookingPlans           CookingPlan[]
   costSnapshots          CostSnapshot[]
   monthEndSnapshots      MonthEndSnapshot[]
@@ -521,7 +510,6 @@ model Location {
   stockTakes            StockTake[]
   transfersFrom         InventoryTransfer[]    @relation("TransferFrom")
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
-  shippingOrders        ShippingOrder[]
   materialRequirements  MaterialRequirement[]
   purchaseOrders        PurchaseOrder[]
 
@@ -698,7 +686,6 @@ model MaterialMaster {
   costCalculationItems   CostCalculationItem[]
   inventoryTransferItems InventoryTransferItem[]
   purchaseOrderItems     PurchaseOrderItem[]
-  shippingOrderItems     ShippingOrderItem[]
   recipeIngredients      RecipeIngredient[]
   recipeBomSlotItems     RecipeBOMSlotItem[]
 
@@ -732,7 +719,6 @@ model SubsidiaryMaster {
   mealPlanAccessories     MealPlanAccessory[]
   purchaseOrderItems      PurchaseOrderItem[]
   inventoryLots           InventoryLot[]
-  shippingOrderItems      ShippingOrderItem[]
   unitConversions         UnitConversion[]
   // ★ 신규: 용기 슬롯 (subsidiaryType=CONTAINER일 때)
   containerSlots          ContainerSlot[]
@@ -1136,7 +1122,6 @@ model MealPlanGroup {
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[]
   purchaseOrderBatches PurchaseOrderBatch[]
-  shippingOrders       ShippingOrder[]
 
   @@unique([companyId, planDate])
   @@index([companyId])
@@ -1285,7 +1270,6 @@ model Lineup {
 
   mealPlans            MealPlan[]
   mealCounts           MealCount[]
-  shippingOrders       ShippingOrder[]
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[] // ★ Sprint 3.5 Phase S3.5-0
 
@@ -1764,49 +1748,7 @@ model StockTakeItem {
   @@map("stock_take_items")
 }
 
-// ---- 12. 출하 / 소비 ----
-
-model ShippingOrder {
-  id              String         @id @default(cuid())
-  companyId       String         @map("company_id")
-  lineupId        String         @map("lineup_id")
-  mealPlanGroupId String?        @map("meal_plan_group_id")
-  locationId      String?        @map("location_id")
-  shippingDate    DateTime       @map("shipping_date") @db.Date
-  status          ShippingStatus @default(PENDING)
-  note            String?
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-
-  company       Company             @relation(fields: [companyId], references: [id])
-  lineup        Lineup              @relation(fields: [lineupId], references: [id])
-  mealPlanGroup MealPlanGroup?      @relation(fields: [mealPlanGroupId], references: [id])
-  location      Location?           @relation(fields: [locationId], references: [id])
-  items         ShippingOrderItem[]
-
-  @@index([companyId])
-  @@index([lineupId])
-  @@index([shippingDate])
-  @@map("shipping_orders")
-}
-
-model ShippingOrderItem {
-  id                 String   @id @default(cuid())
-  shippingOrderId    String   @map("shipping_order_id")
-  materialMasterId   String?  @map("material_master_id")
-  itemType           ItemType @default(MATERIAL) @map("item_type")
-  subsidiaryMasterId String?  @map("subsidiary_master_id")
-  quantity           Float
-  note               String?
-  createdAt          DateTime @default(now()) @map("created_at")
-
-  shippingOrder    ShippingOrder     @relation(fields: [shippingOrderId], references: [id])
-  materialMaster   MaterialMaster?   @relation(fields: [materialMasterId], references: [id])
-  subsidiaryMaster SubsidiaryMaster? @relation(fields: [subsidiaryMasterId], references: [id])
-
-  @@index([shippingOrderId])
-  @@map("shipping_order_items")
-}
+// ---- 12. 사용 ----
 
 model ConsumptionItem {
   id                 String                 @id @default(cuid())
