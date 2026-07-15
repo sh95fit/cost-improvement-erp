@@ -23,7 +23,6 @@ import {
   Factory,
   Cog,
   Sigma,
-  Utensils,
 } from "lucide-react";
 
 const navigation = [
