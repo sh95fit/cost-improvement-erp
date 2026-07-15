@@ -57,8 +57,8 @@
 | 47 | InventoryTransferItem | S4 | P4-5 | ⬜ |
 | 48 | StockTake | S4 | P6-7 | ⬜ |
 | 49 | StockTakeItem | S4 | P6-7 | ⬜ |
-| 50 | ShippingOrder | S4 | P8-9 | ⬜ |
-| 51 | ShippingOrderItem | S4 | P8-9 | ⬜ |
+| 50 | ~~ShippingOrder~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — P13 보강에 따라 Consumption 이 재고 소진 단일 통로. `PurchaseOrder.outboundDate` (P8) 와 중복. |
+| 51 | ~~ShippingOrderItem~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — 동상 |
 | 52 | ConsumptionItem | S4 | P10-11 / S4-0-a | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류. 본체 구현은 P10-11 예정) |
 | 53 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
 | 54 | CookingPlan | S4 | P12-13 | ⬜ |
@@ -79,6 +79,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- **2026-07-15 (S4-3-INT)**: Shipping 도메인 폐지 및 Consumption 흡수 (ShippingOrder, ShippingOrderItem 폐지)
 - **2026-07-10 (S4-0-d)**: `writeAuditLog(tx)` 헬퍼 신설 및 예약 도메인 서비스에 감사 로그 훅 통합. `AuditLog` 스키마 변경 없음. `AuditAction` enum 확장 없이 기존 8종 활용(CREATE/UPDATE로 매핑).
 - **2026-07-10 (S4-0-c)**: `InventoryLot.purchaseKind PurchaseKind?` 추가(@@index), 40행 백필(모두 WIZARD). `InventoryReservation`은 스키마 변경 없음.
 - **2026-07-10 (S4-0-c-2)**: S4-0-a-2 rename에서 유실된 `purchase_orders.purchase_kind='MANUAL_JIT'` 4행 재백필. Prisma column rename 시 raw ALTER 사용 원칙 문서화.

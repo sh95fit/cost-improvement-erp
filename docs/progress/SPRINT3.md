@@ -800,4 +800,6 @@ Sprint 4 는 재고·출고·소비·조리계획·실사 5개 축을 다룬다.
 
 Sprint 3 종결 이후 발견된 회귀·정정 사항을 append.
 
-(비어 있음)
+### 2026-07-15 — Shipping 도메인 폐지 (S4-3-INT)
+
+Sprint 3 아카이브 시점(라인 755-770) 표에 포함된 `ShippingOrder` / `ShippingOrderItem` 도메인은 Sprint 4 S4-3-INT 에서 폐지됐다. 상세는 `PROGRESS.md` P13 보강 "출고(Shipping) 도메인 폐지 및 Consumption 흡수" 및 커밋 `c2dd65f` 참조. Sprint 3 원문은 시점 기록으로서 그대로 보존한다.
