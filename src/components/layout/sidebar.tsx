@@ -23,6 +23,7 @@ import {
   Factory,
   Cog,
   Sigma,
+  Utensils,
 } from "lucide-react";
 
 const navigation = [
@@ -41,7 +42,7 @@ const navigation = [
   { name: "발주 관리", href: "/purchase-orders", icon: ShoppingCart },
   { name: "입고 관리", href: "/receiving", icon: ClipboardCheck },
   { name: "출고 관리", href: "/shipping", icon: Truck },
-  { name: "소비 관리", href: "/consumption", icon: Warehouse },
+  { name: "사용 관리", href: "/consumption", icon: Warehouse },
   { name: "원가 관리", href: "/cost", icon: Calculator },
   { name: "월말 마감", href: "/month-end", icon: CalendarCheck },
   { name: "알림", href: "/notifications", icon: Bell },
