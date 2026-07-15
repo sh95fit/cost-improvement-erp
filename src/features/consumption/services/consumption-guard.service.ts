@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { MealPlanStatus } from "@prisma/client";
 
@@ -45,10 +46,12 @@ export class MealPlanNotCompletedForConsumptionError extends Error {
  * @param locationId 대상 공장/거점 ID (판정에는 사용하지 않음, 계약 유지용)
  */
 export async function assertMealPlanCompletedForConsumption(
-  companyId: string,
-  targetDate: Date,
-  locationId: string,
-): Promise<void> {
+    companyId: string,
+    targetDate: Date,
+    locationId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? prisma;
   // planDate 는 @db.Date 이므로 자정으로 정규화 (시분초 제거)
   const normalizedDate = new Date(
     Date.UTC(
@@ -58,7 +61,7 @@ export async function assertMealPlanCompletedForConsumption(
     ),
   );
 
-  const group = await prisma.mealPlanGroup.findFirst({
+  const group = await client.mealPlanGroup.findFirst({
     where: {
       companyId,
       planDate: normalizedDate,

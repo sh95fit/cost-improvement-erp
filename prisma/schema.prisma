@@ -172,6 +172,7 @@ enum AuditAction {
   STATUS_CHANGE
   LOGIN
   OVERRIDE
+  CONFIRM_CONSUMPTION // ★ Sprint 4 Phase S4-3-d — 사용 처리 확정
 
   @@map("audit_action")
 }

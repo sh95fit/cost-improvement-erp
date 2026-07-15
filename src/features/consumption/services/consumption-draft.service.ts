@@ -108,9 +108,12 @@ export async function buildConsumptionDraft(
   companyId: string,
   targetDate: Date,
   locationId: string,
+  tx?: Prisma.TransactionClient,
 ): Promise<ConsumptionDraft> {
+  const client = tx ?? prisma;
+
   // 0) 진입 가드 재확인 (외부에서 이미 통과했더라도 방어)
-  await assertMealPlanCompletedForConsumption(companyId, targetDate, locationId);
+  await assertMealPlanCompletedForConsumption(companyId, targetDate, locationId, tx);
 
   // UTC 자정 정규화 (planDate 는 @db.Date)
   const normalizedDate = normalizeToUtcDate(targetDate);
@@ -274,12 +277,14 @@ export async function buildConsumptionDraft(
     "MATERIAL",
     companyId,
     locationId,
+    client,
   );
   const subsidiaryAvailability = await computeAvailability(
     Array.from(subsidiaryAgg.keys()),
     "SUBSIDIARY",
     companyId,
     locationId,
+    client,
   );
 
   // 5) 당일입고 수량 집계 (ReceivingNote.receivedDate = targetDate & CONFIRMED)
@@ -287,6 +292,7 @@ export async function buildConsumptionDraft(
     companyId,
     locationId,
     normalizedDate,
+    client,
   );
 
   // 6) Layer A 라인 조립
@@ -354,6 +360,7 @@ async function computeAvailability(
   itemType: "MATERIAL" | "SUBSIDIARY",
   companyId: string,
   locationId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (itemIds.length === 0) return result;
@@ -368,7 +375,7 @@ async function computeAvailability(
       : { subsidiaryMasterId: { in: itemIds } }),
   };
 
-  const lots = await prisma.inventoryLot.findMany({
+  const lots = await client.inventoryLot.findMany({
     where,
     select: {
       id: true,
@@ -399,12 +406,13 @@ async function computeInboundOnDate(
   companyId: string,
   locationId: string,
   targetDate: Date,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
 
   // ReceivingNote.receivedDate = targetDate & CONFIRMED
   // + PurchaseOrder.locationId = locationId 로 위치 필터
-  const notes = await prisma.receivingNote.findMany({
+  const notes = await client.receivingNote.findMany({
     where: {
       companyId,
       receivedDate: targetDate,
