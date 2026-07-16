@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { listConsumptionItemsAction } from "../actions/list-consumption-items.action";
 import { getLocationOptionsAction } from "@/features/location/actions/location.action";
 import { ConsumptionNewEntryDialog } from "./consumption-new-entry-dialog";
+import { PendingMealPlanBanner } from "./pending-meal-plan-banner";
 
 // ────────────────────────────────────────────────────────────
 // Row 타입 — listConsumptionItems select 결과와 정합
@@ -190,6 +191,9 @@ export function ConsumptionList() {
 
   return (
     <div className="space-y-4">
+      {/* 확정 대기 식단 배너 (대상 0건이면 자동 숨김) */}
+      <PendingMealPlanBanner />
+
       {/* 상단 필터 바 */}
       <div className="rounded-md border bg-white p-4">
         <div className="flex flex-wrap items-end gap-3">
