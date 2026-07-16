@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,12 +23,12 @@ import {
   ChevronRight,
   Filter,
   Loader2,
-  Plus,
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { listConsumptionItemsAction } from "../actions/list-consumption-items.action";
 import { getLocationOptionsAction } from "@/features/location/actions/location.action";
+import { ConsumptionNewEntryDialog } from "./consumption-new-entry-dialog";
 
 // ────────────────────────────────────────────────────────────
 // Row 타입 — listConsumptionItems select 결과와 정합
@@ -83,7 +82,6 @@ function formatDate(d: Date | string): string {
 }
 
 function formatQty(n: number): string {
-  // 소수점 존재 시 최대 3자리까지, 정수는 그대로
   return Number.isInteger(n) ? n.toString() : n.toFixed(3).replace(/\.?0+$/, "");
 }
 
@@ -126,10 +124,9 @@ export function ConsumptionList() {
   const [itemType, setItemType] = useState<ItemTypeFilter>("all");
   const [sourceType, setSourceType] = useState<SourceTypeFilter>("all");
 
-  // 사업장 옵션
+  // 사업장 옵션 (리스트 필터용 — 조회 목적이므로 전체 타입 노출)
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
 
-  // 사업장 옵션 로드
   useEffect(() => {
     (async () => {
       const result = await getLocationOptionsAction({});
@@ -141,7 +138,6 @@ export function ConsumptionList() {
     })();
   }, []);
 
-  // 목록 조회
   const fetchList = useCallback(
     async (page = 1) => {
       setLoading(true);
@@ -174,7 +170,6 @@ export function ConsumptionList() {
 
   useEffect(() => {
     fetchList(1);
-    // 필터 바뀔 때마다 1페이지부터
   }, [fetchList]);
 
   const handleReset = () => {
@@ -198,7 +193,6 @@ export function ConsumptionList() {
       {/* 상단 필터 바 */}
       <div className="rounded-md border bg-white p-4">
         <div className="flex flex-wrap items-end gap-3">
-          {/* 시작일 */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">시작일</label>
             <Input
@@ -209,7 +203,6 @@ export function ConsumptionList() {
             />
           </div>
 
-          {/* 종료일 */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">종료일</label>
             <Input
@@ -220,7 +213,6 @@ export function ConsumptionList() {
             />
           </div>
 
-          {/* 사업장 */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">사업장</label>
             <Select value={locationId} onValueChange={setLocationId}>
@@ -238,7 +230,6 @@ export function ConsumptionList() {
             </Select>
           </div>
 
-          {/* 품목 유형 */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">품목 유형</label>
             <Select
@@ -256,7 +247,6 @@ export function ConsumptionList() {
             </Select>
           </div>
 
-          {/* 출처 */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">출처</label>
             <Select
@@ -274,20 +264,14 @@ export function ConsumptionList() {
             </Select>
           </div>
 
-          {/* 초기화 */}
           <Button variant="outline" onClick={handleReset} className="gap-1">
             <RotateCcw className="h-4 w-4" />
             초기화
           </Button>
 
-          {/* 오른쪽 정렬 신규 버튼 */}
+          {/* 신규 사용 처리: 다이얼로그 트리거 */}
           <div className="ml-auto">
-            <Button asChild>
-              <Link href="/consumption/new" className="gap-1">
-                <Plus className="h-4 w-4" />
-                신규 사용 처리
-              </Link>
-            </Button>
+            <ConsumptionNewEntryDialog />
           </div>
         </div>
       </div>
