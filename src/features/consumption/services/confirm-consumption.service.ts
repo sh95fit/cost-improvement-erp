@@ -113,7 +113,7 @@ export async function confirmConsumption(
       // 5) A+B 병합 (같은 item 은 sources[] 로만 분리 관리)
       const merged = mergeItems(input.layerAItems, layerBMeta, rebuilt.layerAItems);
 
-      // 6) Pre-flight (P4): 재고 부족 사전 검증
+      // 6) Pre-flight (P4/P11): 재고 부족 사전 검증 (FIFO 순서로 lot 조회)
       const shortages: InsufficientStockError["shortages"] = [];
       const perItemLots = new Map<
         string,
@@ -130,7 +130,7 @@ export async function confirmConsumption(
             subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
             remainingQty: { gt: 0 },
           },
-          orderBy: [{ receivedAt: "asc" }, { id: "asc" }], // FIFO
+          orderBy: [{ receivedAt: "asc" }, { id: "asc" }], // FIFO (P8)
           select: {
             id: true,
             remainingQty: true,
@@ -158,7 +158,7 @@ export async function confirmConsumption(
       }
       if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
-      // 7) FIFO 차감 + ConsumptionItem 생성
+      // 7) FIFO 차감 + ConsumptionItem + ConsumptionLotDetail + InventoryTransaction 생성
       const consumptionItemIds: string[] = [];
       let totalConsumedQty = 0;
 
@@ -185,7 +185,7 @@ export async function confirmConsumption(
           });
           consumptionItemIds.push(created.id);
 
-          // FIFO 차감
+          // FIFO 차감 (P8) — 재고 마이너스 불가 (P11) 는 pre-flight 로 이미 보장
           let need = src.qty;
           for (const lot of lots) {
             if (need <= EPS) break;
@@ -195,10 +195,14 @@ export async function confirmConsumption(
             if (avail <= EPS) continue;
 
             const take = Math.min(avail, need);
+
+            // (a) Lot 차감
             await tx.inventoryLot.update({
               where: { id: lot.id },
               data: { remainingQty: { decrement: take } },
             });
+
+            // (b) ConsumptionLotDetail 스냅샷 (FIFO 결과 저장)
             await tx.consumptionLotDetail.create({
               data: {
                 consumptionItemId: created.id,
@@ -207,6 +211,27 @@ export async function confirmConsumption(
                 unitPrice: lot.unitPrice,
               },
             });
+
+            // (c) InventoryTransaction 원장 기록 (P4: 모든 재고 이동 기록)
+            //     - 부호 관례 B: quantity 는 항상 양수, 방향은 transactionType 으로 판별
+            //     - receiving-note (PURCHASE + 양수) 와 대칭
+            await tx.inventoryTransaction.create({
+              data: {
+                companyId: input.companyId,
+                locationId: input.locationId,
+                itemType: m.itemType,
+                materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
+                subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
+                inventoryLotId: lot.id,
+                transactionType: "CONSUMPTION",
+                quantity: take,
+                unitPrice: lot.unitPrice,
+                referenceType: "CONSUMPTION_ITEM",
+                referenceId: created.id,
+                transactionDate: input.targetDate,
+              },
+            });
+
             lot.remainingQty -= take;
             need -= take;
           }
