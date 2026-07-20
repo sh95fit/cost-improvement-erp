@@ -25,9 +25,10 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // 자재/부자재 별 Layer A 매핑 (중복 검사용)
+  // S4-3-c-4-3: expectedQty → theoreticalQty
   const layerAKey = (t: ItemType, id: string) => `${t}::${id}`;
   const layerAMap = new Map(
-    layerAItems.map((a) => [layerAKey(a.itemType, a.itemId), a.expectedQty]),
+    layerAItems.map((a) => [layerAKey(a.itemType, a.itemId), a.theoreticalQty]),
   );
 
   const handlePick = (picked: PickedItem) => {
@@ -36,7 +37,6 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
       (it) => it.itemType === picked.itemType && it.itemId === picked.itemId,
     );
     if (dupIdx >= 0) {
-      // 스크롤/포커스만 유도. 실제 이동 로직은 접근성 확장 시 개선.
       alert("이미 추가된 품목입니다. 수량을 수정해 주세요.");
       return;
     }
@@ -119,7 +119,7 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
                     {it.itemName}
                     {layerAQty !== undefined && (
                       <span className="ml-2 text-xs text-amber-700">
-                        (A: {numberFmt(layerAQty)})
+                        (A 이론: {numberFmt(layerAQty)})
                       </span>
                     )}
                   </TableCell>
@@ -163,7 +163,7 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
             {items.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-sm text-gray-500">
-                  수동 추가 항목이 없습니다. 필요 시 우측 상단 "품목 추가" 버튼을 사용하세요.
+                  수동 추가 항목이 없습니다. 필요 시 우측 상단 &ldquo;품목 추가&rdquo; 버튼을 사용하세요.
                 </TableCell>
               </TableRow>
             )}

@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma, ItemType, ConsumptionSourceType } from "@prisma/client";
+import type {
+  Prisma,
+  ItemType,
+  ConsumptionSourceType,
+  ConsumptionDisposition,
+  DisposalReason,
+} from "@prisma/client";
 import { writeAuditLog } from "@/lib/utils/audit";
 import { buildConsumptionDraft } from "./consumption-draft.service";
 import { getOrCreateCookingPlanForConsumption } from "./cooking-plan-upsert.service";
@@ -11,7 +17,7 @@ import {
 } from "../errors/consumption.errors";
 
 // ────────────────────────────────────────────────────────────
-// 입력/출력 타입
+// 입력/출력 타입 (S4-3-c-4-3 재정의)
 // ────────────────────────────────────────────────────────────
 export type ConfirmConsumptionInput = {
   companyId: string;
@@ -20,8 +26,15 @@ export type ConfirmConsumptionInput = {
   targetDate: Date; // UTC 자정 정규화 값
   layerAItems: Array<{
     itemType: ItemType;
-    itemId: string;      // materialMasterId | subsidiaryMasterId
-    expectedQty: number; // drift 검증용
+    itemId: string;                    // materialMasterId | subsidiaryMasterId
+    lineupId: string | null;           // 라인업/라인 세분화 키 (부자재는 null)
+    productionLineId: string | null;
+    theoreticalQty: number;            // drift 검증용 (BOM×식수 결과)
+    totalAvailable: number;            // 클라이언트 스냅샷 (서버 재조회로 검증)
+    finalUsedQty: number;              // 실제 사용량 (사용자 입력)
+    remainingToStock: number;          // 재고 잔량 (저장 X, InventoryLot 자연 이월)
+    disposalReason?: DisposalReason;   // disposalQty>0 시 필수
+    disposalNote?: string;             // OTHER 시 필수
   }>;
   layerBItems: Array<{
     itemType: ItemType;
@@ -35,6 +48,7 @@ export type ConfirmConsumptionResult = {
   consumptionItemIds: string[];
   totalItemCount: number;
   totalConsumedQty: number;
+  totalDisposedQty: number;
   cookingPlanId: string;
 };
 
@@ -53,17 +67,22 @@ type LayerBItemWithMeta = {
   note?: string;
 };
 
+type DispositionSource = {
+  sourceType: ConsumptionSourceType;
+  disposition: ConsumptionDisposition;
+  qty: number;
+  note?: string;
+  disposalReason?: DisposalReason;
+  disposalNote?: string;
+};
+
 type MergedItem = {
   itemType: ItemType;
   itemId: string;
   itemName: string;
   unit: string;
-  totalQty: number;
-  sources: Array<{
-    sourceType: ConsumptionSourceType;
-    qty: number;
-    note?: string;
-  }>;
+  totalQty: number;                    // FIFO 소진 대상 총량 (USED + DISPOSED, 재고 잔량 제외)
+  sources: DispositionSource[];
 };
 
 function itemKey(t: ItemType, id: string): string {
@@ -76,16 +95,36 @@ function itemKey(t: ItemType, id: string): string {
 export async function confirmConsumption(
   input: ConfirmConsumptionInput,
 ): Promise<ConfirmConsumptionResult> {
-  // 1) 사전 검증 (트랜잭션 밖 fast-fail)
+  // 1) 사전 검증 (트랜잭션 밖 fast-fail, P11 강화)
   for (const b of input.layerBItems) {
     if (!(b.quantity > 0)) {
       throw new InvalidLayerBItemError("QUANTITY_NON_POSITIVE", b.itemId);
     }
   }
+  for (const a of input.layerAItems) {
+    // P11: 음수 금지
+    if (a.finalUsedQty < 0 || a.remainingToStock < 0) {
+      throw new InvalidLayerBItemError("QUANTITY_NEGATIVE", a.itemId);
+    }
+    // P14: 총량 초과 금지
+    if (a.finalUsedQty + a.remainingToStock > a.totalAvailable + EPS) {
+      throw new InvalidLayerBItemError("QUANTITY_OVERFLOW", a.itemId);
+    }
+    // P14: 폐기 사유 필수
+    const disposalQty = a.totalAvailable - a.finalUsedQty - a.remainingToStock;
+    if (disposalQty > EPS) {
+      if (!a.disposalReason) {
+        throw new InvalidLayerBItemError("DISPOSAL_REASON_REQUIRED", a.itemId);
+      }
+      if (a.disposalReason === "OTHER" && !a.disposalNote?.trim()) {
+        throw new InvalidLayerBItemError("DISPOSAL_NOTE_REQUIRED", a.itemId);
+      }
+    }
+  }
 
   return prisma.$transaction(
     async (tx) => {
-      // 2) Drift 재검증 (Layer A 재계산)
+      // 2) 서버 재빌드 (D2=α: totalAvailable/theoreticalQty 정본)
       const rebuilt = await buildConsumptionDraft(
         input.companyId,
         input.targetDate,
@@ -93,27 +132,28 @@ export async function confirmConsumption(
         tx,
       );
 
+      // 3) Drift 재검증 (theoreticalQty 및 totalAvailable 편차)
       const diffs = detectLayerADrift(input.layerAItems, rebuilt.layerAItems);
       if (diffs.length > 0) throw new StaleDraftError(diffs);
 
-      // 3) Layer B 재검증 (활성 상태 + 메타 확보)
+      // 4) Layer B 재검증 (활성 상태 + 메타 확보)
       const layerBMeta = await validateLayerBItems(
         tx,
         input.companyId,
         input.layerBItems,
       );
 
-      // 4) CookingPlan 확보
+      // 5) CookingPlan 확보
       const cookingPlanId = await getOrCreateCookingPlanForConsumption(tx, {
         companyId: input.companyId,
         locationId: input.locationId,
         planDate: input.targetDate,
       });
 
-      // 5) A+B 병합 (같은 item 은 sources[] 로만 분리 관리)
+      // 6) A+B 병합 (같은 item 은 sources[] 로 분리, disposition 별 행 생성)
       const merged = mergeItems(input.layerAItems, layerBMeta, rebuilt.layerAItems);
 
-      // 6) Pre-flight (P4/P11): 재고 부족 사전 검증 (FIFO 순서로 lot 조회)
+      // 7) Pre-flight (P4/P11): 재고 부족 사전 검증
       const shortages: InsufficientStockError["shortages"] = [];
       const perItemLots = new Map<
         string,
@@ -121,6 +161,8 @@ export async function confirmConsumption(
       >();
 
       for (const m of merged) {
+        if (m.totalQty <= EPS) continue; // USED=0, DISPOSED=0 이면 소진 대상 없음
+
         const lots = await tx.inventoryLot.findMany({
           where: {
             companyId: input.companyId,
@@ -158,14 +200,17 @@ export async function confirmConsumption(
       }
       if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
-      // 7) FIFO 차감 + ConsumptionItem + ConsumptionLotDetail + InventoryTransaction 생성
+      // 8) FIFO 차감 + ConsumptionItem(USED|DISPOSED) + LotDetail + InventoryTransaction
       const consumptionItemIds: string[] = [];
       let totalConsumedQty = 0;
+      let totalDisposedQty = 0;
 
       for (const m of merged) {
-        const lots = perItemLots.get(itemKey(m.itemType, m.itemId))!;
+        const lots = perItemLots.get(itemKey(m.itemType, m.itemId));
 
         for (const src of m.sources) {
+          if (src.qty <= EPS) continue;
+
           const created = await tx.consumptionItem.create({
             data: {
               companyId: input.companyId,
@@ -178,16 +223,18 @@ export async function confirmConsumption(
               consumedDate: input.targetDate,
               status: "CONFIRMED",
               sourceType: src.sourceType,
-              disposition: "USED",
+              disposition: src.disposition,
+              disposalReason: src.disposalReason ?? null,
+              disposalNote: src.disposalNote ?? null,
               note: src.note ?? null,
             },
             select: { id: true },
           });
           consumptionItemIds.push(created.id);
 
-          // FIFO 차감 (P8) — 재고 마이너스 불가 (P11) 는 pre-flight 로 이미 보장
+          // FIFO 차감 (P8) — pre-flight 로 P11 이미 보장
           let need = src.qty;
-          for (const lot of lots) {
+          for (const lot of lots ?? []) {
             if (need <= EPS) break;
             if (lot.remainingQty <= EPS) continue;
 
@@ -202,7 +249,7 @@ export async function confirmConsumption(
               data: { remainingQty: { decrement: take } },
             });
 
-            // (b) ConsumptionLotDetail 스냅샷 (FIFO 결과 저장)
+            // (b) ConsumptionLotDetail 스냅샷
             await tx.consumptionLotDetail.create({
               data: {
                 consumptionItemId: created.id,
@@ -212,9 +259,9 @@ export async function confirmConsumption(
               },
             });
 
-            // (c) InventoryTransaction 원장 기록 (P4: 모든 재고 이동 기록)
-            //     - 부호 관례 B: quantity 는 항상 양수, 방향은 transactionType 으로 판별
-            //     - receiving-note (PURCHASE + 양수) 와 대칭
+            // (c) InventoryTransaction 원장 (P4)
+            //     - USED → CONSUMPTION / DISPOSED → DISPOSAL
+            //     - 부호 관례 B: quantity 항상 양수
             await tx.inventoryTransaction.create({
               data: {
                 companyId: input.companyId,
@@ -223,7 +270,8 @@ export async function confirmConsumption(
                 materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
                 subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
                 inventoryLotId: lot.id,
-                transactionType: "CONSUMPTION",
+                transactionType:
+                  src.disposition === "DISPOSED" ? "DISPOSAL" : "CONSUMPTION",
                 quantity: take,
                 unitPrice: lot.unitPrice,
                 referenceType: "CONSUMPTION_ITEM",
@@ -237,7 +285,7 @@ export async function confirmConsumption(
           }
 
           if (need > EPS) {
-            // Pre-flight 를 통과했는데 여기서 부족하면 동시성 문제 → 트랜잭션 롤백
+            // Pre-flight 통과 후 부족 → 동시성 이슈 (Serializable 로 롤백)
             throw new InsufficientStockError([
               {
                 itemType: m.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
@@ -250,11 +298,15 @@ export async function confirmConsumption(
             ]);
           }
 
-          totalConsumedQty += src.qty;
+          if (src.disposition === "DISPOSED") {
+            totalDisposedQty += src.qty;
+          } else {
+            totalConsumedQty += src.qty;
+          }
         }
       }
 
-      // 8) AuditLog
+      // 9) AuditLog
       await writeAuditLog(tx, {
         companyId: input.companyId,
         userId: input.userId,
@@ -266,6 +318,7 @@ export async function confirmConsumption(
           cookingPlanId,
           itemCount: consumptionItemIds.length,
           totalConsumedQty,
+          totalDisposedQty,
           layerACount: input.layerAItems.length,
           layerBCount: input.layerBItems.length,
         },
@@ -275,6 +328,7 @@ export async function confirmConsumption(
         consumptionItemIds,
         totalItemCount: consumptionItemIds.length,
         totalConsumedQty,
+        totalDisposedQty,
         cookingPlanId,
       };
     },
@@ -289,6 +343,12 @@ export async function confirmConsumption(
 // 헬퍼 함수
 // ────────────────────────────────────────────────────────────
 
+/**
+ * Layer A drift 검증
+ * - theoreticalQty 편차: 라인업 확정식수·BOM 변경 감지
+ * - totalAvailable 편차: 다른 사용자에 의한 동시 소진·입고 감지
+ * - finalUsedQty/remainingToStock: 사용자 자유 입력이므로 검증 X
+ */
 function detectLayerADrift(
   client: ConfirmConsumptionInput["layerAItems"],
   server: Awaited<ReturnType<typeof buildConsumptionDraft>>["layerAItems"],
@@ -304,18 +364,30 @@ function detectLayerADrift(
         itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
         itemId: c.itemId,
         itemName: "(삭제됨)",
-        clientQty: c.expectedQty,
+        clientQty: c.theoreticalQty,
         serverQty: 0,
       });
       continue;
     }
-    if (Math.abs(s.expectedQty - c.expectedQty) > EPS) {
+    // theoreticalQty 편차
+    if (Math.abs(s.theoreticalQty - c.theoreticalQty) > EPS) {
       diffs.push({
         itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
         itemId: c.itemId,
         itemName: s.itemName,
-        clientQty: c.expectedQty,
-        serverQty: s.expectedQty,
+        clientQty: c.theoreticalQty,
+        serverQty: s.theoreticalQty,
+      });
+      continue;
+    }
+    // totalAvailable 편차 (D2=α: 서버 정본)
+    if (Math.abs(s.availableQty - c.totalAvailable) > EPS) {
+      diffs.push({
+        itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
+        itemId: c.itemId,
+        itemName: s.itemName,
+        clientQty: c.totalAvailable,
+        serverQty: s.availableQty,
       });
     }
   }
@@ -326,7 +398,7 @@ function detectLayerADrift(
         itemId: s.itemId,
         itemName: s.itemName,
         clientQty: 0,
-        serverQty: s.expectedQty,
+        serverQty: s.theoreticalQty,
       });
     }
   }
@@ -377,6 +449,13 @@ async function validateLayerBItems(
   return result;
 }
 
+/**
+ * A+B 병합 규칙 (S4-3-c-4-3):
+ * - A 항목: finalUsedQty>0 → USED source, disposalQty>0 → DISPOSED source (독립 행)
+ * - B 항목: quantity → USED source (재고/폐기 분리 없음)
+ * - 같은 자재는 sources[] 로 병합하되 disposition 분리 유지
+ * - remainingToStock 은 저장 X (InventoryLot.remainingQty 자연 이월)
+ */
 function mergeItems(
   a: ConfirmConsumptionInput["layerAItems"],
   b: LayerBItemWithMeta[],
@@ -398,8 +477,32 @@ function mergeItems(
         totalQty: 0,
         sources: [],
       } as MergedItem);
-    cur.totalQty += it.expectedQty;
-    cur.sources.push({ sourceType: "MEAL_PLAN_AUTO", qty: it.expectedQty });
+
+    // USED source
+    if (it.finalUsedQty > EPS) {
+      cur.totalQty += it.finalUsedQty;
+      cur.sources.push({
+        sourceType: "MEAL_PLAN_AUTO",
+        disposition: "USED",
+        qty: it.finalUsedQty,
+      });
+    }
+
+    // DISPOSED source
+    const disposalQty =
+      it.totalAvailable - it.finalUsedQty - it.remainingToStock;
+    if (disposalQty > EPS) {
+      cur.totalQty += disposalQty;
+      cur.sources.push({
+        sourceType: "MEAL_PLAN_AUTO",
+        disposition: "DISPOSED",
+        qty: disposalQty,
+        disposalReason: it.disposalReason,
+        disposalNote: it.disposalNote,
+      });
+    }
+    // remainingToStock 은 저장 X (재고 자연 이월)
+
     map.set(key, cur);
   }
 
@@ -418,6 +521,7 @@ function mergeItems(
     cur.totalQty += it.quantity;
     cur.sources.push({
       sourceType: "MANUAL_ADDITION",
+      disposition: "USED",
       qty: it.quantity,
       note: it.note,
     });

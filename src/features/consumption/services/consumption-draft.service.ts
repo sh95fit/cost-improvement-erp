@@ -67,11 +67,6 @@ export type ConsumptionDraftItem = {
   theoreticalQty: number;
   /** 발주 단위로 환산 후 반올림한 최종 사용량 (Math.round, 0→1 예외) */
   roundedFinalQty: number;
-  /**
-   * @deprecated c-4-3 UI 재작성 시 제거. 현재는 theoreticalQty 와 동일.
-   * 기존 소비자 (confirm-consumption, layer-b-editor, draft-form) 호환 목적.
-   */
-  expectedQty: number;
 
   // ── 발주 단위 (SupplierItem 경유) ──
   /** true = defaultSupplierItem 등록됨. false = 미등록 (기본 단위 fallback) */
@@ -375,7 +370,6 @@ export async function buildConsumptionDraft(
       productionLineName: v.productionLineName,
       theoreticalQty: theoretical,
       roundedFinalQty: roundToOrderUnit(theoretical, factor),
-      expectedQty: theoretical, // deprecated alias
       hasOrderUnit,
       packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
       packagingFactor: factor,
@@ -403,7 +397,6 @@ export async function buildConsumptionDraft(
       productionLineName: null,
       theoreticalQty: theoretical,
       roundedFinalQty: roundToOrderUnit(theoretical, factor),
-      expectedQty: theoretical, // deprecated alias
       hasOrderUnit,
       packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
       packagingFactor: factor,
@@ -414,19 +407,9 @@ export async function buildConsumptionDraft(
     });
   }
 
-  // 정렬: itemType → lineupName → productionLineName → itemName
-  layerAItems.sort((a, b) => {
-    if (a.itemType !== b.itemType) {
-      return a.itemType === ItemType.MATERIAL ? -1 : 1;
-    }
-    const la = a.lineupName ?? "";
-    const lb = b.lineupName ?? "";
-    if (la !== lb) return la.localeCompare(lb, "ko");
-    const pa = a.productionLineName ?? "";
-    const pb = b.productionLineName ?? "";
-    if (pa !== pb) return pa.localeCompare(pb, "ko");
-    return a.itemName.localeCompare(b.itemName, "ko");
-  });
+  // c-4-3: 자재/부자재 혼합 이름 오름차순 (테스트 명세: buildConsumptionDraft 반환 순서)
+  // 라인업/라인 그룹핑은 UI(consumption-draft-form)에서 담당
+  layerAItems.sort((a, b) => a.itemName.localeCompare(b.itemName, "ko"));
 
   return {
     header: {
@@ -438,7 +421,7 @@ export async function buildConsumptionDraft(
     layerAItems,
     references: {
       generatedAt: new Date(),
-      note: "S4-3-c-4-2 buildConsumptionDraft (라인업/라인별 세분화 + 발주단위 노출)",
+      note: "S4-3-c-4-3 buildConsumptionDraft (라인업/라인별 세분화 + 발주단위 노출 + expectedQty alias 제거)",
     },
   };
 }

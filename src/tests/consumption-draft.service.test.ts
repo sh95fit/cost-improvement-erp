@@ -9,7 +9,6 @@ import {
 
 import { mockPrisma } from "./mocks/prisma";
 
-// getAvailableQty 모킹 (실 lot 조회 후 각 lot 잔량을 그대로 반환하도록)
 vi.mock("@/features/inventory/services/reservation.service", () => ({
   getAvailableQty: vi.fn(),
 }));
@@ -26,30 +25,107 @@ const LOCATION_ID = "loc-1";
 const TARGET_DATE = new Date("2026-07-15T00:00:00.000Z");
 const GROUP_ID = "mpg-1";
 
-// 진입 가드는 이미 STEP-a 에서 검증됨. 여기서는 mockPrisma.mealPlanGroup.findFirst
-// 를 통해 통과시킨다 (assertMealPlanCompletedForConsumption 이 내부에서 호출).
+// ────────────────────────────────────────────────────────────
+// Mock 헬퍼 (c-4-2/c-4-3 include 스키마 대응)
+// ────────────────────────────────────────────────────────────
 
-function setupCompletedGroup(overrides?: {
-  mealCounts?: Array<{ estimatedCount: number | null; finalCount: number | null }>;
+type MealCountMock = {
+  companyMealSlotId: string;
+  lineupId: string;
+  estimatedCount: number | null;
+  finalCount: number | null;
+};
+
+function makeMaterialMasterMock(
+  id: string,
+  name: string,
+  code: string,
+  unit = "g",
+) {
+  return {
+    id,
+    name,
+    code,
+    unit,
+    defaultSupplierItem: null,
+  };
+}
+
+function makeSubsidiaryMasterMock(
+  id: string,
+  name: string,
+  code: string,
+  unit = "ea",
+) {
+  return {
+    id,
+    name,
+    code,
+    unit,
+    defaultSupplierItem: null,
+  };
+}
+
+function makeMRMock(args: {
+  id?: string;
+  materialMasterId: string;
+  requiredQty: number;
+  unit?: string;
+  lineupId?: string | null;
+  productionLineId?: string | null;
+  materialName: string;
+  materialCode: string;
 }) {
-  // 진입 가드에서 호출되는 findFirst 는 select { id, status } 만 조회
-  // 이후 buildConsumptionDraft 가 다시 findFirst 를 호출 (mealCounts include)
-  // → 두 번 응답해야 하므로 mockResolvedValueOnce 를 두 번 세팅
+  return {
+    id: args.id ?? `mr-${args.materialMasterId}`,
+    materialMasterId: args.materialMasterId,
+    requiredQty: args.requiredQty,
+    unit: args.unit ?? "g",
+    lineupId: args.lineupId ?? null,
+    productionLineId: args.productionLineId ?? null,
+    materialMaster: makeMaterialMasterMock(
+      args.materialMasterId,
+      args.materialName,
+      args.materialCode,
+      args.unit ?? "g",
+    ),
+    lineup:
+      args.lineupId != null
+        ? { id: args.lineupId, name: `lineup-${args.lineupId}` }
+        : null,
+    productionLine:
+      args.productionLineId != null
+        ? { id: args.productionLineId, name: `line-${args.productionLineId}` }
+        : null,
+  };
+}
+
+/**
+ * 진입 가드 + 본 조회 두 번의 findFirst 응답을 세팅.
+ * c-4-2 이후 mealCounts include 로 조회하므로 companyMealSlotId/lineupId 필수.
+ */
+function setupCompletedGroup(overrides?: { mealCounts?: MealCountMock[] }) {
   mockPrisma.mealPlanGroup.findFirst
     .mockResolvedValueOnce({ id: GROUP_ID, status: MealPlanStatus.COMPLETED })
     .mockResolvedValueOnce({
       id: GROUP_ID,
       planDate: TARGET_DATE,
-      mealCounts: overrides?.mealCounts ?? [
-        { estimatedCount: 100, finalCount: 95 },
-      ],
+      mealCounts:
+        overrides?.mealCounts ??
+        [
+          {
+            companyMealSlotId: "cms-1",
+            lineupId: "lu-1",
+            estimatedCount: 100,
+            finalCount: 95,
+          },
+        ],
     });
 }
 
-describe("buildConsumptionDraft (S4-3-b)", () => {
+describe("buildConsumptionDraft (S4-3-c-4-3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 기본: 모든 사이드 조회를 빈 값으로
     mockPrisma.materialRequirement.findMany.mockResolvedValue([]);
     mockPrisma.mealPlan.findMany.mockResolvedValue([]);
     mockPrisma.mealCount.findMany.mockResolvedValue([]);
@@ -61,20 +137,19 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
   it("자재 Layer A: MR(FINAL) 행이 자재별로 SUM 되어 반환된다", async () => {
     setupCompletedGroup();
 
-    // 동일 자재 mat-1 이 두 productionLine 에 걸쳐 있음 → 300 + 200 = 500 g
     mockPrisma.materialRequirement.findMany.mockResolvedValue([
-      {
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 300,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "양파", code: "M001" },
-      },
-      {
+        materialName: "양파",
+        materialCode: "M001",
+      }),
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 200,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "양파", code: "M001" },
-      },
+        materialName: "양파",
+        materialCode: "M001",
+      }),
     ]);
 
     const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
@@ -91,10 +166,9 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
       itemId: "mat-1",
       itemName: "양파",
       unit: "g",
-      expectedQty: 500,
+      theoreticalQty: 500,
     });
 
-    // MR 조회는 (companyId, mealPlanGroupId, countSource=FINAL, locationId, deletedAt=null)
     expect(mockPrisma.materialRequirement.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -110,17 +184,23 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
 
   it("부자재 Layer A: MealPlanAccessory(PER_MEAL_COUNT) × finalCount 로 산출", async () => {
     setupCompletedGroup({
-      mealCounts: [{ estimatedCount: 100, finalCount: 100 }],
+      mealCounts: [
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lu-1",
+          estimatedCount: 100,
+          finalCount: 100,
+        },
+      ],
     });
 
     mockPrisma.materialRequirement.findMany.mockResolvedValue([
-      // 최소 1건 필요 (MR 부재 방어 통과용)
-      {
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 100,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "자재A", code: "M001" },
-      },
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
     ]);
 
     mockPrisma.mealPlan.findMany.mockResolvedValue([
@@ -130,21 +210,20 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
         lineupId: "lu-1",
         accessories: [
           {
+            id: "acc-1",
             subsidiaryMasterId: "sub-1",
-            quantity: 2, // 1인분당 2개
-            subsidiaryMaster: {
-              id: "sub-1",
-              name: "젓가락",
-              code: "S001",
-              unit: "ea",
-            },
+            quantity: 2,
+            fixedQuantity: null,
+            consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
+            subsidiaryMaster: makeSubsidiaryMasterMock(
+              "sub-1",
+              "젓가락",
+              "S001",
+              "ea",
+            ),
           },
         ],
       },
-    ]);
-
-    mockPrisma.mealCount.findMany.mockResolvedValue([
-      { companyMealSlotId: "cms-1", lineupId: "lu-1", finalCount: 100 },
     ]);
 
     const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
@@ -157,31 +236,44 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
       itemId: "sub-1",
       itemName: "젓가락",
       unit: "ea",
-      expectedQty: 200, // 100 × 2
+      theoreticalQty: 200, // 100 × 2
+      consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
     });
   });
 
   it("availableQty 는 InventoryLot 별 getAvailableQty 합계로 채워진다", async () => {
     setupCompletedGroup();
     mockPrisma.materialRequirement.findMany.mockResolvedValue([
-      {
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 100,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "자재A", code: "M001" },
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
+    ]);
+    mockPrisma.inventoryLot.findMany.mockResolvedValueOnce([
+      {
+        id: "lot-1",
+        materialMasterId: "mat-1",
+        subsidiaryMasterId: null,
+        remainingQty: 300,
+        purchaseKind: null,
+        itemType: ItemType.MATERIAL,
+      },
+      {
+        id: "lot-2",
+        materialMasterId: "mat-1",
+        subsidiaryMasterId: null,
+        remainingQty: 200,
+        purchaseKind: null,
+        itemType: ItemType.MATERIAL,
       },
     ]);
-    // computeAvailability(MATERIAL, [mat-1]) 에 응답
-    mockPrisma.inventoryLot.findMany.mockResolvedValueOnce([
-      { id: "lot-1", materialMasterId: "mat-1", subsidiaryMasterId: null, remainingQty: 300, purchaseKind: null, itemType: ItemType.MATERIAL },
-      { id: "lot-2", materialMasterId: "mat-1", subsidiaryMasterId: null, remainingQty: 200, purchaseKind: null, itemType: ItemType.MATERIAL },
-    ]);
-    // SUBSIDIARY 조회 응답 (빈)
     mockPrisma.inventoryLot.findMany.mockResolvedValueOnce([]);
 
     (getAvailableQty as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(300) // lot-1
-      .mockResolvedValueOnce(150); // lot-2 (50 예약)
+      .mockResolvedValueOnce(300)
+      .mockResolvedValueOnce(150);
 
     const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
     expect(draft.layerAItems[0].availableQty).toBe(450);
@@ -190,12 +282,12 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
   it("당일입고: ReceivingNote(status=CONFIRMED, receivedDate=targetDate) 자재별 receivedQty 합계", async () => {
     setupCompletedGroup();
     mockPrisma.materialRequirement.findMany.mockResolvedValue([
-      {
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 100,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "자재A", code: "M001" },
-      },
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
     ]);
 
     mockPrisma.receivingNote.findMany.mockResolvedValue([
@@ -224,7 +316,6 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
     const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
     expect(draft.layerAItems[0].inboundQtyOnDate).toBe(100);
 
-    // 조회 조건 검증
     expect(mockPrisma.receivingNote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -246,10 +337,9 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
   });
 
   it("MealPlanGroup(status=COMPLETED) 부재 시 MealPlanGroupNotFoundError", async () => {
-    // 진입 가드는 통과, buildConsumptionDraft 내부 findFirst 에서 미발견
     mockPrisma.mealPlanGroup.findFirst
-      .mockResolvedValueOnce({ id: GROUP_ID, status: MealPlanStatus.COMPLETED }) // 가드
-      .mockResolvedValueOnce(null); // 내부 조회
+      .mockResolvedValueOnce({ id: GROUP_ID, status: MealPlanStatus.COMPLETED })
+      .mockResolvedValueOnce(null);
 
     await expect(
       buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID),
@@ -257,21 +347,30 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
   });
 
   it("자재+부자재 혼합 반환은 이름 오름차순으로 정렬된다", async () => {
-    setupCompletedGroup();
+    setupCompletedGroup({
+      mealCounts: [
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lu-1",
+          estimatedCount: 10,
+          finalCount: 10,
+        },
+      ],
+    });
 
     mockPrisma.materialRequirement.findMany.mockResolvedValue([
-      {
+      makeMRMock({
         materialMasterId: "mat-1",
         requiredQty: 100,
-        unit: "g",
-        materialMaster: { id: "mat-1", name: "양파", code: "M001" },
-      },
-      {
+        materialName: "양파",
+        materialCode: "M001",
+      }),
+      makeMRMock({
         materialMasterId: "mat-2",
         requiredQty: 50,
-        unit: "g",
-        materialMaster: { id: "mat-2", name: "감자", code: "M002" },
-      },
+        materialName: "감자",
+        materialCode: "M002",
+      }),
     ]);
     mockPrisma.mealPlan.findMany.mockResolvedValue([
       {
@@ -280,19 +379,24 @@ describe("buildConsumptionDraft (S4-3-b)", () => {
         lineupId: "lu-1",
         accessories: [
           {
+            id: "acc-1",
             subsidiaryMasterId: "sub-1",
             quantity: 1,
-            subsidiaryMaster: { id: "sub-1", name: "냅킨", code: "S001", unit: "ea" },
+            fixedQuantity: null,
+            consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
+            subsidiaryMaster: makeSubsidiaryMasterMock(
+              "sub-1",
+              "냅킨",
+              "S001",
+              "ea",
+            ),
           },
         ],
       },
     ]);
-    mockPrisma.mealCount.findMany.mockResolvedValue([
-      { companyMealSlotId: "cms-1", lineupId: "lu-1", finalCount: 10 },
-    ]);
 
     const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
     const names = draft.layerAItems.map((i) => i.itemName);
-    expect(names).toEqual(["감자", "냅킨", "양파"]);
+    expect(names).toEqual(["감자", "냅킨", "양파"]);   // c-4-3: 자재/부자재 혼합 이름 가나다순
   });
 });
