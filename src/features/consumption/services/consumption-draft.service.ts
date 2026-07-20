@@ -13,37 +13,28 @@ import { assertMealPlanCompletedForConsumption } from "./consumption-guard.servi
 
 /**
  * ════════════════════════════════════════
- * S4-3-b — buildConsumptionDraft
+ * S4-3-c-4-2 — buildConsumptionDraft (확장판)
  * ════════════════════════════════════════
  *
- * 헌법 P13: 사용 처리 진입 시점에 Layer A(자동 산출) 초안과 참조 데이터를
- * 순수 계산·조회한다. DB 쓰기 없음. 실제 ConsumptionItem 은 confirmConsumption(S4-3-d)
- * 에서 처음 INSERT.
+ * 헌법 P4/P8/P11/P12/P13/P14 준수.
  *
- * 입력:
- *   (companyId, targetDate, locationId)
- *
- * 출력:
- *   {
- *     header: { mealPlanGroupId, planDate, totalEstimatedCount, totalFinalCount },
- *     layerAItems: [{ itemType, itemId, itemName, itemCode, unit, expectedQty,
- *                     sourceType, cookingPlanId (null for now),
- *                     availableQty, inboundQtyOnDate }],
- *     references: { generatedAt, note }
- *   }
+ * 이전(S4-3-b) 대비 변경:
+ *   1) 집계 키: (itemType, itemId, lineupId, productionLineId) — 라인업/라인 세분화
+ *   2) 부자재 consumptionMode 이원화 (PER_MEAL_COUNT + FIXED_QUANTITY)
+ *   3) 발주 단위(orderUnit) 노출 — SupplierItem.defaultForMaterial/Subsidiary 경유
+ *   4) 이론 사용량 + 반올림 최종 사용량 (Math.round, 0→1 예외)
+ *   5) 라인업/라인 이름 include (UI 그룹핑)
+ *   6) computeAvailability 트랜잭션 클라이언트 전달 (P11 강화)
  *
  * 스키마 실측 근거:
- *   - MealPlanGroup(companyId, planDate) 유니크 → targetDate 로 groupId 결정
- *   - MaterialRequirement(FINAL) 은 status COMPLETED 전이 시 meal-plan.service 가
- *     동일 트랜잭션에서 자동 생성 (재산출 필요 없음)
- *   - MealPlanAccessory(consumptionMode=PER_MEAL_COUNT) 는 MR 범위 외 → 별도 산출
- *   - MealPlanAccessory.quantity 는 "1인분당 수량", finalCount 는 MealCount 조인
- *   - InventoryLot.materialMasterId/subsidiaryMasterId nullable + itemType XOR
- *   - ReceivingNote.receivedDate = targetDate & status = CONFIRMED → 당일입고
+ *   - MaterialRequirement UNIQUE: (mealPlanGroupId, productionLineId, lineupId,
+ *     materialMasterId, countSource) — 물리적으로 이미 세분화 저장
+ *   - MealPlanAccessory: lineupId 필드 없음 → 라인업 무관 (lineupId=null)
+ *   - UnitMaster: code(문자 심볼, 예 "kg"/"팩"), name(전체명) — symbol 필드는 없음
+ *   - MaterialMaster/SubsidiaryMaster.defaultSupplierItem → SupplierItem
  *
- * 미해결:
- *   - cookingPlanId 는 현 시점 null (CookingPlan 도메인 S4-2 미착수).
- *     S4-3-d 에서 필요시 productionLineId 기반 조회로 대체 예정.
+ * Prisma 7 주의: select 내부 nested relation 은 반환 타입 추론이 불안정 →
+ * findMany 는 include 방식으로 통일, 응답에서 필요한 필드만 접근.
  */
 
 // ────────────────────────────────────────
@@ -62,13 +53,45 @@ export type ConsumptionDraftItem = {
   itemId: string;
   itemName: string;
   itemCode: string;
+  /** 자재 기본 단위 (BOM 단위: g, ml, ea 등) */
   unit: string;
-  /** Layer A 자동 산출 예상 사용량 (자재는 grams, 부자재는 unit 기준) */
+
+  // ── 라인업/라인 (부자재는 null) ──
+  lineupId: string | null;
+  lineupName: string | null;
+  productionLineId: string | null;
+  productionLineName: string | null;
+
+  // ── 이론 사용량 (P14) ──
+  /** 이론 사용량 (자재: requiredQty 합, 부자재: quantity*mealCount 또는 fixedQuantity) */
+  theoreticalQty: number;
+  /** 발주 단위로 환산 후 반올림한 최종 사용량 (Math.round, 0→1 예외) */
+  roundedFinalQty: number;
+  /**
+   * @deprecated c-4-3 UI 재작성 시 제거. 현재는 theoreticalQty 와 동일.
+   * 기존 소비자 (confirm-consumption, layer-b-editor, draft-form) 호환 목적.
+   */
   expectedQty: number;
-  /** 대상 Location 의 해당 아이템 availableQty 합계 (Reservation 반영) */
+
+  // ── 발주 단위 (SupplierItem 경유) ──
+  /** true = defaultSupplierItem 등록됨. false = 미등록 (기본 단위 fallback) */
+  hasOrderUnit: boolean;
+  /** 발주 단위 심볼 (예 "kg"/"팩"). 미등록 시 unit 과 동일 */
+  packagingUnit: string;
+  /** 1 발주단위 = packagingFactor 기본단위 (예 1kg=1000g → 1000). 미등록 시 1 */
+  packagingFactor: number;
+
+  // ── 재고/입고 ──
+  /** locationId 기준 availableQty 합계 (Reservation 반영). 라인업 무관 총계 */
   availableQty: number;
-  /** targetDate 에 CONFIRMED 된 ReceivingNote 로 입고된 수량 합계 */
+  /** targetDate CONFIRMED ReceivingNote 로 입고된 수량 합계 */
   inboundQtyOnDate: number;
+
+  // ── 원천 정보 ──
+  /** MATERIAL: MaterialRequirement.id[] / SUBSIDIARY: MealPlanAccessory.id[] */
+  sourceIds: string[];
+  /** SUBSIDIARY 만 해당 */
+  consumptionMode: ConsumptionMode | null;
 };
 
 export type ConsumptionDraft = {
@@ -101,6 +124,17 @@ export class MealPlanGroupNotFoundError extends Error {
 }
 
 // ────────────────────────────────────────
+// 라운딩 헬퍼 (P14)
+// ────────────────────────────────────────
+
+function roundToOrderUnit(theoreticalQty: number, factor: number): number {
+  if (theoreticalQty <= 0) return 0;
+  const inOrderUnit = theoreticalQty / (factor > 0 ? factor : 1);
+  const rounded = Math.round(inOrderUnit);
+  return rounded === 0 ? 1 : rounded;
+}
+
+// ────────────────────────────────────────
 // 메인 서비스
 // ────────────────────────────────────────
 
@@ -112,26 +146,22 @@ export async function buildConsumptionDraft(
 ): Promise<ConsumptionDraft> {
   const client = tx ?? prisma;
 
-  // 0) 진입 가드 재확인 (외부에서 이미 통과했더라도 방어)
+  // 0) 진입 가드 (P13)
   await assertMealPlanCompletedForConsumption(companyId, targetDate, locationId, tx);
 
-  // UTC 자정 정규화 (planDate 는 @db.Date)
   const normalizedDate = normalizeToUtcDate(targetDate);
 
-  // 1) MealPlanGroup 확정
-  const group = await prisma.mealPlanGroup.findFirst({
+  // 1) MealPlanGroup 확정 — include 방식
+  const group = await client.mealPlanGroup.findFirst({
     where: {
       companyId,
       planDate: normalizedDate,
       deletedAt: null,
       status: MealPlanStatus.COMPLETED,
     },
-    select: {
-      id: true,
-      planDate: true,
+    include: {
       mealCounts: {
         where: { deletedAt: null },
-        select: { estimatedCount: true, finalCount: true },
       },
     },
   });
@@ -148,8 +178,16 @@ export async function buildConsumptionDraft(
     0,
   );
 
-  // 2) Layer A 자재: MaterialRequirement(FINAL) 조회 → 자재별 SUM
-  const mrRows = await prisma.materialRequirement.findMany({
+  const finalCountByKey = new Map<string, number>();
+  for (const mc of group.mealCounts) {
+    finalCountByKey.set(
+      `${mc.companyMealSlotId}::${mc.lineupId}`,
+      mc.finalCount ?? 0,
+    );
+  }
+
+  // 2) MaterialRequirement(FINAL) — include 방식으로 relation 로드
+  const mrRows = await client.materialRequirement.findMany({
     where: {
       companyId,
       mealPlanGroupId: group.id,
@@ -157,137 +195,159 @@ export async function buildConsumptionDraft(
       locationId,
       deletedAt: null,
     },
-    select: {
-      materialMasterId: true,
-      requiredQty: true,
-      unit: true,
+    include: {
       materialMaster: {
-        select: { id: true, name: true, code: true },
+        include: {
+          defaultSupplierItem: {
+            include: {
+              supplyUnit: true,
+            },
+          },
+        },
       },
+      lineup: true,
+      productionLine: true,
     },
   });
 
   if (mrRows.length === 0) {
-    // 부자재만 있는 경우도 실무에선 드무므로 방어적으로 throw.
-    // 완전한 부재는 P13 자동 생성 로직 실패를 의미.
     throw new MaterialRequirementNotGeneratedError(group.id);
   }
 
-  // 자재별 aggregate (같은 자재가 여러 productionLine 에 걸쳐 있을 수 있음)
-  const materialAgg = new Map<
-    string,
-    { qty: number; unit: string; name: string; code: string }
-  >();
+  // 자재 집계 키: materialId::lineupId::productionLineId
+  type MaterialAggValue = {
+    materialId: string;
+    materialName: string;
+    materialCode: string;
+    baseUnit: string;
+    lineupId: string | null;
+    lineupName: string | null;
+    productionLineId: string | null;
+    productionLineName: string | null;
+    supplyUnitCode: string | null;
+    supplyUnitQty: number | null;
+    qty: number;
+    sourceIds: string[];
+  };
+  const materialAgg = new Map<string, MaterialAggValue>();
+
   for (const r of mrRows) {
-    const prev = materialAgg.get(r.materialMasterId);
+    const key = `${r.materialMasterId}::${r.lineupId ?? "-"}::${r.productionLineId ?? "-"}`;
+    const prev = materialAgg.get(key);
     if (prev) {
       prev.qty += r.requiredQty;
+      prev.sourceIds.push(r.id);
     } else {
-      materialAgg.set(r.materialMasterId, {
+      materialAgg.set(key, {
+        materialId: r.materialMasterId,
+        materialName: r.materialMaster.name,
+        materialCode: r.materialMaster.code,
+        baseUnit: r.materialMaster.unit,
+        lineupId: r.lineupId,
+        lineupName: r.lineup?.name ?? null,
+        productionLineId: r.productionLineId,
+        productionLineName: r.productionLine?.name ?? null,
+        supplyUnitCode: r.materialMaster.defaultSupplierItem?.supplyUnit.code ?? null,
+        supplyUnitQty: r.materialMaster.defaultSupplierItem?.supplyUnitQty ?? null,
         qty: r.requiredQty,
-        unit: r.unit,
-        name: r.materialMaster.name,
-        code: r.materialMaster.code,
+        sourceIds: [r.id],
       });
     }
   }
 
-  // 3) Layer A 부자재: MealPlanAccessory(PER_MEAL_COUNT) × MealCount.finalCount
-  //    MealPlan 은 MealPlanGroup 하위, MealCount 는 (group, companyMealSlot, lineup) 조합
-  const mealPlans = await prisma.mealPlan.findMany({
+  // 3) MealPlanAccessory — include 방식
+  const mealPlans = await client.mealPlan.findMany({
     where: {
       mealPlanGroupId: group.id,
       deletedAt: null,
     },
-    select: {
-      id: true,
-      companyMealSlotId: true,
-      lineupId: true,
+    include: {
       accessories: {
-        where: {
-          deletedAt: null,
-          consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
-        },
-        select: {
-          subsidiaryMasterId: true,
-          quantity: true,
+        where: { deletedAt: null },
+        include: {
           subsidiaryMaster: {
-            select: { id: true, name: true, code: true, unit: true },
+            include: {
+              defaultSupplierItem: {
+                include: {
+                  supplyUnit: true,
+                },
+              },
+            },
           },
         },
       },
     },
   });
 
-  // finalCount 조회 헬퍼 (mealPlan → (group, companyMealSlot, lineup) 매핑)
-  const mealCountByKey = new Map<string, number>();
-  for (const mc of group.mealCounts) {
-    // NOTE: 위 select 에는 keys 가 없음. 다시 조회 필요 → 직접 재조회
-  }
-  // ↑ 위 헬퍼는 group.mealCounts select 를 확장해서 재작성 필요. 아래에서 재조회.
-  const mealCountsFull = await prisma.mealCount.findMany({
-    where: {
-      mealPlanGroupId: group.id,
-      deletedAt: null,
-    },
-    select: {
-      companyMealSlotId: true,
-      lineupId: true,
-      finalCount: true,
-    },
-  });
-  const finalCountByKey = new Map<string, number>();
-  for (const mc of mealCountsFull) {
-    finalCountByKey.set(
-      `${mc.companyMealSlotId}::${mc.lineupId}`,
-      mc.finalCount ?? 0,
-    );
-  }
+  // 부자재 집계 키: subsidiaryId::consumptionMode
+  type SubsidiaryAggValue = {
+    subsidiaryId: string;
+    subsidiaryName: string;
+    subsidiaryCode: string;
+    baseUnit: string;
+    consumptionMode: ConsumptionMode;
+    supplyUnitCode: string | null;
+    supplyUnitQty: number | null;
+    qty: number;
+    sourceIds: string[];
+  };
+  const subsidiaryAgg = new Map<string, SubsidiaryAggValue>();
 
-  // subsidiaryMasterId → 누적
-  const subsidiaryAgg = new Map<
-    string,
-    { qty: number; unit: string; name: string; code: string }
-  >();
   for (const mp of mealPlans) {
     const key = `${mp.companyMealSlotId}::${mp.lineupId}`;
     const finalCount = finalCountByKey.get(key) ?? 0;
-    if (finalCount === 0) continue;
 
     for (const acc of mp.accessories) {
-      const addQty = finalCount * acc.quantity;
-      const prev = subsidiaryAgg.get(acc.subsidiaryMasterId);
+      let addQty = 0;
+      if (acc.consumptionMode === ConsumptionMode.PER_MEAL_COUNT) {
+        if (finalCount === 0) continue;
+        addQty = finalCount * acc.quantity;
+      } else if (acc.consumptionMode === ConsumptionMode.FIXED_QUANTITY) {
+        // D2 α: mealCount 무관, fixedQuantity 그대로
+        addQty = acc.fixedQuantity ?? 0;
+      }
+      if (addQty <= 0) continue;
+
+      const aggKey = `${acc.subsidiaryMasterId}::${acc.consumptionMode}`;
+      const prev = subsidiaryAgg.get(aggKey);
       if (prev) {
         prev.qty += addQty;
+        prev.sourceIds.push(acc.id);
       } else {
-        subsidiaryAgg.set(acc.subsidiaryMasterId, {
+        subsidiaryAgg.set(aggKey, {
+          subsidiaryId: acc.subsidiaryMasterId,
+          subsidiaryName: acc.subsidiaryMaster.name,
+          subsidiaryCode: acc.subsidiaryMaster.code,
+          baseUnit: acc.subsidiaryMaster.unit,
+          consumptionMode: acc.consumptionMode,
+          supplyUnitCode:
+            acc.subsidiaryMaster.defaultSupplierItem?.supplyUnit.code ?? null,
+          supplyUnitQty:
+            acc.subsidiaryMaster.defaultSupplierItem?.supplyUnitQty ?? null,
           qty: addQty,
-          unit: acc.subsidiaryMaster.unit,
-          name: acc.subsidiaryMaster.name,
-          code: acc.subsidiaryMaster.code,
+          sourceIds: [acc.id],
         });
       }
     }
   }
 
-  // 4) 자재별 availableQty 집계
-  //    각 자재에 대해 대상 location 의 lot 을 조회 → getAvailableQty 매핑·합산
+  // 4) availableQty (라인업 무관 총계)
   const materialAvailability = await computeAvailability(
-    Array.from(materialAgg.keys()),
-    "MATERIAL",
+    Array.from(new Set(Array.from(materialAgg.values()).map((v) => v.materialId))),
+    ItemType.MATERIAL,
     companyId,
     locationId,
     client,
   );
   const subsidiaryAvailability = await computeAvailability(
-    Array.from(subsidiaryAgg.keys()),
-    "SUBSIDIARY",
+    Array.from(new Set(Array.from(subsidiaryAgg.values()).map((v) => v.subsidiaryId))),
+    ItemType.SUBSIDIARY,
     companyId,
     locationId,
     client,
   );
 
-  // 5) 당일입고 수량 집계 (ReceivingNote.receivedDate = targetDate & CONFIRMED)
+  // 5) 당일 입고
   const inboundMap = await computeInboundOnDate(
     companyId,
     locationId,
@@ -295,36 +355,78 @@ export async function buildConsumptionDraft(
     client,
   );
 
-  // 6) Layer A 라인 조립
+  // 6) Layer A 조립
   const layerAItems: ConsumptionDraftItem[] = [];
 
-  for (const [materialId, agg] of materialAgg) {
+  for (const v of materialAgg.values()) {
+    const hasOrderUnit =
+      !!v.supplyUnitCode && v.supplyUnitQty !== null && v.supplyUnitQty > 0;
+    const factor = hasOrderUnit ? v.supplyUnitQty! : 1;
+    const theoretical = v.qty;
     layerAItems.push({
       itemType: ItemType.MATERIAL,
-      itemId: materialId,
-      itemName: agg.name,
-      itemCode: agg.code,
-      unit: agg.unit,
-      expectedQty: agg.qty,
-      availableQty: materialAvailability.get(materialId) ?? 0,
-      inboundQtyOnDate: inboundMap.get(`MATERIAL::${materialId}`) ?? 0,
-    });
-  }
-  for (const [subsidiaryId, agg] of subsidiaryAgg) {
-    layerAItems.push({
-      itemType: ItemType.SUBSIDIARY,
-      itemId: subsidiaryId,
-      itemName: agg.name,
-      itemCode: agg.code,
-      unit: agg.unit,
-      expectedQty: agg.qty,
-      availableQty: subsidiaryAvailability.get(subsidiaryId) ?? 0,
-      inboundQtyOnDate: inboundMap.get(`SUBSIDIARY::${subsidiaryId}`) ?? 0,
+      itemId: v.materialId,
+      itemName: v.materialName,
+      itemCode: v.materialCode,
+      unit: v.baseUnit,
+      lineupId: v.lineupId,
+      lineupName: v.lineupName,
+      productionLineId: v.productionLineId,
+      productionLineName: v.productionLineName,
+      theoreticalQty: theoretical,
+      roundedFinalQty: roundToOrderUnit(theoretical, factor),
+      expectedQty: theoretical, // deprecated alias
+      hasOrderUnit,
+      packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
+      packagingFactor: factor,
+      availableQty: materialAvailability.get(v.materialId) ?? 0,
+      inboundQtyOnDate: inboundMap.get(`MATERIAL::${v.materialId}`) ?? 0,
+      sourceIds: v.sourceIds,
+      consumptionMode: null,
     });
   }
 
-  // 이름 오름차순 정렬 (UI 안정성)
-  layerAItems.sort((a, b) => a.itemName.localeCompare(b.itemName, "ko"));
+  for (const v of subsidiaryAgg.values()) {
+    const hasOrderUnit =
+      !!v.supplyUnitCode && v.supplyUnitQty !== null && v.supplyUnitQty > 0;
+    const factor = hasOrderUnit ? v.supplyUnitQty! : 1;
+    const theoretical = v.qty;
+    layerAItems.push({
+      itemType: ItemType.SUBSIDIARY,
+      itemId: v.subsidiaryId,
+      itemName: v.subsidiaryName,
+      itemCode: v.subsidiaryCode,
+      unit: v.baseUnit,
+      lineupId: null,
+      lineupName: null,
+      productionLineId: null,
+      productionLineName: null,
+      theoreticalQty: theoretical,
+      roundedFinalQty: roundToOrderUnit(theoretical, factor),
+      expectedQty: theoretical, // deprecated alias
+      hasOrderUnit,
+      packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
+      packagingFactor: factor,
+      availableQty: subsidiaryAvailability.get(v.subsidiaryId) ?? 0,
+      inboundQtyOnDate: inboundMap.get(`SUBSIDIARY::${v.subsidiaryId}`) ?? 0,
+      sourceIds: v.sourceIds,
+      consumptionMode: v.consumptionMode,
+    });
+  }
+
+  // 정렬: itemType → lineupName → productionLineName → itemName
+  layerAItems.sort((a, b) => {
+    if (a.itemType !== b.itemType) {
+      return a.itemType === ItemType.MATERIAL ? -1 : 1;
+    }
+    const la = a.lineupName ?? "";
+    const lb = b.lineupName ?? "";
+    if (la !== lb) return la.localeCompare(lb, "ko");
+    const pa = a.productionLineName ?? "";
+    const pb = b.productionLineName ?? "";
+    if (pa !== pb) return pa.localeCompare(pb, "ko");
+    return a.itemName.localeCompare(b.itemName, "ko");
+  });
 
   return {
     header: {
@@ -335,9 +437,9 @@ export async function buildConsumptionDraft(
     },
     layerAItems,
     references: {
-        generatedAt: new Date(),
-        note: "S4-3-b buildConsumptionDraft (Layer A 자동 산출 완료)",
-      },
+      generatedAt: new Date(),
+      note: "S4-3-c-4-2 buildConsumptionDraft (라인업/라인별 세분화 + 발주단위 노출)",
+    },
   };
 }
 
@@ -352,12 +454,12 @@ function normalizeToUtcDate(d: Date): Date {
 }
 
 /**
- * 자재/부자재 목록에 대해 locationId 기준 availableQty 합계를 반환.
- * 각 lot 에 getAvailableQty() 를 매핑 (예약 반영).
+ * 자재/부자재 목록에 대해 locationId 기준 availableQty 합계 반환.
+ * S4-3-c-4-2 hotfix: getAvailableQty 에 트랜잭션 클라이언트 전달 (P11 격리)
  */
 async function computeAvailability(
   itemIds: string[],
-  itemType: "MATERIAL" | "SUBSIDIARY",
+  itemType: ItemType,
   companyId: string,
   locationId: string,
   client: Prisma.TransactionClient | typeof prisma = prisma,
@@ -368,9 +470,9 @@ async function computeAvailability(
   const where: Prisma.InventoryLotWhereInput = {
     companyId,
     locationId,
-    itemType: itemType === "MATERIAL" ? ItemType.MATERIAL : ItemType.SUBSIDIARY,
+    itemType,
     remainingQty: { gt: 0 },
-    ...(itemType === "MATERIAL"
+    ...(itemType === ItemType.MATERIAL
       ? { materialMasterId: { in: itemIds } }
       : { subsidiaryMasterId: { in: itemIds } }),
   };
@@ -389,18 +491,19 @@ async function computeAvailability(
 
   for (const lot of lots) {
     const key =
-      itemType === "MATERIAL"
+      itemType === ItemType.MATERIAL
         ? lot.materialMasterId!
         : lot.subsidiaryMasterId!;
-    const avail = await getAvailableQty(lot.id);
+    // ★ hotfix: tx 전달로 P11 격리 강화
+    const avail = await getAvailableQty(lot.id, client as Prisma.TransactionClient);
     result.set(key, (result.get(key) ?? 0) + avail);
   }
   return result;
 }
 
 /**
- * targetDate 에 CONFIRMED 된 ReceivingNote 로부터 자재/부자재별 입고량 합계.
- * key 형식: `${itemType}::${itemId}` (MATERIAL / SUBSIDIARY 통합 맵)
+ * targetDate 에 CONFIRMED ReceivingNote 로부터 자재/부자재별 입고량 합계.
+ * key: `${itemType}::${itemId}`
  */
 async function computeInboundOnDate(
   companyId: string,
@@ -410,8 +513,6 @@ async function computeInboundOnDate(
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
 
-  // ReceivingNote.receivedDate = targetDate & CONFIRMED
-  // + PurchaseOrder.locationId = locationId 로 위치 필터
   const notes = await client.receivingNote.findMany({
     where: {
       companyId,
@@ -419,17 +520,10 @@ async function computeInboundOnDate(
       status: ReceivingNoteStatus.CONFIRMED,
       purchaseOrder: { locationId },
     },
-    select: {
+    include: {
       items: {
-        select: {
-          receivedQty: true,
-          purchaseOrderItem: {
-            select: {
-              itemType: true,
-              materialMasterId: true,
-              subsidiaryMasterId: true,
-            },
-          },
+        include: {
+          purchaseOrderItem: true,
         },
       },
     },
