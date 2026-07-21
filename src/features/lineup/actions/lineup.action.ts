@@ -170,7 +170,7 @@ export async function deleteLineupAction(
     return handleActionError(error, "라인업 삭제에 실패했습니다", {
       NOT_FOUND: "라인업을 찾을 수 없습니다",
       DEPENDENCY_EXISTS:
-        "이 라인업을 사용 중인 식단/식수/출고가 있어 삭제할 수 없습니다",
+        "이 라인업을 사용 중인 식단/식수/발주가 있어 삭제할 수 없습니다",
     });
   }
 }

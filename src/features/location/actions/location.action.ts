@@ -204,7 +204,7 @@ export async function deleteLocationAction(
     return handleActionError(error, "위치 삭제에 실패했습니다", {
       NOT_FOUND: "위치를 찾을 수 없습니다",
       DEPENDENCY_EXISTS:
-        "이 위치를 사용 중인 생산라인/재고/이동/출고가 있어 삭제할 수 없습니다",
+        "이 위치를 사용 중인 생산라인/재고/이동/입고가 있어 삭제할 수 없습니다",
     });
   }
 }
