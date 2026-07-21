@@ -123,7 +123,7 @@ function setupCompletedGroup(overrides?: { mealCounts?: MealCountMock[] }) {
     });
 }
 
-describe("buildConsumptionDraft (S4-3-c-4-3)", () => {
+describe("buildConsumptionDraft (S4-3-c-R3-a)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.materialRequirement.findMany.mockResolvedValue([]);
