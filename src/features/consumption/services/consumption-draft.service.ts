@@ -64,17 +64,17 @@ export type ConsumptionDraftItem = {
 
   // ── 이론 사용량 (P14) ──
   /** 이론 사용량 (자재: requiredQty 합, 부자재: quantity*mealCount 또는 fixedQuantity) */
-  theoreticalQty: number;
+  suggestedQty: number;
   /** 공급 단위로 환산 후 반올림한 최종 사용량 (Math.round, 0→1 예외) */
   roundedFinalQty: number;
 
   // ── 공급 단위 (Material.supplyUnitId / Subsidiary.supplyUnitId 정본) ──
   /** true = defaultSupplierItem 등록됨. false = 미등록 (기본 단위 fallback) */
-  hasOrderUnit: boolean;
+  hasSupplyUnit: boolean;
   /** 공급 단위 심볼 (예 "kg"/"팩"). 미등록 시 unit 과 동일 */
-  packagingUnit: string;
-  /** 1 발주단위 = packagingFactor 기본단위 (예 1kg=1000g → 1000). 미등록 시 1 */
-  packagingFactor: number;
+  supplyUnit: string;
+  /** 1 공급단위 = supplyUnitQty 기본단위 (예 1kg=1000g → 1000). 미등록 시 1 */
+  supplyUnitQty: number;
 
   // ── 재고/입고 ──
   /** locationId 기준 availableQty 합계 (Reservation 반영). 라인업 무관 총계 */
@@ -122,10 +122,10 @@ export class MealPlanGroupNotFoundError extends Error {
 // 라운딩 헬퍼 (P14)
 // ────────────────────────────────────────
 
-function roundToOrderUnit(theoreticalQty: number, factor: number): number {
-  if (theoreticalQty <= 0) return 0;
-  const inOrderUnit = theoreticalQty / (factor > 0 ? factor : 1);
-  const rounded = Math.round(inOrderUnit);
+function roundToSupplyUnit(suggestedQty: number, factor: number): number {
+  if (suggestedQty <= 0) return 0;
+  const inSupplyUnit = suggestedQty / (factor > 0 ? factor : 1);
+  const rounded = Math.round(inSupplyUnit);
   return rounded === 0 ? 1 : rounded;
 }
 
@@ -354,9 +354,9 @@ export async function buildConsumptionDraft(
   const layerAItems: ConsumptionDraftItem[] = [];
 
   for (const v of materialAgg.values()) {
-    const hasOrderUnit =
+    const hasSupplyUnit =
       !!v.supplyUnitCode && v.supplyUnitQty !== null && v.supplyUnitQty > 0;
-    const factor = hasOrderUnit ? v.supplyUnitQty! : 1;
+    const factor = hasSupplyUnit ? v.supplyUnitQty! : 1;
     const theoretical = v.qty;
     layerAItems.push({
       itemType: ItemType.MATERIAL,
@@ -368,11 +368,11 @@ export async function buildConsumptionDraft(
       lineupName: v.lineupName,
       productionLineId: v.productionLineId,
       productionLineName: v.productionLineName,
-      theoreticalQty: theoretical,
-      roundedFinalQty: roundToOrderUnit(theoretical, factor),
-      hasOrderUnit,
-      packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
-      packagingFactor: factor,
+      suggestedQty: theoretical,
+      roundedFinalQty: roundToSupplyUnit(theoretical, factor),
+      hasSupplyUnit,
+      supplyUnit: hasSupplyUnit ? v.supplyUnitCode! : v.baseUnit,
+      supplyUnitQty: factor,
       availableQty: materialAvailability.get(v.materialId) ?? 0,
       inboundQtyOnDate: inboundMap.get(`MATERIAL::${v.materialId}`) ?? 0,
       sourceIds: v.sourceIds,
@@ -381,9 +381,9 @@ export async function buildConsumptionDraft(
   }
 
   for (const v of subsidiaryAgg.values()) {
-    const hasOrderUnit =
+    const hasSupplyUnit =
       !!v.supplyUnitCode && v.supplyUnitQty !== null && v.supplyUnitQty > 0;
-    const factor = hasOrderUnit ? v.supplyUnitQty! : 1;
+    const factor = hasSupplyUnit ? v.supplyUnitQty! : 1;
     const theoretical = v.qty;
     layerAItems.push({
       itemType: ItemType.SUBSIDIARY,
@@ -395,11 +395,11 @@ export async function buildConsumptionDraft(
       lineupName: null,
       productionLineId: null,
       productionLineName: null,
-      theoreticalQty: theoretical,
-      roundedFinalQty: roundToOrderUnit(theoretical, factor),
-      hasOrderUnit,
-      packagingUnit: hasOrderUnit ? v.supplyUnitCode! : v.baseUnit,
-      packagingFactor: factor,
+      suggestedQty: theoretical,
+      roundedFinalQty: roundToSupplyUnit(theoretical, factor),
+      hasSupplyUnit,
+      supplyUnit: hasSupplyUnit ? v.supplyUnitCode! : v.baseUnit,
+      supplyUnitQty: factor,
       availableQty: subsidiaryAvailability.get(v.subsidiaryId) ?? 0,
       inboundQtyOnDate: inboundMap.get(`SUBSIDIARY::${v.subsidiaryId}`) ?? 0,
       sourceIds: v.sourceIds,
@@ -421,7 +421,7 @@ export async function buildConsumptionDraft(
     layerAItems,
     references: {
       generatedAt: new Date(),
-      note: "S4-3-c-R2 buildConsumptionDraft (라인업/라인별 세분화, 공급단위 정본, 발주단위 폐기, expectedQty alias 제거)",
+      note: "S4-3-c-R3-a buildConsumptionDraft (라인업/라인별 세분화, 공급단위 정본, 필드명 정합화: suggestedQty/supplyUnit/supplyUnitQty)",
     },
   };
 }

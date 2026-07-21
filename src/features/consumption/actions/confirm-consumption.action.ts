@@ -12,14 +12,14 @@ import {
 } from "../services/confirm-consumption.service";
 
 // ════════════════════════════════════════
-// S4-3-c-4-3: 사용 처리 확정 Server Action (재정의)
+// S4-3-c-R3-a: 사용 처리 확정 Server Action (필드명 정합화 batch rename)
 // ════════════════════════════════════════
 //
 // 권한 순서:
 //   1) assertPermission(consumption, WRITE)
 //   2) assertScope(LOCATION, locationId)
 //   3) confirmConsumption(...)
-//      - Layer A drift 재검증 (theoreticalQty + totalAvailable) → STALE_DRAFT
+//      - Layer A drift 재검증 (suggestedQty + totalAvailable) → STALE_DRAFT
 //      - Layer A/B 공통 검증 → INVALID_LAYER_B_ITEM:{reason}
 //        · QUANTITY_NEGATIVE / QUANTITY_OVERFLOW / QUANTITY_NON_POSITIVE
 //        · DISPOSAL_REASON_REQUIRED / DISPOSAL_NOTE_REQUIRED
@@ -37,7 +37,7 @@ export type ConfirmConsumptionActionInput = {
     itemId: string;
     lineupId: string | null;
     productionLineId: string | null;
-    theoreticalQty: number;      // drift 검증용
+    suggestedQty: number;        // drift 검증용 (확정필요량 기준, 공급단위)
     totalAvailable: number;      // 클라이언트 스냅샷 (서버 정본과 비교)
     finalUsedQty: number;        // 실제 사용량
     remainingToStock: number;    // 재고 잔량 (저장 X, 자연 이월)
@@ -108,7 +108,7 @@ export async function confirmConsumptionAction(
 }
 
 /**
- * S4-3-c-4-3: Layer A/B 공통 항목 검증 코드 → 사용자 메시지
+ * S4-3-c-R3-a: Layer A/B 공통 항목 검증 코드 → 사용자 메시지
  * (기존 함수명 layerBReasonToMessage 에서 개명 — A 검증도 포함하므로)
  */
 function consumptionReasonToMessage(reason: string): string {
@@ -122,7 +122,7 @@ function consumptionReasonToMessage(reason: string): string {
       return "수량은 0보다 커야 합니다.";
     case "UNIT_MISMATCH":
       return "품목 단위가 일치하지 않습니다.";
-    // S4-3-c-4-3 신규
+    // S4-3-c-R3-a 재정합
     case "QUANTITY_NEGATIVE":
       return "사용량과 재고 잔량은 0 이상이어야 합니다.";
     case "QUANTITY_OVERFLOW":

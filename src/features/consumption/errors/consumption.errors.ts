@@ -6,7 +6,7 @@
  * 상세 페이로드는 프로퍼티로 보존하여 서버 로그·향후 확장에 활용.
  *
  * 갱신 이력:
- * - S4-3-c-4-3 (2026-07-20): InvalidLayerBItemError 에 A/B 공통 검증 코드 추가
+ * - S4-3-c-4-3 (2026-07-20): InvalidLayerBItemError 에 A/B 공통 검증 코드 추가 [legacy Phase 표기; R3-a 정합화]
  *   (QUANTITY_NEGATIVE, QUANTITY_OVERFLOW, DISPOSAL_REASON_REQUIRED, DISPOSAL_NOTE_REQUIRED)
  *   → 클래스명은 하위 호환성을 위해 유지. 실제로는 Layer A/B 공통 항목 검증에 사용됨.
  */
@@ -49,7 +49,7 @@ export class InvalidLayerBItemError extends Error {
       | "ITEM_INACTIVE"
       | "QUANTITY_NON_POSITIVE"
       | "UNIT_MISMATCH"
-      // ── S4-3-c-4-3 신규 (Layer A/B 공통 검증) ──
+      // ── S4-3-c-R3-a (Layer A/B 공통 검증, c-4-3 도입분 정합화) ──
       | "QUANTITY_NEGATIVE"          // finalUsedQty < 0 or remainingToStock < 0 (P11)
       | "QUANTITY_OVERFLOW"          // finalUsedQty + remainingToStock > totalAvailable (P14)
       | "DISPOSAL_REASON_REQUIRED"   // disposalQty > 0 인데 disposalReason 미지정 (P14)

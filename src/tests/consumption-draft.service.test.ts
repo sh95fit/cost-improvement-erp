@@ -166,7 +166,7 @@ describe("buildConsumptionDraft (S4-3-c-4-3)", () => {
       itemId: "mat-1",
       itemName: "양파",
       unit: "g",
-      theoreticalQty: 500,
+      suggestedQty: 500,
     });
 
     expect(mockPrisma.materialRequirement.findMany).toHaveBeenCalledWith(
@@ -236,7 +236,7 @@ describe("buildConsumptionDraft (S4-3-c-4-3)", () => {
       itemId: "sub-1",
       itemName: "젓가락",
       unit: "ea",
-      theoreticalQty: 200, // 100 × 2
+      suggestedQty: 200, // 100 × 2
       consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
     });
   });

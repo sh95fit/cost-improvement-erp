@@ -51,8 +51,8 @@ type Props = {
 };
 
 /**
- * S4-3-c-4-3: Smart Consumption Row 행 상태
- * - 초기값: finalUsedQty = roundedFinalQty × packagingFactor (기본단위 환산)
+ * S4-3-c-R3-a: Smart Consumption Row 행 상태 (필드명 정합화)
+ * - 초기값: finalUsedQty = roundedFinalQty × supplyUnitQty (기본단위 환산)
  *           remainingToStock = max(0, totalAvailable - finalUsedQty)
  *   → 초기 상태에서 disposalQty=0 이 되도록 재고 잔량이 흡수
  */
@@ -87,8 +87,8 @@ function rowKey(it: DraftItem): string {
  * 다시 기본단위로 되돌린 초기 사용량 추천치.
  * 예: theoretical=1350g, factor=1000(1kg=1000g) → rounded=1kg → 1000g
  */
-function initialUsedQtyBase(it: DraftItem): number {
-  const rounded = it.roundedFinalQty * (it.packagingFactor || 1);
+function initialSuggestedQtyBase(it: DraftItem): number {
+  const rounded = it.roundedFinalQty * (it.supplyUnitQty || 1);
   return Math.min(rounded, it.availableQty);
 }
 
@@ -106,7 +106,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {};
     for (const it of draft.layerAItems) {
-      const usedInit = initialUsedQtyBase(it);
+      const usedInit = initialSuggestedQtyBase(it);
       const remainInit = Math.max(0, it.availableQty - usedInit);
       init[rowKey(it)] = {
         finalUsedQty: usedInit,
@@ -212,7 +212,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
             itemId: it.itemId,
             lineupId: it.lineupId,
             productionLineId: it.productionLineId,
-            theoreticalQty: it.theoreticalQty,
+            suggestedQty: it.suggestedQty,
             totalAvailable: it.availableQty,
             finalUsedQty: st?.finalUsedQty ?? 0,
             remainingToStock: st?.remainingToStock ?? 0,
@@ -378,7 +378,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="cursor-help border-b border-dotted border-gray-400">
-                                  {numberFmt(it.theoreticalQty)} {it.unit}
+                                  {numberFmt(it.suggestedQty)} {it.unit}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -386,7 +386,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                                   BOM × 확정식수 결과 (공급단위 기준)
                                   <br />
                                   공급단위 환산: {numberFmt(it.roundedFinalQty)}{" "}
-                                  {it.packagingUnit}
+                                  {it.supplyUnit}
                                 </div>
                               </TooltipContent>
                             </Tooltip>

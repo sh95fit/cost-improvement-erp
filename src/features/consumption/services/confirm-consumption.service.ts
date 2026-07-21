@@ -17,7 +17,7 @@ import {
 } from "../errors/consumption.errors";
 
 // ────────────────────────────────────────────────────────────
-// 입력/출력 타입 (S4-3-c-4-3 재정의)
+// 입력/출력 타입 (S4-3-c-R3-a 정합화)
 // ────────────────────────────────────────────────────────────
 export type ConfirmConsumptionInput = {
   companyId: string;
@@ -29,7 +29,7 @@ export type ConfirmConsumptionInput = {
     itemId: string;                    // materialMasterId | subsidiaryMasterId
     lineupId: string | null;           // 라인업/라인 세분화 키 (부자재는 null)
     productionLineId: string | null;
-    theoreticalQty: number;            // drift 검증용 (BOM×식수 결과)
+    suggestedQty: number;              // drift 검증용 (확정필요량 기준, 공급단위 환산 후 반올림)
     totalAvailable: number;            // 클라이언트 스냅샷 (서버 재조회로 검증)
     finalUsedQty: number;              // 실제 사용량 (사용자 입력)
     remainingToStock: number;          // 재고 잔량 (저장 X, InventoryLot 자연 이월)
@@ -124,7 +124,7 @@ export async function confirmConsumption(
 
   return prisma.$transaction(
     async (tx) => {
-      // 2) 서버 재빌드 (D2=α: totalAvailable/theoreticalQty 정본)
+      // 2) 서버 재빌드 (D2=α: totalAvailable/suggestedQty 정본)
       const rebuilt = await buildConsumptionDraft(
         input.companyId,
         input.targetDate,
@@ -132,7 +132,7 @@ export async function confirmConsumption(
         tx,
       );
 
-      // 3) Drift 재검증 (theoreticalQty 및 totalAvailable 편차)
+      // 3) Drift 재검증 (suggestedQty 및 totalAvailable 편차)
       const diffs = detectLayerADrift(input.layerAItems, rebuilt.layerAItems);
       if (diffs.length > 0) throw new StaleDraftError(diffs);
 
@@ -345,7 +345,7 @@ export async function confirmConsumption(
 
 /**
  * Layer A drift 검증
- * - theoreticalQty 편차: 라인업 확정식수·BOM 변경 감지
+ * - suggestedQty 편차: 라인업 확정식수·BOM 변경 감지
  * - totalAvailable 편차: 다른 사용자에 의한 동시 소진·입고 감지
  * - finalUsedQty/remainingToStock: 사용자 자유 입력이므로 검증 X
  */
@@ -364,19 +364,19 @@ function detectLayerADrift(
         itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
         itemId: c.itemId,
         itemName: "(삭제됨)",
-        clientQty: c.theoreticalQty,
+        clientQty: c.suggestedQty,
         serverQty: 0,
       });
       continue;
     }
-    // theoreticalQty 편차
-    if (Math.abs(s.theoreticalQty - c.theoreticalQty) > EPS) {
+    // suggestedQty 편차
+    if (Math.abs(s.suggestedQty - c.suggestedQty) > EPS) {
       diffs.push({
         itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
         itemId: c.itemId,
         itemName: s.itemName,
-        clientQty: c.theoreticalQty,
-        serverQty: s.theoreticalQty,
+        clientQty: c.suggestedQty,
+        serverQty: s.suggestedQty,
       });
       continue;
     }
@@ -398,7 +398,7 @@ function detectLayerADrift(
         itemId: s.itemId,
         itemName: s.itemName,
         clientQty: 0,
-        serverQty: s.theoreticalQty,
+        serverQty: s.suggestedQty,
       });
     }
   }
@@ -450,7 +450,7 @@ async function validateLayerBItems(
 }
 
 /**
- * A+B 병합 규칙 (S4-3-c-4-3):
+ * A+B 병합 규칙 (S4-3-c-R3-a):
  * - A 항목: finalUsedQty>0 → USED source, disposalQty>0 → DISPOSED source (독립 행)
  * - B 항목: quantity → USED source (재고/폐기 분리 없음)
  * - 같은 자재는 sources[] 로 병합하되 disposition 분리 유지
