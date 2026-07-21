@@ -25,7 +25,7 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // 자재/부자재 별 Layer A 매핑 (중복 검사용)
-  // S4-3-c-4-3: expectedQty → theoreticalQty
+  // S4-3-c-R2: expectedQty alias 폐기, theoreticalQty(=제안 사용량) 사용. R3에서 suggestedQty 로 리네이밍 예정.
   const layerAKey = (t: ItemType, id: string) => `${t}::${id}`;
   const layerAMap = new Map(
     layerAItems.map((a) => [layerAKey(a.itemType, a.itemId), a.theoreticalQty]),

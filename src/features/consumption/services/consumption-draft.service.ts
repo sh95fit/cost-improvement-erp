@@ -21,7 +21,7 @@ import { assertMealPlanCompletedForConsumption } from "./consumption-guard.servi
  * 이전(S4-3-b) 대비 변경:
  *   1) 집계 키: (itemType, itemId, lineupId, productionLineId) — 라인업/라인 세분화
  *   2) 부자재 consumptionMode 이원화 (PER_MEAL_COUNT + FIXED_QUANTITY)
- *   3) 발주 단위(orderUnit) 노출 — SupplierItem.defaultForMaterial/Subsidiary 경유
+ *   3) 공급 단위(supplyUnit) 정본 — Material.supplyUnitId / Subsidiary.supplyUnitId 경유 (발주단위 개념 폐기)
  *   4) 이론 사용량 + 반올림 최종 사용량 (Math.round, 0→1 예외)
  *   5) 라인업/라인 이름 include (UI 그룹핑)
  *   6) computeAvailability 트랜잭션 클라이언트 전달 (P11 강화)
@@ -65,13 +65,13 @@ export type ConsumptionDraftItem = {
   // ── 이론 사용량 (P14) ──
   /** 이론 사용량 (자재: requiredQty 합, 부자재: quantity*mealCount 또는 fixedQuantity) */
   theoreticalQty: number;
-  /** 발주 단위로 환산 후 반올림한 최종 사용량 (Math.round, 0→1 예외) */
+  /** 공급 단위로 환산 후 반올림한 최종 사용량 (Math.round, 0→1 예외) */
   roundedFinalQty: number;
 
-  // ── 발주 단위 (SupplierItem 경유) ──
+  // ── 공급 단위 (Material.supplyUnitId / Subsidiary.supplyUnitId 정본) ──
   /** true = defaultSupplierItem 등록됨. false = 미등록 (기본 단위 fallback) */
   hasOrderUnit: boolean;
-  /** 발주 단위 심볼 (예 "kg"/"팩"). 미등록 시 unit 과 동일 */
+  /** 공급 단위 심볼 (예 "kg"/"팩"). 미등록 시 unit 과 동일 */
   packagingUnit: string;
   /** 1 발주단위 = packagingFactor 기본단위 (예 1kg=1000g → 1000). 미등록 시 1 */
   packagingFactor: number;
@@ -421,7 +421,7 @@ export async function buildConsumptionDraft(
     layerAItems,
     references: {
       generatedAt: new Date(),
-      note: "S4-3-c-4-3 buildConsumptionDraft (라인업/라인별 세분화 + 발주단위 노출 + expectedQty alias 제거)",
+      note: "S4-3-c-R2 buildConsumptionDraft (라인업/라인별 세분화, 공급단위 정본, 발주단위 폐기, expectedQty alias 제거)",
     },
   };
 }

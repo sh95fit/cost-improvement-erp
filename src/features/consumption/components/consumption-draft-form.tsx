@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Settings2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import type { DisposalReason, ItemType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,6 @@ import type { buildConsumptionDraftAction } from "../actions/build-consumption-d
 import type { LayerBItem } from "../types/layer-b-item.type";
 import { ConsumptionLayerBEditor } from "./consumption-layer-b-editor";
 import { confirmConsumptionAction } from "../actions/confirm-consumption.action";
-import { UnitConversionMiniDialog } from "./unit-conversion-mini-dialog";
 
 // ────────────────────────────────────────────────────────────
 // 타입
@@ -84,7 +83,7 @@ function rowKey(it: DraftItem): string {
 }
 
 /**
- * 이론량(기본단위)을 발주단위로 환산 후 반올림한 값을
+ * 제안 사용량(공급단위 기준, 반올림된 최종 필요량)을
  * 다시 기본단위로 되돌린 초기 사용량 추천치.
  * 예: theoretical=1350g, factor=1000(1kg=1000g) → rounded=1kg → 1000g
  */
@@ -118,11 +117,6 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
     }
     return init;
   });
-
-  // 미등록 자재 보정 다이얼로그 상태
-  const [conversionTarget, setConversionTarget] = useState<DraftItem | null>(
-    null,
-  );
 
   // ── 파생값 계산 헬퍼 ──
   const derived = (it: DraftItem) => {
@@ -322,13 +316,12 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                 <TableRow className="bg-gray-100">
                   <TableHead className="w-40">품목</TableHead>
                   <TableHead className="w-28">라인업 / 라인</TableHead>
-                  <TableHead className="w-24 text-right">이론량</TableHead>
+                  <TableHead className="w-24 text-right">제안 사용량</TableHead>
                   <TableHead className="w-32 text-right">총 재고 현황</TableHead>
                   <TableHead className="w-28 text-right">사용량</TableHead>
                   <TableHead className="w-28 text-right">재고 잔량</TableHead>
                   <TableHead className="w-24 text-right">폐기(자동)</TableHead>
                   <TableHead className="w-44">폐기 사유</TableHead>
-                  <TableHead className="w-20">발주단위</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -380,7 +373,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                             </div>
                           </TableCell>
 
-                          {/* 이론량 */}
+                          {/* 제안 사용량 */}
                           <TableCell className="text-right">
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -390,9 +383,9 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <div className="text-xs">
-                                  BOM × 확정식수 결과
+                                  BOM × 확정식수 결과 (공급단위 기준)
                                   <br />
-                                  발주단위 환산: {numberFmt(it.roundedFinalQty)}{" "}
+                                  공급단위 환산: {numberFmt(it.roundedFinalQty)}{" "}
                                   {it.packagingUnit}
                                 </div>
                               </TooltipContent>
@@ -553,26 +546,6 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
                               <span className="text-xs text-gray-400">-</span>
                             )}
                           </TableCell>
-
-                          {/* 발주단위 */}
-                          <TableCell>
-                            {it.hasOrderUnit ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {it.packagingUnit}
-                              </Badge>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-100"
-                                onClick={() => setConversionTarget(it)}
-                                title="발주단위 미등록 - 클릭하여 설정"
-                              >
-                                <Settings2 className="mr-1 h-3 w-3" />
-                                미등록
-                              </Button>
-                            )}
-                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -609,20 +582,6 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
             {isPending ? "확정 중..." : "사용 처리 확정"}
           </Button>
         </div>
-
-        {/* 미등록 자재 보정 다이얼로그 */}
-        {conversionTarget && (
-          <UnitConversionMiniDialog
-            open={!!conversionTarget}
-            onOpenChange={(open) => {
-              if (!open) setConversionTarget(null);
-            }}
-            itemType={conversionTarget.itemType as "MATERIAL" | "SUBSIDIARY"}
-            itemId={conversionTarget.itemId}
-            itemName={conversionTarget.itemName}
-            currentUnit={conversionTarget.unit}
-          />
-        )}
       </div>
     </TooltipProvider>
   );
