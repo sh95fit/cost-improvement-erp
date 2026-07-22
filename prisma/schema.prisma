@@ -280,6 +280,23 @@ enum ConsumptionSourceType {
   MANUAL_ADDITION  // Layer B — 사용자 수동 추가 (선택)
 }
 
+// P15 축 B — Header 생성 경로 (Item.sourceType 과 축이 다름: Header 레벨 생성 경로 vs Item 레벨 Layer A/B)
+enum ConsumptionHeaderSource {
+  AUTO_MEAL_PLAN
+  MANUAL
+
+  @@map("consumption_header_source")
+}
+
+// P15 — Header 라이프사이클 (PENDING=Layer A 자동산출, CONFIRMED=사용자 확정, CANCELLED=R12 Sprint5 이관)
+enum ConsumptionHeaderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+
+  @@map("consumption_header_status")
+}
+
 enum ConsumptionMode {
   PER_MEAL_COUNT
   FIXED_QUANTITY
@@ -481,6 +498,7 @@ model Company {
   receivingNotes         ReceivingNote[]
   materialRequirements   MaterialRequirement[]
   consumptionItems       ConsumptionItem[]
+  consumptionHeaders     ConsumptionHeader[]
   costCalculations       CostCalculation[]
   overheadCosts          OverheadCost[]
   unitMasters            UnitMaster[]
@@ -513,6 +531,7 @@ model Location {
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
   materialRequirements  MaterialRequirement[]
   purchaseOrders        PurchaseOrder[]
+  consumptionHeaders   ConsumptionHeader[]  
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -542,6 +561,7 @@ model ProductionLine {
   mealPlanSlots        MealPlanSlot[]
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[]
+  consumptionHeaders   ConsumptionHeader[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -580,6 +600,9 @@ model User {
   poAdjustmentLogs        POAdjustmentLog[]
   receivingNotesConfirmed ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
   receivingDiscrepancies  ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")
+  // ★ S4-3-c-R3-b: ConsumptionHeader 액터 관계 (P15)
+  consumptionHeadersCreated   ConsumptionHeader[] @relation("ConsumptionHeaderCreatedBy")
+  consumptionHeadersConfirmed ConsumptionHeader[] @relation("ConsumptionHeaderConfirmedBy")
 
   @@map("users")
 }
@@ -794,6 +817,8 @@ model SupplierItem {
   defaultForMaterial   MaterialMaster?            @relation("DefaultMaterialSupplierItem")
   defaultForSubsidiary SubsidiaryMaster?          @relation("DefaultSubsidiarySupplierItem")
   mealPlanSlots        MealPlanSlot[]
+  // ★ S4-3-c-R3-b: ConsumptionItem 정본 참조 (P14 원가 정본 = SupplierItem.currentPrice)
+  consumptionItems     ConsumptionItem[]
 
   // ★ S-Fix (D15-8): (supplier, itemType, material/subsidiary, productName) partial unique index
   //   - WHERE deleted_at IS NULL — soft-delete 후 동일 product 재등록 가능
@@ -1123,6 +1148,7 @@ model MealPlanGroup {
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[]
   purchaseOrderBatches PurchaseOrderBatch[]
+  consumptionHeaders   ConsumptionHeader[]
 
   @@unique([companyId, planDate])
   @@index([companyId])
@@ -1751,19 +1777,60 @@ model StockTakeItem {
 
 // ---- 12. 사용 ----
 
+// P15 — 사용 처리 헤더 (Layer A 자동 산출 / Layer B 수동 추가의 상위 컨테이너)
+// - Header.source: 생성 경로 (AUTO_MEAL_PLAN | MANUAL) — 축 B "헤더 생성"
+// - Header.status: 라이프사이클 (PENDING → CONFIRMED)
+// - Item.sourceType: 각 행의 Layer 분류 (MEAL_PLAN_AUTO | MANUAL_ADDITION) — 축과 별개
+// - unique: 동일 (MealPlanGroup, Location, ProductionLine, source) 조합 중복 방지
+model ConsumptionHeader {
+  id                String                  @id @default(cuid())
+  companyId         String                  @map("company_id")
+  locationId        String                  @map("location_id")
+  productionLineId  String                  @map("production_line_id")
+  mealPlanGroupId   String                  @map("meal_plan_group_id")
+  consumedDate      DateTime                @map("consumed_date") @db.Date
+  source            ConsumptionHeaderSource @default(AUTO_MEAL_PLAN)
+  status            ConsumptionHeaderStatus @default(PENDING)
+  manualReason      String?                 @map("manual_reason")
+  createdByUserId   String                  @map("created_by_user_id")
+  confirmedAt       DateTime?               @map("confirmed_at")
+  confirmedByUserId String?                 @map("confirmed_by_user_id")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  company         Company           @relation(fields: [companyId], references: [id])
+  location        Location          @relation(fields: [locationId], references: [id])
+  productionLine  ProductionLine    @relation(fields: [productionLineId], references: [id])
+  mealPlanGroup   MealPlanGroup     @relation(fields: [mealPlanGroupId], references: [id])
+  createdByUser   User              @relation("ConsumptionHeaderCreatedBy", fields: [createdByUserId], references: [id])
+  confirmedByUser User?             @relation("ConsumptionHeaderConfirmedBy", fields: [confirmedByUserId], references: [id])
+  items           ConsumptionItem[]
+
+  @@unique([mealPlanGroupId, locationId, productionLineId, source])
+  @@index([companyId, consumedDate])
+  @@index([status])
+  @@index([mealPlanGroupId])
+  @@map("consumption_headers")
+}
+
 model ConsumptionItem {
   id                 String                 @id @default(cuid())
   companyId          String                 @map("company_id")
+  // ★ S4-3-c-R3-b — Header 편입 (P15)
+  headerId           String                 @map("header_id")
   // ★ Sprint 4 Phase 10 — 부자재 사용처리 지원 (Phase 9-D-Acc 흡수)
   itemType           ItemType               @default(MATERIAL) @map("item_type")
   materialMasterId   String?                @map("material_master_id")
   subsidiaryMasterId String?                @map("subsidiary_master_id")
+  // ★ S4-3-c-R3-b — 품목(SupplierItem) 정본 참조 (P14). NULLABLE 로 도입 → R8 말미 NOT NULL 승격 예정
+  supplierItemId     String?                @map("supplier_item_id")
   cookingPlanId      String?                @map("cooking_plan_id")
   consumedQty        Float                  @map("consumed_qty")
   unit               String
   consumedDate       DateTime               @map("consumed_date") @db.Date
+  // @deprecated S4-3-c-R3-c 에서 삭제 예정 — Header.status 로 이관
   status             ConsumptionStatus      @default(DRAFT)
-  sourceType   ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  @map("source_type")  // P13 — 레이어 분류  
+  sourceType         ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  @map("source_type")  // P13 — Item 레벨 Layer A/B (Header.source 와 별개 축)
   // ★ Sprint 4 Phase 10 — 처분 유형 정책
   disposition        ConsumptionDisposition @default(USED) @map("disposition")
   disposalReason     DisposalReason?        @map("disposal_reason")
@@ -1772,19 +1839,23 @@ model ConsumptionItem {
   createdAt          DateTime               @default(now()) @map("created_at")
   updatedAt          DateTime               @updatedAt @map("updated_at")
 
+  header           ConsumptionHeader      @relation(fields: [headerId], references: [id], onDelete: Cascade)
   company          Company                @relation(fields: [companyId], references: [id])
   materialMaster   MaterialMaster?        @relation(fields: [materialMasterId], references: [id])
   subsidiaryMaster SubsidiaryMaster?      @relation(fields: [subsidiaryMasterId], references: [id])
+  supplierItem     SupplierItem?          @relation(fields: [supplierItemId], references: [id])
   cookingPlan      CookingPlan?           @relation(fields: [cookingPlanId], references: [id])
   lotDetails       ConsumptionLotDetail[]
 
   @@index([companyId])
+  @@index([headerId])
+  @@index([supplierItemId])
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([consumedDate])
   @@index([disposition])
   @@index([disposition, consumedDate])
-  @@index([sourceType])  
+  @@index([sourceType])
   @@map("consumption_items")
 }
 

@@ -200,6 +200,59 @@ export async function confirmConsumption(
       }
       if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
+      // 7.5) ConsumptionHeader upsert (P15) — S4-3-c-R3-c
+      //   Header.productionLineId 는 CookingPlan.productionLineId 정본 사용
+      //   AUTO_MEAL_PLAN 경로 idempotent: unique(mealPlanGroup, location, productionLine, source)
+      const mealPlanGroup = await tx.mealPlanGroup.findUnique({
+        where: {
+          companyId_planDate: {
+            companyId: input.companyId,
+            planDate: input.targetDate,
+          },
+        },
+        select: { id: true },
+      });
+      if (!mealPlanGroup) {
+        throw new Error("MEAL_PLAN_GROUP_NOT_FOUND");
+      }
+
+      const cookingPlan = await tx.cookingPlan.findUnique({
+        where: { id: cookingPlanId },
+        select: { productionLineId: true },
+      });
+      if (!cookingPlan) {
+        throw new Error("COOKING_PLAN_NOT_FOUND");
+      }
+
+      const consumptionHeader = await tx.consumptionHeader.upsert({
+        where: {
+          mealPlanGroupId_locationId_productionLineId_source: {
+            mealPlanGroupId: mealPlanGroup.id,
+            locationId: input.locationId,
+            productionLineId: cookingPlan.productionLineId,
+            source: "AUTO_MEAL_PLAN",
+          },
+        },
+        create: {
+          companyId: input.companyId,
+          locationId: input.locationId,
+          productionLineId: cookingPlan.productionLineId,
+          mealPlanGroupId: mealPlanGroup.id,
+          consumedDate: input.targetDate,
+          source: "AUTO_MEAL_PLAN",
+          status: "CONFIRMED",
+          createdByUserId: input.userId,
+          confirmedAt: new Date(),
+          confirmedByUserId: input.userId,
+        },
+        update: {
+          status: "CONFIRMED",
+          confirmedAt: new Date(),
+          confirmedByUserId: input.userId,
+        },
+        select: { id: true },
+      });
+
       // 8) FIFO 차감 + ConsumptionItem(USED|DISPOSED) + LotDetail + InventoryTransaction
       const consumptionItemIds: string[] = [];
       let totalConsumedQty = 0;
@@ -213,6 +266,7 @@ export async function confirmConsumption(
 
           const created = await tx.consumptionItem.create({
             data: {
+              headerId: consumptionHeader.id, // S4-3-c-R3-c: Header 편입 (P15)
               companyId: input.companyId,
               itemType: m.itemType,
               materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
