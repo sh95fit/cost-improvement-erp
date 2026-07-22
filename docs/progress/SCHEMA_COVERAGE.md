@@ -59,7 +59,8 @@
 | 49 | StockTakeItem | S4 | P6-7 | ⬜ |
 | 50 | ~~ShippingOrder~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — P13 보강에 따라 Consumption 이 재고 소진 단일 통로. `PurchaseOrder.outboundDate` (P8) 와 중복. |
 | 51 | ~~ShippingOrderItem~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — 동상 |
-| 52 | ConsumptionItem | S4 | P10-11 / S4-0-a | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류. 본체 구현은 P10-11 예정) |
+| 52 | ConsumptionItem | S4 | P10-11 / S4-0-a / S4-3-c-R3-b | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류; S4-3-c-R3-b: `headerId` NOT NULL FK · `supplierItemId` NULLABLE FK 신설 [R8 말미 NOT NULL 승격 예정] · `status` deprecated marking [R5 재편 시 삭제 예정] · ConsumptionHeader 편입) |
+| 52-a | ConsumptionHeader | S4 | P15 / S4-3-c-R3-b | 🆕 (헤더 도입 — PENDING/CONFIRMED 상태, source AUTO_MEAL_PLAN/MANUAL, 4요소 unique `[mealPlanGroupId, locationId, productionLineId, source]`, back-relation 6곳 Company/Location/ProductionLine/User×2/SupplierItem/MealPlanGroup) |
 | 53 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
 | 54 | CookingPlan | S4 | P12-13 | ⬜ |
 | 55 | CookingPlanItem | S4 | P12-13 | ⬜ |
@@ -79,6 +80,8 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-07-22 **Sprint 4 Phase S4-3-c-R3-b 완료** — `ConsumptionHeader` 모델 신설 (P15): PENDING/CONFIRMED 라이프사이클, source AUTO_MEAL_PLAN/MANUAL 축, unique `[mealPlanGroupId, locationId, productionLineId, source]`. `ConsumptionHeaderSource` / `ConsumptionHeaderStatus` enum 도입. `ConsumptionItem` 확장: `headerId` NOT NULL FK (onDelete Cascade), `supplierItemId` NULLABLE FK 신설 (R8 말미 NOT NULL 승격 예정). back-relation 6곳 추가 (Company/Location/ProductionLine/User×2/SupplierItem/MealPlanGroup). `ConsumptionItem.status` 는 R5 재편 시 삭제 예정 (deprecated marking 유지). 기존 5건 테스트 데이터는 `prisma migrate reset` 으로 초기화 후 마이그레이션 적용. 마이그레이션: `20260722065856_s4_3_c_r3_b_add_consumption_header`. 모델 상태: #52 ConsumptionItem 갱신, #52-a ConsumptionHeader 신설. 커밋: `4f08e69`. (P14/P15)
+- 2026-07-22 **Sprint 4 Phase S4-3-c-R3-c 완료** — `confirmConsumption` 트랜잭션에 `ConsumptionHeader` upsert 편입. `MealPlanGroup` 을 (companyId, targetDate) 로 조회, Header.productionLineId 는 `CookingPlan.productionLineId` 정본 사용, AUTO_MEAL_PLAN 경로 idempotent (unique key 재사용). 확정 시점에 status PENDING → CONFIRMED, `confirmedAt` / `confirmedByUserId` 기록. `ConsumptionItem.create` 에 `headerId` 지정. R3-b/R3-c 는 통합 단일 커밋으로 처리. 커밋: `4f08e69`. (P15)
 - **2026-07-15 (S4-3-INT)**: Shipping 도메인 폐지 및 Consumption 흡수 (ShippingOrder, ShippingOrderItem 폐지)
 - **2026-07-10 (S4-0-d)**: `writeAuditLog(tx)` 헬퍼 신설 및 예약 도메인 서비스에 감사 로그 훅 통합. `AuditLog` 스키마 변경 없음. `AuditAction` enum 확장 없이 기존 8종 활용(CREATE/UPDATE로 매핑).
 - **2026-07-10 (S4-0-c)**: `InventoryLot.purchaseKind PurchaseKind?` 추가(@@index), 40행 백필(모두 WIZARD). `InventoryReservation`은 스키마 변경 없음.
