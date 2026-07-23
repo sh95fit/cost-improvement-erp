@@ -108,6 +108,7 @@ export async function updateMealPlanGroupAction(
       session.companyId,
       id,
       input,
+      session.userId,
     );
     await createAuditLog({
       session,

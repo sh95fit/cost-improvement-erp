@@ -28,6 +28,9 @@ import { MealPlanStatus, MealCountSource } from "@prisma/client";
 
 import { generateMaterialRequirements } from "@/features/material-requirement/services/material-requirement.service";
 
+import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
+import { autoReserveFromMaterialRequirements } from "@/features/inventory/services/auto-reserve-from-material-requirements.service";
+
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /**
@@ -676,6 +679,7 @@ export async function updateMealPlanGroup(
   companyId: string,
   id: string,
   input: UpdateMealPlanGroupInput,
+  actorUserId: string,
 ) {
   const existing = await prisma.mealPlanGroup.findFirst({
     where: { id, companyId, deletedAt: null },
@@ -734,6 +738,23 @@ export async function updateMealPlanGroup(
         { mealPlanGroupId: id, countSource },
         { existingTx: tx },
       );
+
+      // ★ S4-3-c-R5 (§9-1 R5-P + R5-R1, §9-4 α3): CONFIRMED→IN_PROGRESS 진입 시에만
+      //   autoCreatePendingConsumptionHeaders + autoReserveFromMaterialRequirements 호출.
+      //   IN_PROGRESS→COMPLETED (FINAL) 시점은 예약 재생성 안 함 (§9-4 α3).
+      if (isForwardToInProgress) {
+        await autoCreatePendingConsumptionHeaders(tx, {
+          companyId,
+          mealPlanGroupId: id,
+          actorUserId,
+        });
+        await autoReserveFromMaterialRequirements(tx, {
+          companyId,
+          mealPlanGroupId: id,
+          countSource: MealCountSource.ESTIMATED,
+          actorUserId,
+        });
+      }
 
       return updated;
     });

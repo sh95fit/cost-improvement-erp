@@ -36,6 +36,7 @@ import { diagnoseBomMatch } from "@/features/recipe/services/recipe-bom.service"
 const COMPANY_ID = "company-1";
 const MEAL_PLAN_ID = "mp-1";
 const MEAL_PLAN_GROUP_ID = "mpg-1";
+const ACTOR_USER_ID = "user-1";
 
 // 공통 mock 시드 — assertMealPlanInCompany 통과용
 const MEAL_PLAN_RECORD = {
@@ -487,6 +488,17 @@ vi.mock("@/features/material-requirement/services/material-requirement.service",
   generateMaterialRequirements: vi.fn(),
 }));
 
+// ★ S4-3-c-R5 (§9-1): auto Pending Header + auto Reserve 훅 검증용 mock
+vi.mock("@/features/consumption/services/auto-create-pending-consumption-headers.service", () => ({
+  autoCreatePendingConsumptionHeaders: vi.fn(),
+}));
+vi.mock("@/features/inventory/services/auto-reserve-from-material-requirements.service", () => ({
+  autoReserveFromMaterialRequirements: vi.fn(),
+}));
+
+import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
+import { autoReserveFromMaterialRequirements } from "@/features/inventory/services/auto-reserve-from-material-requirements.service";
+
 // ════════════════════════════════════════════════════════════════
 // 6. Phase 4-G G-1: updateMealPlanGroup 상태 전이 hook (MR 자동 산출)
 // ────────────────────────────────────────────────────────────────
@@ -500,6 +512,10 @@ vi.mock("@/features/material-requirement/services/material-requirement.service",
 describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
   beforeEach(() => {
     vi.mocked(generateMaterialRequirements).mockReset();
+    vi.mocked(autoCreatePendingConsumptionHeaders).mockReset();
+    vi.mocked(autoCreatePendingConsumptionHeaders).mockResolvedValue({ created: 0, existing: 0 });
+    vi.mocked(autoReserveFromMaterialRequirements).mockReset();
+    vi.mocked(autoReserveFromMaterialRequirements).mockResolvedValue({ reserved: 0, skipped: 0 });
   });
 
   /**
@@ -576,7 +592,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
 
     await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
       status: "IN_PROGRESS",
-    });
+    }, ACTOR_USER_ID);
 
     expect(generateMaterialRequirements).toHaveBeenCalledTimes(1);
     expect(generateMaterialRequirements).toHaveBeenCalledWith(
@@ -651,7 +667,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
 
     await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
       status: "COMPLETED",
-    });
+    }, ACTOR_USER_ID);
 
     expect(generateMaterialRequirements).toHaveBeenCalledWith(
       COMPANY_ID,
@@ -670,7 +686,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     await expect(
       updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
         status: "IN_PROGRESS",
-      }),
+      }, ACTOR_USER_ID)
     ).rejects.toThrow("MR_GROUP_EMPTY");
 
     // 상태 update 는 트랜잭션 내부에서 호출은 됐지만, 콜백이 throw 되어
@@ -690,7 +706,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
 
     await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
       status: "CONFIRMED",
-    });
+    }, ACTOR_USER_ID);
 
     expect(generateMaterialRequirements).not.toHaveBeenCalled();
     // 트랜잭션 미사용 경로임을 간접 확인 (검증 함수 mealPlan.findMany 미호출)
@@ -710,7 +726,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
 
     await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
       note: "메모 수정",
-    });
+    }, ACTOR_USER_ID);
 
     expect(generateMaterialRequirements).not.toHaveBeenCalled();
   });
@@ -729,8 +745,136 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     // 검증 없이 단순 update. (정책: 정상 플로우가 아닌 상태 점프는 별도 규칙 없음)
     await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
       status: "COMPLETED",
-    });
+    }, ACTOR_USER_ID);
 
     expect(generateMaterialRequirements).not.toHaveBeenCalled();
+  });
+
+  it("CONFIRMED → IN_PROGRESS 전진 시 autoCreatePendingConsumptionHeaders + autoReserveFromMaterialRequirements 를 호출 (§9-1 R5)", async () => {
+    setupForwardValidationPass();
+    vi.mocked(generateMaterialRequirements).mockResolvedValueOnce({
+      mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+      countSource: "ESTIMATED",
+      generationVersion: 1,
+      stats: {
+        inserted: 0, updated: 0, undeleted: 0, softDeleted: 0, unchanged: 0,
+        recipeContainerSlots: 0, directSlotsSkipped: 0,
+        slotQuantityMismatchWarnings: 0, mismatchDetails: [],
+      },
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "IN_PROGRESS",
+    }, ACTOR_USER_ID);
+
+    expect(autoCreatePendingConsumptionHeaders).toHaveBeenCalledTimes(1);
+    expect(autoCreatePendingConsumptionHeaders).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        companyId: COMPANY_ID,
+        mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+        actorUserId: ACTOR_USER_ID,
+      }),
+    );
+    expect(autoReserveFromMaterialRequirements).toHaveBeenCalledTimes(1);
+    expect(autoReserveFromMaterialRequirements).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        companyId: COMPANY_ID,
+        mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+        countSource: "ESTIMATED",
+        actorUserId: ACTOR_USER_ID,
+      }),
+    );
+  });
+
+  it("IN_PROGRESS → COMPLETED 전진 시 autoCreatePendingConsumptionHeaders / autoReserveFromMaterialRequirements 를 호출하지 않음 (§9-4 α3)", async () => {
+    // 그룹 findFirst: IN_PROGRESS 반환
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+    // assertAllFinalCountsFilled + assertGroupSlotQuantitiesValid(FINAL)
+    mockPrisma.mealPlan.findMany
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: MEAL_PLAN_ID,
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          slots: [],
+        },
+      ]);
+    mockPrisma.mealCount.findMany
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          finalCount: 95,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lineup-1",
+          estimatedCount: 100,
+          finalCount: 95,
+        },
+      ]);
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "COMPLETED",
+    });
+    vi.mocked(generateMaterialRequirements).mockResolvedValueOnce({
+      mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+      countSource: "FINAL",
+      generationVersion: 2,
+      stats: {
+        inserted: 0,
+        updated: 0,
+        undeleted: 0,
+        softDeleted: 0,
+        unchanged: 0,
+        recipeContainerSlots: 0,
+        directSlotsSkipped: 0,
+        slotQuantityMismatchWarnings: 0,
+        mismatchDetails: [],
+      },
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "COMPLETED",
+    }, ACTOR_USER_ID);
+
+    expect(autoCreatePendingConsumptionHeaders).not.toHaveBeenCalled();
+    expect(autoReserveFromMaterialRequirements).not.toHaveBeenCalled();
+  });
+
+  it("역행 전이(IN_PROGRESS → CONFIRMED)는 MR 자동 산출을 호출하지 않음", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    });
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CONFIRMED",
+    });
+
+    await updateMealPlanGroup(COMPANY_ID, MEAL_PLAN_GROUP_ID, {
+      status: "CONFIRMED",
+    }, ACTOR_USER_ID);
+
+    expect(generateMaterialRequirements).not.toHaveBeenCalled();
+    // 트랜잭션 미사용 경로임을 간접 확인 (검증 함수 mealPlan.findMany 미호출)
+    expect(mockPrisma.mealPlan.findMany).not.toHaveBeenCalled();
+    // ★ S4-3-c-R5 (§9-1, §9-4 α3): 역행 전이 시 신규 auto 서비스도 호출 안 함
+    expect(autoCreatePendingConsumptionHeaders).not.toHaveBeenCalled();
+    expect(autoReserveFromMaterialRequirements).not.toHaveBeenCalled();
   });
 });
