@@ -16,8 +16,11 @@
  *
  * FIFO: InventoryLot.receivedAt asc (입고 확정일).
  *
- * 재산출 정책 (D-R5-R1-a α):
- *   FINAL 진입 시 기존 ESTIMATED 예약을 전부 release (reason=MANUAL_CANCEL) → FINAL MR 기반 재예약.
+ * 재산출 정책 (§9-4 α3, P20 정합):
+ *   본 서비스는 순방향(CONFIRMED→IN_PROGRESS) 진입 시 순수 create 만 수행.
+ *   기존 예약 release · MR soft-delete · PENDING Consumption 삭제는
+ *   역방향 전이 시 `revert-guard.service.ts` (R5-R1-B, R12 실구현) 가 전담.
+ *   순방향 재진입 시점은 항상 clean slate 를 가정 (P20 순환 흐름).
  *
  * 실패 정책 (§9-4):
  *   동일 Location 내 eligible lot 합산이 requiredQty 미달 시 InsufficientAvailableQtyError throw.
@@ -31,7 +34,6 @@ import { isReservationEligibleLot } from "@/features/inventory/lib/reservation-e
 import {
   createReservation,
   InsufficientAvailableQtyError,
-  releaseReservation,
 } from "@/features/inventory/services/reservation.service";
 
 export const AUTO_RESERVE_ERRORS = {
@@ -55,7 +57,6 @@ export interface AutoReserveFromMaterialRequirementsInput {
 export interface AutoReserveFromMaterialRequirementsResult {
   reserved: number;   // 생성된 InventoryReservation 레코드 수
   skipped: number;    // eligible lot 이 없어 skip 된 MR 수 (SK 자재 등)
-  released: number;   // release 된 기존 예약 수
 }
 
 export async function autoReserveFromMaterialRequirements(
@@ -75,44 +76,10 @@ export async function autoReserveFromMaterialRequirements(
     throw new MealPlanGroupNotFoundForReserveError(input.mealPlanGroupId);
   }
 
-  // 2) Phase 1 — release 기존 예약 (α 정책)
-  //    referenceType="MATERIAL_REQUIREMENT" AND referenceId IN (해당 그룹의 MR ids)
-  //    countSource 무관 전량 release (ESTIMATED/FINAL 모두)
-  const targetMrs = await tx.materialRequirement.findMany({
-    where: {
-      mealPlanGroupId: input.mealPlanGroupId,
-      deletedAt: null,
-    },
-    select: { id: true },
-  });
-  const targetMrIds = targetMrs.map((m) => m.id);
+  // 2) release·cleanup 은 revert-guard.service.ts (R5-R1-B, R12) 가 전담.
+  //    순방향 진입 시점은 clean slate 를 가정 (§9-4 α3, P20 순환 흐름).
 
-  let released = 0;
-  if (targetMrIds.length > 0) {
-    const existingReservations = await tx.inventoryReservation.findMany({
-      where: {
-        companyId: input.companyId,
-        referenceType: "MATERIAL_REQUIREMENT",
-        referenceId: { in: targetMrIds },
-        releasedAt: null,
-      },
-      select: { id: true },
-    });
-
-    for (const r of existingReservations) {
-      await releaseReservation(
-        {
-          reservationId: r.id,
-          reason: "MANUAL_CANCEL",
-          actorUserId: input.actorUserId,
-        },
-        tx,
-      );
-      released++;
-    }
-  }
-
-  // 3) Phase 2 — 신규 예약 (countSource 필터)
+  // 3) MR 조회 → 예약 생성 (countSource 필터)
   const mrs = await tx.materialRequirement.findMany({
     where: {
       mealPlanGroupId: input.mealPlanGroupId,
@@ -203,5 +170,5 @@ export async function autoReserveFromMaterialRequirements(
     }
   }
 
-  return { reserved, skipped, released };
+  return { reserved, skipped };
 }
