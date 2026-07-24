@@ -1697,6 +1697,7 @@ model InventoryReservation {
   @@index([inventoryLotId])
   @@index([materialMasterId])
   @@index([useDate])
+  @@index([referenceType, referenceId])
   @@map("inventory_reservations")
 }
 
