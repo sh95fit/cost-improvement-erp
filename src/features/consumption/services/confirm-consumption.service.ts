@@ -11,6 +11,10 @@ import { buildConsumptionDraft } from "./consumption-draft.service";
 import { getOrCreateCookingPlanForConsumption } from "./cooking-plan-upsert.service";
 import { getAvailableQty } from "@/features/inventory/services/reservation.service";
 import {
+  getAvailableStock,
+  getSubsidiaryAvailableForConsumption,
+} from "@/features/inventory/services/available-stock.service";
+import {
   StaleDraftError,
   InsufficientStockError,
   InvalidLayerBItemError,
@@ -187,31 +191,34 @@ export async function confirmConsumption(
       >();
 
       for (const m of merged) {
-        if (m.totalQty <= EPS) continue; // USED=0, DISPOSED=0 이면 소진 대상 없음
-
-        const lots = await tx.inventoryLot.findMany({
-          where: {
+        if (m.totalQty <= EPS) continue;
+      
+        // ─────────────────────────────────────────
+        // S4-3-c-R6-B-2: available 판정을 헬퍼로 위임 (감사서 §10-9)
+        //   - 자재: getAvailableStock (P16 5축 매칭, §10-3)
+        //   - 부자재: getSubsidiaryAvailableForConsumption (§10-12)
+        // FIFO 차감용 Lot 배열은 별도 쿼리로 획득 (감사서 스펙 상 자재 헬퍼는 lots 미반환).
+        // ─────────────────────────────────────────
+        let totalAvailable: number;
+        if (m.itemType === "MATERIAL") {
+          const stock = await getAvailableStock(tx, {
+            companyId: input.companyId,
+            materialMasterId: m.itemId,
+            locationId: input.locationId,
+            productionLineId: m.productionLineId,
+            lineupId: m.lineupId,
+            useDate: input.targetDate,
+          });
+          totalAvailable = stock.available;
+        } else {
+          const stock = await getSubsidiaryAvailableForConsumption(tx, {
             companyId: input.companyId,
             locationId: input.locationId,
-            itemType: m.itemType,
-            materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
-            subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
-            remainingQty: { gt: 0 },
-          },
-          orderBy: [{ receivedAt: "asc" }, { id: "asc" }], // FIFO (P8)
-          select: {
-            id: true,
-            remainingQty: true,
-            unitPrice: true,
-          },
-        });
-
-        let totalAvailable = 0;
-        for (const lot of lots) {
-          const avail = await getAvailableQty(lot.id, tx);
-          totalAvailable += avail;
+            subsidiaryMasterId: m.itemId,
+          });
+          totalAvailable = stock.available;
         }
-
+      
         if (totalAvailable + EPS < m.totalQty) {
           shortages.push({
             itemType: m.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
@@ -222,8 +229,28 @@ export async function confirmConsumption(
             available: totalAvailable,
           });
         }
+      
+        // FIFO 차감용 Lot 배열 (기존 로직 유지 — 감사서 §10-3은 자재 헬퍼에 lots 미포함)
+        const lots = await tx.inventoryLot.findMany({
+          where: {
+            companyId: input.companyId,
+            locationId: input.locationId,
+            itemType: m.itemType,
+            materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
+            subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
+            remainingQty: { gt: 0 },
+          },
+          select: {
+            id: true,
+            remainingQty: true,
+            unitPrice: true,
+          },
+          orderBy: [{ receivedAt: "asc" }, { id: "asc" }],  // FIFO
+        });
+      
         perItemLots.set(itemKey(m.itemType, m.itemId, m.lineupId, m.productionLineId), lots);
-      }
+      }      
+
       if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
       // 7.5) ConsumptionHeader upsert (P15) — S4-3-c-R3-c

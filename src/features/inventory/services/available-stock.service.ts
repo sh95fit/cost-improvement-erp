@@ -217,3 +217,55 @@ export async function getAvailableStock(
     },
   };
 }
+
+// ═══════════════════════════════════════════════════════════
+// §10-12. 부자재 소비 별도 헬퍼 (R6-B-2, 2026-07-24)
+//
+// - 부자재는 예약 대상 아님 (isReservationEligibleLot=false, §9-13-e·§10-5).
+// - Lot 조회 시 locationId + subsidiaryMasterId 필터, remainingQty 단순 합산.
+// - 라인업 축 없음 (부자재는 라인업 무관).
+// - Pre-flight 에서 shortage 판정용 + FIFO 차감용 lots 배열 반환.
+// ═══════════════════════════════════════════════════════════
+
+export interface GetSubsidiaryAvailableForConsumptionInput {
+  companyId: string;
+  locationId: string;
+  subsidiaryMasterId: string;
+}
+
+export interface GetSubsidiaryAvailableForConsumptionResult {
+  available: number;
+  lots: Array<{
+    lotId: string;
+    remainingQty: number;
+  }>;
+}
+
+export async function getSubsidiaryAvailableForConsumption(
+  tx: Prisma.TransactionClient,
+  input: GetSubsidiaryAvailableForConsumptionInput,
+): Promise<GetSubsidiaryAvailableForConsumptionResult> {
+  const lots = await tx.inventoryLot.findMany({
+    where: {
+      companyId: input.companyId,
+      locationId: input.locationId,
+      itemType: "SUBSIDIARY",
+      subsidiaryMasterId: input.subsidiaryMasterId,
+      remainingQty: { gt: 0 },
+    },
+    select: {
+      id: true,
+      remainingQty: true,
+    },
+  });
+
+  const available = lots.reduce((sum, lot) => sum + lot.remainingQty, 0);
+
+  return {
+    available,
+    lots: lots.map((lot) => ({
+      lotId: lot.id,
+      remainingQty: lot.remainingQty,
+    })),
+  };
+}
