@@ -4,7 +4,7 @@
 > 기존 Sprint 계획과 Phase 매핑은 삭제하지 않는다.
 > MealPlanGroup / MealPlan / MealPlanSlot은 기본 구현 완료 상태를 유지하되, Sprint 2 내부 구조 재정의 보강 작업 대상임을 함께 표시한다.
 > Phase 8.5 (Location / ProductionLine 마스터)가 Sprint 2 라운드 안에서 완료되어 해당 행은 ✅로 갱신함. Sprint 6 본 Phase는 조직 단위 통합 시점에 재점검 예정.
-> 마지막 갱신: 2026-07-10 (Sprint 4 Phase S4-0-b 완료 — InventoryTransaction 부자재 대응 + XOR CHECK)
+> 마지막 갱신: 2026-07-24 (Sprint 4 Phase S4-3-c-R6-B-1 완료 — ConsumptionItem.lineupId NOT NULL FK + 인덱스 2종 + Lineup back-relation 추가; 감사서 §10-15)
 
 | # | 모델 | Sprint | Phase | 상태 |
 |---|------|--------|-------|------|
@@ -59,7 +59,7 @@
 | 49 | StockTakeItem | S4 | P6-7 | ⬜ |
 | 50 | ~~ShippingOrder~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — P13 보강에 따라 Consumption 이 재고 소진 단일 통로. `PurchaseOrder.outboundDate` (P8) 와 중복. |
 | 51 | ~~ShippingOrderItem~~ | S4 | ~~P8-9~~ | 🗑️ 폐지 (2026-07-15, S4-3-INT, `c2dd65f`) — 동상 |
-| 52 | ConsumptionItem | S4 | P10-11 / S4-0-a / S4-3-c-R3-b | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류; S4-3-c-R3-b: `headerId` NOT NULL FK · `supplierItemId` NULLABLE FK 신설 [R8 말미 NOT NULL 승격 예정] · `status` deprecated marking [R5 재편 시 삭제 예정] · ConsumptionHeader 편입) |
+| 52 | ConsumptionItem | S4 | P10-11 / S4-0-a / S4-3-c-R3-b / S4-3-c-R6-B-1 | 🔄 (S4-0-a: `sourceType` 추가 — P13 Layer A/B 분류; S4-3-c-R3-b: `headerId` NOT NULL FK · `supplierItemId` NULLABLE FK 신설 [R8 말미 NOT NULL 승격 예정] · `status` deprecated marking [R5 재편 시 삭제 예정] · ConsumptionHeader 편입; S4-3-c-R6-B-1: `lineupId` NOT NULL FK (Lineup, onDelete Restrict) + `@@index([lineupId])` + `@@index([consumedDate, lineupId])` 추가 — 감사서 §10-15) |
 | 52-a | ConsumptionHeader | S4 | P15 / S4-3-c-R3-b | 🆕 (헤더 도입 — PENDING/CONFIRMED 상태, source AUTO_MEAL_PLAN/MANUAL, 4요소 unique `[mealPlanGroupId, locationId, productionLineId, source]`, back-relation 6곳 Company/Location/ProductionLine/User×2/SupplierItem/MealPlanGroup) |
 | 53 | ConsumptionLotDetail | S4 | P10-11 | ⬜ |
 | 54 | CookingPlan | S4 | P12-13 | ⬜ |
@@ -80,6 +80,7 @@
 | 69 | AuditLog | S8 | P3-4 | ⬜ |
 
 ## 변경 이력
+- 2026-07-24 **Sprint 4 Phase S4-3-c-R6-B-1 완료** — `ConsumptionItem.lineupId` NOT NULL FK (Lineup, onDelete Restrict) 신설. `@@index([lineupId])` + `@@index([consumedDate, lineupId])` 2종 추가. `Lineup.consumptionItems` back-relation 추가. 감사서 §10-15 근거 (Q6 즉시 NOT NULL 도입, MealPlan 조인 파생 불가능한 Layer B 경로 대비). `mergeItems` 병합 키에 `lineupId`/`productionLineId` 추가 (§10-13). `itemKey(t, id, lineupId, productionLineId)` 시그니처 확장 및 `perItemLots`/`detectLayerADrift` 병합 키 일괄 확장. `ConsumptionItem.create` 에 `lineupId` 전달. Layer A 사전 non-null 검증 (§9-13-e). Layer B 임시 guard 삽입 (R6-B-3 UI 재설계 대기, §10-14). `InvalidLayerBItemError.LAYER_A_LINEUP_MISSING` 추가 + `confirm-consumption.action.ts` `consumptionReasonToMessage` case 추가. 마이그레이션: `20260724094111_s4_3_c_r6_b_1_add_consumption_item_lineup_id` (직전 orphan `lineup_id` 컬럼을 `pg`+`DIRECT_URL`로 DROP 후 정식 마이그레이션 재생성). 모델 상태: #52 ConsumptionItem 갱신. 커밋: `<H-8에서 채움>`. (P16)
 - 2026-07-22 **Sprint 4 Phase S4-3-c-R4 N/A 종결** — R3-b `prisma migrate reset` 으로 흡수. 검증 스크립트 `prisma/scripts/verify-r4-consumption-residual.ts` 로 `consumption_items`/`consumption_lot_details`/`inventoryTransaction(CONSUMPTION+DISPOSAL)`/`inventoryReservation(CONSUMED)` 4개 지표 0건 확인. 원안 (마이그레이션 `purge_stale_consumption` + `scripts/recompute-lot-remaining.ts`) 은 프로덕션 배포 시점 재검토.
 - 2026-07-22 **Sprint 4 Phase S4-3-c-R3-b 완료** — `ConsumptionHeader` 모델 신설 (P15): PENDING/CONFIRMED 라이프사이클, source AUTO_MEAL_PLAN/MANUAL 축, unique `[mealPlanGroupId, locationId, productionLineId, source]`. `ConsumptionHeaderSource` / `ConsumptionHeaderStatus` enum 도입. `ConsumptionItem` 확장: `headerId` NOT NULL FK (onDelete Cascade), `supplierItemId` NULLABLE FK 신설 (R8 말미 NOT NULL 승격 예정). back-relation 6곳 추가 (Company/Location/ProductionLine/User×2/SupplierItem/MealPlanGroup). `ConsumptionItem.status` 는 R5 재편 시 삭제 예정 (deprecated marking 유지). 기존 5건 테스트 데이터는 `prisma migrate reset` 으로 초기화 후 마이그레이션 적용. 마이그레이션: `20260722065856_s4_3_c_r3_b_add_consumption_header`. 모델 상태: #52 ConsumptionItem 갱신, #52-a ConsumptionHeader 신설. 커밋: `4f08e69`. (P14/P15)
 - 2026-07-22 **Sprint 4 Phase S4-3-c-R3-c 완료** — `confirmConsumption` 트랜잭션에 `ConsumptionHeader` upsert 편입. `MealPlanGroup` 을 (companyId, targetDate) 로 조회, Header.productionLineId 는 `CookingPlan.productionLineId` 정본 사용, AUTO_MEAL_PLAN 경로 idempotent (unique key 재사용). 확정 시점에 status PENDING → CONFIRMED, `confirmedAt` / `confirmedByUserId` 기록. `ConsumptionItem.create` 에 `headerId` 지정. R3-b/R3-c 는 통합 단일 커밋으로 처리. 커밋: `4f08e69`. (P15)

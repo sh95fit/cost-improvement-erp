@@ -42,6 +42,10 @@ export class InsufficientStockError extends Error {
   }
 }
 
+/**
+ * - S4-3-c-4-3 (2026-07-20): InvalidLayerBItemError 에 A/B 공통 검증 코드 추가 [legacy Phase 표기; R3-a 정합화]
+ * - S4-3-c-R6-B-1 (2026-07-24): LAYER_A_LINEUP_MISSING 추가 (감사서 §9-13-e non-null 요구)
+ */
 export class InvalidLayerBItemError extends Error {
   constructor(
     public readonly reason:
@@ -53,7 +57,8 @@ export class InvalidLayerBItemError extends Error {
       | "QUANTITY_NEGATIVE"          // finalUsedQty < 0 or remainingToStock < 0 (P11)
       | "QUANTITY_OVERFLOW"          // finalUsedQty + remainingToStock > totalAvailable (P14)
       | "DISPOSAL_REASON_REQUIRED"   // disposalQty > 0 인데 disposalReason 미지정 (P14)
-      | "DISPOSAL_NOTE_REQUIRED",    // disposalReason=OTHER 인데 disposalNote 미지정 (P14)
+      | "DISPOSAL_NOTE_REQUIRED"    // disposalReason=OTHER 인데 disposalNote 미지정 (P14)
+      | "LAYER_A_LINEUP_MISSING",      // S4-3-c-R6-B-1: 감사서 §9-13-e non-null 위반
     public readonly itemId: string,
   ) {
     super(`INVALID_LAYER_B_ITEM:${reason}`);

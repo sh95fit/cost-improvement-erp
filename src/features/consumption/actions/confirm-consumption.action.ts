@@ -24,6 +24,7 @@ import {
 //        · QUANTITY_NEGATIVE / QUANTITY_OVERFLOW / QUANTITY_NON_POSITIVE
 //        · DISPOSAL_REASON_REQUIRED / DISPOSAL_NOTE_REQUIRED
 //        · ITEM_NOT_FOUND / ITEM_INACTIVE / UNIT_MISMATCH
+//        · LAYER_A_LINEUP_MISSING (S4-3-c-R6-B-1, 감사서 §9-13-e)
 //      - CookingPlan auto-upsert
 //      - USED/DISPOSED 행 분리 저장 (P14) + FIFO Lot 차감 (P8)
 //      - InsufficientStockError → "INSUFFICIENT_STOCK:재고 부족 - ..."
@@ -131,6 +132,9 @@ function consumptionReasonToMessage(reason: string): string {
       return "폐기가 발생하는 항목은 폐기 사유를 선택해야 합니다.";
     case "DISPOSAL_NOTE_REQUIRED":
       return "폐기 사유가 '기타'인 경우 상세 사유를 입력해야 합니다.";
+    // S4-3-c-R6-B-1 (감사서 §9-13-e): Layer A 라인업 non-null 검증
+    case "LAYER_A_LINEUP_MISSING":
+      return "Layer A 항목의 라인업 정보가 누락되었습니다. 식단을 다시 확인한 뒤 시도해주세요.";
     default:
       return "사용 처리 항목이 유효하지 않습니다.";
   }

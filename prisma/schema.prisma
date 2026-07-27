@@ -269,15 +269,15 @@ enum SubsidiaryType {
 
 // P12 — 이원 발주 흐름 (Dual Purchase Flow)
 enum PurchaseKind {
-  WIZARD         // 식단 위저드 (β-1) — JIT
-  MANUAL_JIT     // 수동 JIT (β-2) — 라인업·출고일 NOT NULL
-  STOCK_KEEPING  // 재고 확보 (α) — 라인업·출고일 무귀속
+  WIZARD // 식단 위저드 (β-1) — JIT
+  MANUAL_JIT // 수동 JIT (β-2) — 라인업·출고일 NOT NULL
+  STOCK_KEEPING // 재고 확보 (α) — 라인업·출고일 무귀속
 }
 
 // P13 — 사용 처리 이중 레이어
 enum ConsumptionSourceType {
-  MEAL_PLAN_AUTO   // Layer A — 식단 자동 산출 (의무)
-  MANUAL_ADDITION  // Layer B — 사용자 수동 추가 (선택)
+  MEAL_PLAN_AUTO // Layer A — 식단 자동 산출 (의무)
+  MANUAL_ADDITION // Layer B — 사용자 수동 추가 (선택)
 }
 
 // P15 축 B — Header 생성 경로 (Item.sourceType 과 축이 다름: Header 레벨 생성 경로 vs Item 레벨 Layer A/B)
@@ -531,7 +531,7 @@ model Location {
   transfersTo           InventoryTransfer[]    @relation("TransferTo")
   materialRequirements  MaterialRequirement[]
   purchaseOrders        PurchaseOrder[]
-  consumptionHeaders   ConsumptionHeader[]  
+  consumptionHeaders    ConsumptionHeader[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -586,23 +586,23 @@ model User {
   updatedAt      DateTime   @updatedAt @map("updated_at")
   deletedAt      DateTime?  @map("deleted_at")
 
-  scopes                  UserScope[]
-  auditLogs               AuditLog[]
-  monthEndAdjustments     MonthEndAdjustment[]
-  invitations             Invitation[]
+  scopes                      UserScope[]
+  auditLogs                   AuditLog[]
+  monthEndAdjustments         MonthEndAdjustment[]
+  invitations                 Invitation[]
   // ★ Sprint 3 Phase 1 — PO 라이프사이클 관계 분리
-  createdPurchaseOrders   PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
-  approvedPurchaseOrders  PurchaseOrder[]        @relation("PurchaseOrderApprovedBy")
-  cancelledPurchaseOrders PurchaseOrder[]        @relation("PurchaseOrderCancelledBy")
+  createdPurchaseOrders       PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
+  approvedPurchaseOrders      PurchaseOrder[]        @relation("PurchaseOrderApprovedBy")
+  cancelledPurchaseOrders     PurchaseOrder[]        @relation("PurchaseOrderCancelledBy")
   // ★ R1-b1: 위저드 batch 생성자
-  createdPOBatches        PurchaseOrderBatch[]
+  createdPOBatches            PurchaseOrderBatch[]
   // ★ R1-b3: PO 조정 이력 액터
-  poAdjustmentLogs        POAdjustmentLog[]
-  receivingNotesConfirmed ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
-  receivingDiscrepancies  ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")
+  poAdjustmentLogs            POAdjustmentLog[]
+  receivingNotesConfirmed     ReceivingNote[]        @relation("ReceivingNoteConfirmedBy")
+  receivingDiscrepancies      ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyRecordedBy")
   // ★ S4-3-c-R3-b: ConsumptionHeader 액터 관계 (P15)
-  consumptionHeadersCreated   ConsumptionHeader[] @relation("ConsumptionHeaderCreatedBy")
-  consumptionHeadersConfirmed ConsumptionHeader[] @relation("ConsumptionHeaderConfirmedBy")
+  consumptionHeadersCreated   ConsumptionHeader[]    @relation("ConsumptionHeaderCreatedBy")
+  consumptionHeadersConfirmed ConsumptionHeader[]    @relation("ConsumptionHeaderConfirmedBy")
 
   @@map("users")
 }
@@ -690,7 +690,7 @@ model MaterialMaster {
   stockGradeUpdatedAt   DateTime?    @map("stock_grade_updated_at")
   isActive              Boolean      @default(true) @map("is_active") // ★ M-Fix-R1 (D14-7)
   defaultSupplierItemId String?      @unique @map("default_supplier_item_id")
-  isStockKeeping  Boolean  @default(false)  @map("is_stock_keeping")  // P12 — SK 발주 우선 노출 대상 (OEM 등)  
+  isStockKeeping        Boolean      @default(false) @map("is_stock_keeping") // P12 — SK 발주 우선 노출 대상 (OEM 등)  
   createdAt             DateTime     @default(now()) @map("created_at")
   updatedAt             DateTime     @updatedAt @map("updated_at")
   deletedAt             DateTime?    @map("deleted_at")
@@ -716,7 +716,7 @@ model MaterialMaster {
   @@unique([companyId, code])
   @@index([companyId])
   @@index([isActive]) // ★ M-Fix-R1 (D14-7)
-  @@index([isStockKeeping])  
+  @@index([isStockKeeping])
   @@map("material_masters")
 }
 
@@ -754,7 +754,7 @@ model SubsidiaryMaster {
   recipeBomSlots          RecipeBOMSlot[]
   mealPlanSlots           MealPlanSlot[]
   consumptionItems        ConsumptionItem[]
-  inventoryTransactions InventoryTransaction[]
+  inventoryTransactions   InventoryTransaction[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1299,6 +1299,7 @@ model Lineup {
   mealCounts           MealCount[]
   materialRequirements MaterialRequirement[]
   purchaseOrders       PurchaseOrder[] // ★ Sprint 3.5 Phase S3.5-0
+  consumptionItems     ConsumptionItem[] // ★ S4-3-c-R6-B-1
 
   @@unique([companyId, code]) // 또는 partial unique index — 기존 정의 유지
   @@index([companyId])
@@ -1453,7 +1454,7 @@ model PurchaseOrder {
   productionLineId    String?             @map("production_line_id")
   // ★ Sprint 3.5 Phase S3.5-0 — 라인업 귀속 축 (P1' 준수, 수동 발주 시 필수)
   lineupId            String?             @map("lineup_id")
-  purchaseKind    PurchaseKind  @default(WIZARD)  @map("purchase_kind")  // P12 — 발주 축 분류  
+  purchaseKind        PurchaseKind        @default(WIZARD) @map("purchase_kind") // P12 — 발주 축 분류  
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
   // ★ R1-b1: 위저드 batch 추적 (NEW/DELTA/REPLACE 어느 모드든 batch 에 묶임)
@@ -1485,7 +1486,7 @@ model PurchaseOrder {
   @@index([lineupId]) // ★ Sprint 3.5 Phase S3.5-0
   @@index([outboundDate]) // ★ Phase 1.6
   @@index([expectedReceiveDate]) // ★ Phase 1.6 (입고 예정 리스트 정렬용)
-  @@index([purchaseKind])  
+  @@index([purchaseKind])
   @@map("purchase_orders")
 }
 
@@ -1604,25 +1605,25 @@ model ReceivingNoteItem {
 // ---- 11. 재고 ----
 
 model InventoryLot {
-  id                  String    @id @default(cuid())
-  companyId           String    @map("company_id")
-  locationId          String    @map("location_id")
-  itemType            ItemType  @default(MATERIAL) @map("item_type")
+  id                  String        @id @default(cuid())
+  companyId           String        @map("company_id")
+  locationId          String        @map("location_id")
+  itemType            ItemType      @default(MATERIAL) @map("item_type")
   // ★ Sprint 4 Phase 10 — 부자재 재고 표현 보강
   //   itemType=MATERIAL  → materialMasterId 필수, subsidiaryMasterId null
   //   itemType=SUBSIDIARY → subsidiaryMasterId 필수, materialMasterId null
-  materialMasterId    String?   @map("material_master_id") // ★ nullable 전환
-  subsidiaryMasterId  String?   @map("subsidiary_master_id")
-  receivingNoteItemId String?   @map("receiving_note_item_id")
-  lotNumber           String    @map("lot_number")
-  initialQty          Float     @map("initial_qty")
-  remainingQty        Float     @map("remaining_qty")
-  purchaseKind    PurchaseKind? @map("purchase_kind")  
-  unitPrice           Float     @map("unit_price")
-  expirationDate      DateTime? @map("expiration_date") @db.Date
-  receivedAt          DateTime  @default(now()) @map("received_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  materialMasterId    String?       @map("material_master_id") // ★ nullable 전환
+  subsidiaryMasterId  String?       @map("subsidiary_master_id")
+  receivingNoteItemId String?       @map("receiving_note_item_id")
+  lotNumber           String        @map("lot_number")
+  initialQty          Float         @map("initial_qty")
+  remainingQty        Float         @map("remaining_qty")
+  purchaseKind        PurchaseKind? @map("purchase_kind")
+  unitPrice           Float         @map("unit_price")
+  expirationDate      DateTime?     @map("expiration_date") @db.Date
+  receivedAt          DateTime      @default(now()) @map("received_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
 
   company               Company                @relation(fields: [companyId], references: [id])
   location              Location               @relation(fields: [locationId], references: [id])
@@ -1638,7 +1639,7 @@ model InventoryLot {
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([lotNumber])
-  @@index([purchaseKind])  
+  @@index([purchaseKind])
   @@map("inventory_lots")
 }
 
@@ -1819,6 +1820,8 @@ model ConsumptionItem {
   companyId          String                 @map("company_id")
   // ★ S4-3-c-R3-b — Header 편입 (P15)
   headerId           String                 @map("header_id")
+  // ★ S4-3-c-R6-B-1 — Layer B 라인업 귀속 축 (Q6 확정, 감사서 §10-15)
+  lineupId           String                 @map("lineup_id")
   // ★ Sprint 4 Phase 10 — 부자재 사용처리 지원 (Phase 9-D-Acc 흡수)
   itemType           ItemType               @default(MATERIAL) @map("item_type")
   materialMasterId   String?                @map("material_master_id")
@@ -1831,7 +1834,7 @@ model ConsumptionItem {
   consumedDate       DateTime               @map("consumed_date") @db.Date
   // @deprecated S4-3-c-R3-c 에서 삭제 예정 — Header.status 로 이관
   status             ConsumptionStatus      @default(DRAFT)
-  sourceType         ConsumptionSourceType  @default(MEAL_PLAN_AUTO)  @map("source_type")  // P13 — Item 레벨 Layer A/B (Header.source 와 별개 축)
+  sourceType         ConsumptionSourceType  @default(MEAL_PLAN_AUTO) @map("source_type") // P13 — Item 레벨 Layer A/B (Header.source 와 별개 축)
   // ★ Sprint 4 Phase 10 — 처분 유형 정책
   disposition        ConsumptionDisposition @default(USED) @map("disposition")
   disposalReason     DisposalReason?        @map("disposal_reason")
@@ -1842,6 +1845,7 @@ model ConsumptionItem {
 
   header           ConsumptionHeader      @relation(fields: [headerId], references: [id], onDelete: Cascade)
   company          Company                @relation(fields: [companyId], references: [id])
+  lineup           Lineup                 @relation(fields: [lineupId], references: [id])
   materialMaster   MaterialMaster?        @relation(fields: [materialMasterId], references: [id])
   subsidiaryMaster SubsidiaryMaster?      @relation(fields: [subsidiaryMasterId], references: [id])
   supplierItem     SupplierItem?          @relation(fields: [supplierItemId], references: [id])
@@ -1850,10 +1854,12 @@ model ConsumptionItem {
 
   @@index([companyId])
   @@index([headerId])
+  @@index([lineupId])
   @@index([supplierItemId])
   @@index([materialMasterId])
   @@index([subsidiaryMasterId])
   @@index([consumedDate])
+  @@index([consumedDate, lineupId])
   @@index([disposition])
   @@index([disposition, consumedDate])
   @@index([sourceType])

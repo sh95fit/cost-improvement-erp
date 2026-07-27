@@ -79,14 +79,21 @@ type DispositionSource = {
 type MergedItem = {
   itemType: ItemType;
   itemId: string;
+  lineupId: string;                    // S4-3-c-R6-B-1: 감사서 §10-13, §9-13-e non-null 보장
+  productionLineId: string;            // S4-3-c-R6-B-1: 감사서 §10-13
   itemName: string;
   unit: string;
   totalQty: number;                    // FIFO 소진 대상 총량 (USED + DISPOSED, 재고 잔량 제외)
   sources: DispositionSource[];
 };
 
-function itemKey(t: ItemType, id: string): string {
-  return `${t}:${id}`;
+function itemKey(
+  t: ItemType,
+  id: string,
+  lineupId: string | null,
+  productionLineId: string | null,
+): string {
+  return `${t}:${id}:${lineupId ?? "_"}:${productionLineId ?? "_"}`;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -95,6 +102,15 @@ function itemKey(t: ItemType, id: string): string {
 export async function confirmConsumption(
   input: ConfirmConsumptionInput,
 ): Promise<ConfirmConsumptionResult> {
+  // S4-3-c-R6-B-1 임시 guard: Layer B lineupId 미지원 (R6-B-3에서 UI 재설계)
+  // 감사서 §10-14, §9-13-e 근거. Layer B 항목은 lineupId 필드 없음 → NOT NULL FK 위반 불가.
+  if (input.layerBItems.length > 0) {
+    throw new Error(
+      "Layer B (수동 추가) 항목은 현재 지원되지 않습니다. " +
+      "R6-B-3 UI 재설계 완료 후 사용 가능합니다 (감사서 §10-14).",
+    );
+  }
+
   // 1) 사전 검증 (트랜잭션 밖 fast-fail, P11 강화)
   for (const b of input.layerBItems) {
     if (!(b.quantity > 0)) {
@@ -150,6 +166,16 @@ export async function confirmConsumption(
         planDate: input.targetDate,
       });
 
+      // S4-3-c-R6-B-1: Layer A lineupId/productionLineId non-null 검증 (감사서 §9-13-e)
+      for (const a of input.layerAItems) {
+        if (a.lineupId === null || a.productionLineId === null) {
+          throw new InvalidLayerBItemError(
+            "LAYER_A_LINEUP_MISSING",
+            a.itemId,
+          );
+        }
+      }
+
       // 6) A+B 병합 (같은 item 은 sources[] 로 분리, disposition 별 행 생성)
       const merged = mergeItems(input.layerAItems, layerBMeta, rebuilt.layerAItems);
 
@@ -196,7 +222,7 @@ export async function confirmConsumption(
             available: totalAvailable,
           });
         }
-        perItemLots.set(itemKey(m.itemType, m.itemId), lots);
+        perItemLots.set(itemKey(m.itemType, m.itemId, m.lineupId, m.productionLineId), lots);
       }
       if (shortages.length > 0) throw new InsufficientStockError(shortages);
 
@@ -259,18 +285,18 @@ export async function confirmConsumption(
       let totalDisposedQty = 0;
 
       for (const m of merged) {
-        const lots = perItemLots.get(itemKey(m.itemType, m.itemId));
+        const lots = perItemLots.get(itemKey(m.itemType, m.itemId, m.lineupId, m.productionLineId));
 
         for (const src of m.sources) {
           if (src.qty <= EPS) continue;
 
           const created = await tx.consumptionItem.create({
             data: {
-              headerId: consumptionHeader.id, // S4-3-c-R3-c: Header 편입 (P15)
+              headerId: consumptionHeader.id,
               companyId: input.companyId,
+              lineupId: m.lineupId,                // S4-3-c-R6-B-1: 감사서 §10-15
               itemType: m.itemType,
               materialMasterId: m.itemType === "MATERIAL" ? m.itemId : null,
-              subsidiaryMasterId: m.itemType === "SUBSIDIARY" ? m.itemId : null,
               cookingPlanId,
               consumedQty: src.qty,
               unit: m.unit,
@@ -407,12 +433,16 @@ function detectLayerADrift(
   client: ConfirmConsumptionInput["layerAItems"],
   server: Awaited<ReturnType<typeof buildConsumptionDraft>>["layerAItems"],
 ): StaleDraftError["diffs"] {
-  const serverMap = new Map(server.map((s) => [itemKey(s.itemType, s.itemId), s]));
-  const clientMap = new Map(client.map((c) => [itemKey(c.itemType, c.itemId), c]));
+  const serverMap = new Map(
+    server.map((s) => [itemKey(s.itemType, s.itemId, s.lineupId, s.productionLineId), s]),
+  );
+  const clientMap = new Map(
+    client.map((c) => [itemKey(c.itemType, c.itemId, c.lineupId, c.productionLineId), c]),
+  );
   const diffs: StaleDraftError["diffs"] = [];
 
   for (const c of client) {
-    const s = serverMap.get(itemKey(c.itemType, c.itemId));
+    const s = serverMap.get(itemKey(c.itemType, c.itemId, c.lineupId, c.productionLineId));
     if (!s) {
       diffs.push({
         itemType: c.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
@@ -446,7 +476,7 @@ function detectLayerADrift(
     }
   }
   for (const s of server) {
-    if (!clientMap.has(itemKey(s.itemType, s.itemId))) {
+    if (!clientMap.has(itemKey(s.itemType, s.itemId, s.lineupId, s.productionLineId))) {
       diffs.push({
         itemType: s.itemType === "MATERIAL" ? "MATERIAL" : "SUBSIDIARY",
         itemId: s.itemId,
@@ -516,16 +546,21 @@ function mergeItems(
   serverA: Awaited<ReturnType<typeof buildConsumptionDraft>>["layerAItems"],
 ): MergedItem[] {
   const map = new Map<string, MergedItem>();
-  const nameMap = new Map(serverA.map((s) => [itemKey(s.itemType, s.itemId), s]));
+  const nameMap = new Map(
+    serverA.map((s) => [itemKey(s.itemType, s.itemId, s.lineupId, s.productionLineId), s]),
+  );
 
   for (const it of a) {
-    const key = itemKey(it.itemType, it.itemId);
+    // S4-3-c-R6-B-1: non-null 보장은 편집 (4) 사전 검증에서 완료
+    const key = itemKey(it.itemType, it.itemId, it.lineupId, it.productionLineId);
     const meta = nameMap.get(key)!;
     const cur =
       map.get(key) ??
       ({
         itemType: it.itemType,
         itemId: it.itemId,
+        lineupId: it.lineupId!,          // 편집 (4) guard로 non-null 보장
+        productionLineId: it.productionLineId!,
         itemName: meta.itemName,
         unit: meta.unit,
         totalQty: 0,
@@ -560,13 +595,19 @@ function mergeItems(
     map.set(key, cur);
   }
 
+  // S4-3-c-R6-B-1: Layer B 루프는 편집 (3) guard로 도달 불가.
+  // R6-B-3에서 LayerBItemWithMeta에 lineupId 필드 추가 후 재활성화 예정.
+  // TypeScript 컴파일 유지를 위해 코드 자체는 남기되 lineupId를 임시 처리.
   for (const it of b) {
-    const key = itemKey(it.itemType, it.itemId);
+    // guard 통과 시 이 코드는 실행되지 않음 (b.length === 0 보장)
+    const key = itemKey(it.itemType, it.itemId, null, null);
     const cur =
       map.get(key) ??
       ({
         itemType: it.itemType,
         itemId: it.itemId,
+        lineupId: "",                    // 도달 불가 (편집 3 guard)
+        productionLineId: "",
         itemName: it.itemName,
         unit: it.unit,
         totalQty: 0,

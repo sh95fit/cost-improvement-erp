@@ -49,3 +49,8 @@ test-results/
 
 
 *.backup
+
+# --- Sprint 4 R6-B-1 이후 도입: 임시 검증/복구 스크립트 & 스키마 백업 ---
+tmp-*.ts
+tmp-*.js
+prisma/schema.prisma.*-backup
