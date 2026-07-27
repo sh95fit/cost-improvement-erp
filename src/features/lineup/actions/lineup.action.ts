@@ -2,10 +2,11 @@
 "use server";
 
 import { requireCompanySession } from "@/lib/auth/session";
-import { assertPermission } from "@/lib/auth/permissions";
+import { assertPermission, assertScope } from "@/lib/auth/permissions";
 import { createAuditLog } from "@/lib/utils/audit";
-import { actionOk } from "@/lib/result";
-import type { ActionResult } from "@/lib/result";
+import { actionOk, actionFail, ActionResult } from "@/lib/result";
+import { prisma } from "@/lib/prisma";
+import { applyScopeFilter, getUserScope } from "@/lib/auth/scope";
 import { handleActionError } from "@/lib/action-helpers";
 import {
   createLineupSchema,
@@ -15,6 +16,7 @@ import {
 } from "../schemas/lineup.schema";
 import * as lineupService from "../services/lineup.service";
 import type { Lineup } from "@prisma/client";
+
 
 // ════════════════════════════════════════
 // Lineup Read
@@ -182,3 +184,99 @@ export async function deleteLineupAction(
 
 // export async function getLineupLocationsAction(...) { ... }
 // export async function syncLineupLocationsAction(...) { ... }
+
+// ════════════════════════════════════════
+// S4-3-c-R6-B-3 — Layer B 라인업 선택용 스코프 액션
+// (audit §10-14) targetDate + locationId 컨텍스트에서
+// MaterialRequirement 기준 distinct (lineupId, productionLineId) 반환
+// ════════════════════════════════════════
+
+
+// ════════════════════════════════════════
+// S4-3-c-R6-B-3 — Layer B 라인업 선택용 스코프 액션
+// (audit §10-14) targetDate + locationId 컨텍스트에서
+// MaterialRequirement 기준 distinct (lineupId, productionLineId) 반환
+// ════════════════════════════════════════
+
+type ScopedLineupRow = {
+  lineupId: string;
+  lineupName: string;
+  lineupCode: string;
+  productionLineId: string;
+  productionLineName: string;
+};
+
+export async function getScopedLineupsForConsumptionAction(
+  targetDate: string, // YYYY-MM-DD
+  locationId: string,
+): Promise<ActionResult<ScopedLineupRow[]>> {
+  try {
+    const session = await requireCompanySession();
+    assertPermission(session, "consumption", "READ");
+    assertScope(session, "LOCATION", locationId);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+      return actionFail("VALIDATION", "targetDate 형식이 올바르지 않습니다");
+    }
+
+    if (!session.companyId) {
+      return actionFail("COMPANY_NOT_ASSIGNED", "회사가 배정되지 않았습니다");
+    }
+
+    const userScope = await getUserScope(session.userId);
+
+    const [y, m, d] = targetDate.split("-").map(Number);
+    const targetDateUtc = new Date(Date.UTC(y, m - 1, d));
+
+    const baseWhere = {
+      targetDate: targetDateUtc,
+      companyId: session.companyId,
+      locationId,
+      lineupId: { not: null },
+      deletedAt: null,
+    };
+
+    // 시그니처: applyScopeFilter(scope, baseWhere) — H-47-1 확정
+    const scopedWhere = applyScopeFilter(userScope, baseWhere);
+
+    const rows = await prisma.materialRequirement.findMany({
+      where: scopedWhere,
+      distinct: ["lineupId", "productionLineId"],
+      select: {
+        lineupId: true,
+        productionLineId: true,
+        lineup: { select: { id: true, name: true, code: true, sortOrder: true } },
+        productionLine: { select: { id: true, name: true } },
+      },
+      orderBy: [
+        { lineup: { sortOrder: "asc" } },
+        { productionLine: { name: "asc" } },
+      ],
+    });
+
+    const result: ScopedLineupRow[] = rows
+      .filter(
+        (r): r is typeof r & {
+          lineupId: string;
+          productionLineId: string;
+          lineup: NonNullable<typeof r.lineup>;
+          productionLine: NonNullable<typeof r.productionLine>;
+        } =>
+          r.lineupId !== null &&
+          r.productionLineId !== null &&
+          r.lineup !== null &&
+          r.productionLine !== null,
+      )
+      .map((r) => ({
+        lineupId: r.lineupId,
+        lineupName: r.lineup.name,
+        lineupCode: r.lineup.code,
+        productionLineId: r.productionLineId,
+        productionLineName: r.productionLine.name,
+      }));
+
+    return actionOk(result);
+  } catch (error) {
+    return handleActionError(error, "라인업 조회에 실패했습니다");
+  }
+}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { buildConsumptionDraftAction } from "@/features/consumption/actions/build-consumption-draft.action";
+import { getScopedLineupsForConsumptionAction } from "@/features/lineup/actions/lineup.action";
 import { ConsumptionDraftForm } from "@/features/consumption/components/consumption-draft-form";
 
 export default async function CreateConsumptionPage({
@@ -24,8 +25,11 @@ export default async function CreateConsumptionPage({
     );
   }
 
-  // Case B: 초안 로드
-  const result = await buildConsumptionDraftAction({ targetDate: date, locationId });
+  // Case B: 초안 + 스코프 라인업 병렬 로드 (audit §10-14 R6-B-3)
+  const [result, lineupsResult] = await Promise.all([
+    buildConsumptionDraftAction({ targetDate: date, locationId }),
+    getScopedLineupsForConsumptionAction(date, locationId),
+  ]);
 
   if (!result.success) {
     return (
@@ -38,6 +42,10 @@ export default async function CreateConsumptionPage({
     );
   }
 
+  // 라인업 조회 실패는 fatal 하지 않음 — 빈 배열 fallback
+  // (Layer B 추가 시 사용자에게 옵션 없음 = 라인업 미선택 상태 → 저장 시 서버 Zod 에서 반려)
+  const availableLineups = lineupsResult.success ? lineupsResult.data : [];
+
   return (
     <div className="space-y-4">
       <BackLink />
@@ -45,6 +53,7 @@ export default async function CreateConsumptionPage({
         draft={result.data}
         targetDate={date}
         locationId={locationId}
+        availableLineups={availableLineups}
       />
     </div>
   );

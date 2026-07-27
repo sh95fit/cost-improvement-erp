@@ -48,6 +48,17 @@ type Props = {
   draft: DraftData;
   targetDate: string; // YYYY-MM-DD
   locationId: string;
+  /**
+   * S4-3-c-R6-B-3 (§10-14): 현재 (targetDate, locationId) 스코프의 라인업/생산라인 조합.
+   * getScopedLineupsForConsumptionAction 결과. 빈 배열이면 Layer B 저장 불가.
+   */
+  availableLineups: Array<{
+    lineupId: string;
+    lineupName: string;
+    lineupCode: string;
+    productionLineId: string;
+    productionLineName: string;
+  }>;
 };
 
 /**
@@ -95,7 +106,7 @@ function initialSuggestedQtyBase(it: DraftItem): number {
 // ────────────────────────────────────────────────────────────
 // 메인 컴포넌트
 // ────────────────────────────────────────────────────────────
-export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
+export function ConsumptionDraftForm({ draft, targetDate, locationId, availableLineups }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -176,7 +187,10 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
       if (d.needsReason && !d.state?.disposalReason) reasonMissing++;
       if (d.needsNote && !d.state?.disposalNote.trim()) noteMissing++;
     }
-    const hasInvalidLayerB = layerBItems.some((it) => it.quantity <= 0);
+    // S4-3-c-R6-B-3 (§10-14): 수량 + 라인업/생산라인 non-null 검증
+    const hasInvalidLayerB = layerBItems.some(
+      (it) => it.quantity <= 0 || !it.lineupId || !it.productionLineId,
+    );
     return {
       overflowCount,
       reasonMissing,
@@ -226,6 +240,8 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
           itemType: b.itemType,
           itemId: b.itemId,
           quantity: b.quantity,
+          lineupId: b.lineupId,           // §10-14: UI 선택값 (null 시 서버 Zod 에서 반려)
+          productionLineId: b.productionLineId,
           note: b.note,
         })),
       });
@@ -561,6 +577,7 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId }: Props) {
           layerAItems={draft.layerAItems}
           items={layerBItems}
           onChange={setLayerBItems}
+          availableLineups={availableLineups}
         />
 
         {/* 확정 버튼 */}

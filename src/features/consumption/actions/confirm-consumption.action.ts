@@ -1,11 +1,14 @@
 "use server";
 
+import { z } from "zod";
 import type { DisposalReason } from "@prisma/client";
 import { requireCompanySession } from "@/lib/auth/session";
 import { assertPermission, assertScope } from "@/lib/auth/permissions";
 import { actionOk, actionFail } from "@/lib/result";
 import type { ActionResult } from "@/lib/result";
 import { handleActionError } from "@/lib/action-helpers";
+import { getUserScope, assertScopeAccess, ScopeAccessDeniedError } from "@/lib/auth/scope";
+import { confirmConsumptionSchema } from "../schemas/confirm-consumption.schema";
 import {
   confirmConsumption,
   type ConfirmConsumptionResult,
@@ -49,6 +52,8 @@ export type ConfirmConsumptionActionInput = {
     itemType: "MATERIAL" | "SUBSIDIARY";
     itemId: string;
     quantity: number;
+    lineupId: string | null;             // §10-14: UI에서 non-null 강제, Zod 재검증
+    productionLineId: string | null;     // §10-14: 라인업과 함께 매핑
     note?: string;
   }>;
 };
@@ -65,18 +70,70 @@ export async function confirmConsumptionAction(
       throw new Error("COMPANY_NOT_ASSIGNED");
     }
 
-    const [y, m, d] = input.targetDate.split("-").map(Number);
+    // S4-3-c-R6-B-3 (§10-14): Zod 파싱으로 Layer B lineupId/productionLineId non-null 강제
+    let parsed: z.infer<typeof confirmConsumptionSchema>;
+    try {
+      parsed = confirmConsumptionSchema.parse(input);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        const firstIssue = zodError.issues[0];
+        return actionFail(
+          "VALIDATION",
+          firstIssue?.message ?? "입력값이 올바르지 않습니다",
+        );
+      }
+      throw zodError;
+    }
+
+    // S4-3-c-R6-B-3 (§10-14): Layer B 각 항목의 productionLineId 스코프 검증
+    const userScope = await getUserScope(session.userId);
+    try {
+      for (const item of parsed.layerBItems) {
+        assertScopeAccess(userScope, { productionLineId: item.productionLineId });
+      }
+    } catch (scopeError) {
+      if (scopeError instanceof ScopeAccessDeniedError) {
+        return actionFail(
+          "SCOPE_ACCESS_DENIED",
+          "권한이 없는 라인업/생산라인이 포함되어 있습니다",
+        );
+      }
+      throw scopeError;
+    }
+
+    const [y, m, d] = parsed.targetDate.split("-").map(Number);
     const targetDate = new Date(Date.UTC(y, m - 1, d));
 
     try {
       const result = await confirmConsumption({
         companyId: session.companyId,
         userId: session.userId,
-        locationId: input.locationId,
+        locationId: parsed.locationId,
         targetDate,
-        layerAItems: input.layerAItems,
-        layerBItems: input.layerBItems,
+        // Layer A: Zod 통과분 그대로 (service의 layerAItems 필드와 정합).
+        //   단, clientId는 service에 불필요 → 제거.
+        layerAItems: parsed.layerAItems.map((it) => ({
+          itemType: it.itemType,
+          itemId: it.itemId,
+          lineupId: it.lineupId,
+          productionLineId: it.productionLineId,
+          suggestedQty: it.suggestedQty,
+          totalAvailable: it.totalAvailable,
+          finalUsedQty: it.finalUsedQty,
+          remainingToStock: it.remainingToStock,
+          disposalReason: it.disposalReason,
+          disposalNote: it.disposalNote,
+        })),
+        // Layer B: service는 clientId/lineupId/productionLineId 미사용 (R6-B-2 예정) → 제거.
+        //   §10-14 검증은 이미 위에서 Zod + assertScopeAccess 로 완료.
+        layerBItems: parsed.layerBItems.map((it) => ({
+          itemType: it.itemType,
+          itemId: it.itemId,
+          quantity: it.quantity,
+          note: it.note,
+        })),
       });
+
       return actionOk(result);
     } catch (error) {
       // 접두사 형태 에러 (상세를 message 에 포함) — 사용자에게 그대로 노출

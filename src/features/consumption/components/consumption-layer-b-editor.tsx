@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Plus, Trash2 } from "lucide-react";
 import { ItemType } from "@prisma/client";
 import type { LayerBItem } from "../types/layer-b-item.type";
@@ -16,12 +19,23 @@ type Props = {
   layerAItems: ConsumptionDraftItem[];       // 중복 경고용
   items: LayerBItem[];
   onChange: (next: LayerBItem[]) => void;
+  /**
+   * S4-3-c-R6-B-3 (§10-14): 라인업 선택 옵션.
+   * 라인업 선택 시 productionLineId 도 함께 매핑됨.
+   */
+  availableLineups: Array<{
+    lineupId: string;
+    lineupName: string;
+    lineupCode: string;
+    productionLineId: string;
+    productionLineName: string;
+  }>;
 };
 
 const numberFmt = (v: number) =>
   new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(v);
 
-export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props) {
+export function ConsumptionLayerBEditor({ layerAItems, items, onChange, availableLineups }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // 자재/부자재 별 Layer A 매핑 (중복 검사용)
@@ -51,6 +65,8 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
         itemCode: picked.itemCode,
         unit: picked.unit,
         quantity: 0,
+        lineupId: null,          // ← 추가
+        productionLineId: null,  // ← 추가
         note: "",
       },
     ]);
@@ -105,6 +121,7 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
               <TableHead>코드</TableHead>
               <TableHead className="w-28 text-right">수량</TableHead>
               <TableHead>단위</TableHead>
+              <TableHead className="w-64">라인업 / 생산라인</TableHead>
               <TableHead>사유(선택)</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
@@ -140,6 +157,40 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
                   </TableCell>
                   <TableCell>{it.unit}</TableCell>
                   <TableCell>
+                    <Select
+                      value={it.lineupId ?? ""}
+                      onValueChange={(v) => {
+                        const opt = availableLineups.find((l) => l.lineupId === v);
+                        updateItem(it.clientId, {
+                          lineupId: v || null,
+                          productionLineId: opt?.productionLineId ?? null,
+                        });
+                      }}
+                    >
+                      <SelectTrigger
+                        className={`h-8 ${!it.lineupId ? "border-red-300" : ""}`}
+                      >
+                        <SelectValue placeholder="라인업 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableLineups.length === 0 ? (
+                          <div className="px-2 py-1.5 text-xs text-gray-500">
+                            선택 가능한 라인업이 없습니다
+                          </div>
+                        ) : (
+                          availableLineups.map((l) => (
+                            <SelectItem
+                              key={`${l.lineupId}::${l.productionLineId}`}
+                              value={l.lineupId}
+                            >
+                              {l.lineupName} — {l.productionLineName}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
                     <Input
                       className="h-8"
                       placeholder="예: 실측 대비 초과"
@@ -162,7 +213,7 @@ export function ConsumptionLayerBEditor({ layerAItems, items, onChange }: Props)
             })}
             {items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-sm text-gray-500">
+                <TableCell colSpan={8} className="text-center text-sm text-gray-500">
                   수동 추가 항목이 없습니다. 필요 시 우측 상단 &ldquo;품목 추가&rdquo; 버튼을 사용하세요.
                 </TableCell>
               </TableRow>
