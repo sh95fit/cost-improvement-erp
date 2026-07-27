@@ -77,6 +77,8 @@ export const mockPrisma = {
   consumptionLotDetail: createModelMock(),
   // ★ Sprint 4 Phase S4-3-c-R6-B-4: 조리 계획 mock (테스트 인프라 확장)
   cookingPlan: createModelMock(),
+  // ★ Sprint 4 Phase S4-3-c-R7-a: 스코프 유틸 (감사서 §10-17, 테스트 인프라 확장)
+  userScope: createModelMock(),
   $transaction: vi.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
   $queryRaw: vi.fn().mockResolvedValue([]),
 };
