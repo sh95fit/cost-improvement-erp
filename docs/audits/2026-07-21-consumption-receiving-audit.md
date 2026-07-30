@@ -6,6 +6,30 @@
 
 ---
 
+## §0. 예약 도메인 3대 원칙 (2026-07-30 박제, 재해석 방지)
+
+Sprint 4 진행 중 예약 도메인 설계가 반복 재해석된 이력을 종결하기 위한 최상위 원칙. 향후 모든 페이즈 설계 시 이 3개 원칙 부합 여부를 필수 검토한다.
+
+**원칙 1 — 예약 재고 발생 시점**
+- 예약 재고(`InventoryReservation`)는 **실물 자재가 창고에 입고 확정된 시점에만** 발생한다.
+- 식단 작성 / 확정 / IN_PROGRESS 전환 / MR 산출은 예약을 생성하지 않는다.
+- 유일한 예약 생성 지점은 `confirmReceivingNote` 트랜잭션 내부 (R14).
+
+**원칙 2 — 예약 누적 정책**
+- 동일 MealPlanGroup·동일 MaterialMaster에 대한 예약은 **독립 누적**이 원칙.
+- 발주 분할, 추가 발주, 다중 입고는 각각 별도 예약을 생성한다 (중복 skip / 덮어쓰기 금지).
+- 예약 유일성은 `InventoryLot.id` 축(1 Lot = 1 예약)에서 자연 보장. `(referenceType, referenceId)` 축은 다중 허용.
+- 예약 수량은 `ReceivingNoteItem.receivedQty` 그대로 (수량 상한 없음, 초과분은 free stock으로 사용 처리 시 자연 흡수).
+
+**원칙 3 — 재고 부족 검증 지점**
+- 재고 충족/부족 판단은 **`confirmConsumption` FIFO 차감 루프에서만** 수행.
+- MealPlan 상태 전이 시점 및 입고 확정 시점에는 재고 부족 검증 없음.
+- `InsufficientAvailableQtyError`의 발생 위치는 `confirmConsumption` 전용.
+
+**폐기된 대안 (참조용)**
+- ~~R5-R1 (autoReserveFromMaterialRequirements)~~ — IN_PROGRESS 전환 시 예약 생성 시도. 원칙 1 위반으로 **폐기** (2026-07-30). 상세: §9-1, §9-14.
+- ~~식단 확정 시점 재고 부족 롤백~~ — 원칙 3 위반으로 **폐기** (2026-07-30). 상세: §9-4.
+
 ## §1. 위반 판정표 (헌법 조항 매핑)
 
 | # | 현행 구현 | 위반 조항 | 심각도 | 결정 |
@@ -212,15 +236,15 @@ PROGRESS.md 의 Sprint 4 진행 현황 서브섹션에 삽입되는 R0~R13 표�
 
 ### §9-1. 스코프 정의
 - **R5-P**: `autoCreatePendingConsumptionHeaders` — MealPlan CONFIRMED→IN_PROGRESS 시 (mealPlanGroupId, locationId, productionLineId, source=AUTO_MEAL_PLAN) 조합별 idempotent upsert.
-- **R5-R1**: `autoReserveFromMaterialRequirements` — 동일 트랜잭션에서 `MaterialRequirement` 순회 → `isReservationEligibleLot` 통과 lot 대상 `createReservation` 호출.
-- **R5-R2**: 발주→입고 흐름 예약 생성. **본 페이즈 제외**, 신규 페이즈 **R14** 로 이관.
+- ~~**R5-R1**: `autoReserveFromMaterialRequirements`~~ — **폐기 (2026-07-30)**. §0 원칙 1 위반 (식단 전환 시점 예약 생성은 실물 자재 부재로 성립 불가). 예약 생성은 R14 입고 확정 시점으로 완전 이관. 상세: §9-14.
+- **R5-R2**: 발주→입고 흐름 예약 생성. **본 페이즈 제외**, 신규 페이즈 **R14** 로 이관 (§0 원칙 1에 따라 예약 생성의 유일 지점).
 
 ### §9-2. 트리거 지점
 - **파일**: `src/features/meal-plan/services/meal-plan.service.ts`
 - **함수**: `updateMealPlanGroup`
 - **라인**: 705-740 (CONFIRMED→IN_PROGRESS / IN_PROGRESS→COMPLETED 전이 트랜잭션 블록)
-- **삽입 순서**: (1) 검증 → (2) status update → (3) `generateMaterialRequirements` → **(4-new) `autoCreatePendingConsumptionHeaders`** → **(5-new) `autoReserveFromMaterialRequirements`**
-- **근거**: DRAFT→CONFIRMED 는 식수 확정 이전이라 MR 이 없어 예약 불가. IN_PROGRESS 진입 시점이 P16 예약의 최초 성립 조건 충족.
+- **삽입 순서**: (1) 검증 → (2) status update → (3) `generateMaterialRequirements` → **(4-new) `autoCreatePendingConsumptionHeaders`** → ~~(5-new) `autoReserveFromMaterialRequirements`~~ **[폐기, §0 원칙 1]**
+- **근거**: DRAFT→CONFIRMED 는 식수 확정 이전이라 MR 이 없어 산출 불가. IN_PROGRESS 진입 시점은 **PENDING Header 성립 조건만 충족** (§0 원칙 1에 따라 예약 성립 조건은 R14 입고 확정 시점에서만 충족).
 
 ### §9-3. 예약 참조 축 (P16 정정)
 - **정정 전**: `referenceType = "MEAL_PLAN_SLOT"`, `referenceId = MealPlanSlot.id`
@@ -231,9 +255,9 @@ PROGRESS.md 의 Sprint 4 진행 현황 서브섹션에 삽입되는 R0~R13 표�
 ### §9-4. 재산출/재편집 정책 (2026-07-23 재정정, 사용자 확인)
 
 **순방향 (전진 전이)**:
-- CONFIRMED → IN_PROGRESS: `autoCreatePendingConsumptionHeaders` + `autoReserveFromMaterialRequirements(ESTIMATED)` 호출 (예약 최초 생성)
-- IN_PROGRESS → COMPLETED: 예약 재생성 **안 함** (α3). FINAL MR 만 생성 (기존 `generateMaterialRequirements` 로직 유지). FINAL 은 원가 검증 지표로만 사용.
-- 근거: FINAL 시점(COMPLETED) 은 이미 실사용 임박. 예약보다 실제 사용(Consumption 확정)이 더 적절. 이중 계산 회피.
+- CONFIRMED → IN_PROGRESS: `autoCreatePendingConsumptionHeaders` 만 호출 (~~autoReserveFromMaterialRequirements~~ 폐기, §0 원칙 1).
+- IN_PROGRESS → COMPLETED: 예약 생성 **안 함**. FINAL MR 만 생성 (기존 `generateMaterialRequirements` 로직 유지). FINAL 은 원가 검증 지표로만 사용.
+- 근거: §0 원칙 1에 따라 예약은 R14 입고 확정 시점에서만 발생. MealPlan 상태 전이는 예약과 무관.
 
 **역방향 (후진 전이)** — R5-R1-B 신규 서비스 위임:
 - COMPLETED → IN_PROGRESS · IN_PROGRESS → CONFIRMED · IN_PROGRESS → DRAFT · COMPLETED → DRAFT 모두:
@@ -242,30 +266,33 @@ PROGRESS.md 의 Sprint 4 진행 현황 서브섹션에 삽입되는 R0~R13 표�
   3. **재확정 시점**: 순방향 재진입 시 자연 재생성 (idempotent)
 - 어느 상태 → CANCELLED: R15 페이즈 (§9-5, 별도)
 
-**실패 정책 (기존 유지)**:
-- 예약 부족(`InsufficientAvailableQtyError`) 발생 시 → **전체 트랜잭션 롤백**.
-- 결과: MealPlanGroup.status 원복(CONFIRMED 유지), MR 롤백, Header/Reservation 미생성.
-- 사용자는 자재 보충 후 재시도.
+**실패 정책 (2026-07-30 개정)**:
+- R5-P는 재고 검증을 수행하지 않으므로 `InsufficientAvailableQtyError` 발생 경로 없음.
+- 재고 부족 검출은 `confirmConsumption` FIFO 차감 루프에서만 발생 (§0 원칙 3).
+- MR 산출 실패 등 시스템 오류는 기존과 동일하게 전체 트랜잭션 롤백.
 
-### §9-5. 예약 해제 (R5 범위 외)
-- MealPlan CANCELLED 전이 시 예약 해제 로직 **현재 미구현**.
-- `MealPlanStatus.CANCELLED` 리터럴 검색 결과 프로덕션 코드 0건 확인 (2026-07-23).
-- 별도 페이즈로 이관 (제안: **R15** — CANCELLED 전이 시 활성 Reservation 일괄 release).
+### §9-5. 예약 해제 (R15 완료 · 2026-07-30 갱신)
+- **완료** — 커밋 `3d1a572` (R15).
+- 신규 서비스 `release-reservations-on-meal-plan-cancel.service.ts` — MealPlan CANCELLED 전이 시 해당 그룹의 MR에 연결된 활성 예약을 `MANUAL_CANCEL` 사유로 일괄 release.
+- **Release 대상**: R14가 생성한 예약 (`referenceType="MATERIAL_REQUIREMENT"`, `referenceId=MR.id`). §0 원칙 1에 따라 예약은 R14 지점에서만 생성되므로 R15 대상은 R14 예약이 유일.
+- 상세: §11-3.
 
 ### §9-6. 데이터 축 일치 검증
 - MaterialRequirement.lineupId 는 nullable → SK(STOCK_KEEPING) 발주 대응.
 - 예약 축(lineupId, locationId, productionLineId) 이 MR 축과 1:1 매핑되므로 별도 파생 로직 불필요.
 
 ### §9-7. 신규 서비스 스펙
-| 파일 | 시그니처 | 반환 |
-|------|---------|------|
-| `src/features/consumption/services/auto-create-pending-consumption-headers.service.ts` | `autoCreatePendingConsumptionHeaders(tx, { companyId, mealPlanGroupId, userId })` | `{ created: number; existing: number }` |
-| `src/features/inventory/services/auto-reserve-from-material-requirements.service.ts` | `autoReserveFromMaterialRequirements(tx, { companyId, mealPlanGroupId, countSource, userId })` | `{ reserved: number; skipped: number }` |
+| 파일 | 시그니처 | 반환 | 상태 |
+|------|---------|------|------|
+| `src/features/consumption/services/auto-create-pending-consumption-headers.service.ts` | `autoCreatePendingConsumptionHeaders(tx, { companyId, mealPlanGroupId, userId })` | `{ created: number; existing: number }` | ✅ 유지 |
+| ~~`src/features/inventory/services/auto-reserve-from-material-requirements.service.ts`~~ | ~~`autoReserveFromMaterialRequirements(...)`~~ | ~~`{ reserved, skipped }`~~ | ❌ 폐기 (2026-07-30, §0 원칙 1). 상세: §9-14 |
+
+R14 신규 서비스 스펙은 **§9-14**를 참조.
 
 ### §9-8. 테스트 계획
 - `auto-create-pending-consumption-headers.service.test.ts`: (a) 최초 호출 시 조합별 생성, (b) 재호출 시 중복 생성 없음(idempotent), (c) 이미 CONFIRMED Header 존재 시 skip.
 - `auto-reserve-from-material-requirements.service.test.ts`: (a) reservation-eligible lot 만 예약, (b) STOCK_KEEPING 자재 skip, (c) 재고 부족 시 throw.
-- `meal-plan.service.test.ts` 확장: CONFIRMED→IN_PROGRESS 전이 시 두 서비스 호출 검증 + 예약 실패 롤백 검증.
+- `meal-plan.service.test.ts` 확장: CONFIRMED→IN_PROGRESS 전이 시 두 서비스 호출 검증
 
 ### §9-9. 미해결 항목
 - MR 재생성(예: IN_PROGRESS 상태에서 식수 재조정)의 예약 재계산 정책 → R5 종료 후 별도 논의.
@@ -363,6 +390,49 @@ R5-R1 로 생성된 `InventoryReservation` 이 R8 (Consumption 재작성) 시점
 - 초기 검토안: `MealPlanAccessory` 에 `lineupId` 필드 추가하여 부자재도 라인업 축을 스키마에서 명시.
 - 폐기 사유: 부자재는 `MealPlan` 종속이며 `MealPlan.lineupId` 로 자동 파생 가능. 별도 필드는 중복이며 정합성 리스크(부모/자식 lineupId 불일치) 증가.
 - 대신 `ConsumptionItem.lineupId` 도입 시 부자재 소비 항목도 라인업이 명시적으로 기록됨 (§9-12-b).
+
+### §9-14. R14 상세 설계 — 입고 확정 시 예약 자동 생성 (2026-07-30 신설)
+
+**§9-14-1. 스코프**
+- **트리거**: `confirmReceivingNote` 트랜잭션 내부, `ReceivingNote.status="CONFIRMED"` 업데이트 직후.
+- **대상**: 위저드 발주(`isManual=false`)로 생성된 `PurchaseOrderItem` → `ReceivingNoteItem`. 수동 발주(`materialRequirementId=null`)는 skip.
+- **결과**: 각 `ReceivingNoteItem`의 `inventoryLot`을 소스로 하는 `InventoryReservation` 생성.
+
+**§9-14-2. 신규 서비스 스펙**
+| 파일 | 시그니처 | 반환 |
+|------|---------|------|
+| `src/features/inventory/services/auto-reserve-on-receiving-confirm.service.ts` | `autoReserveOnReceivingConfirm(tx, { companyId, receivingNoteId, actorUserId })` | `{ reserved: number; skipped: number }` |
+
+**§9-14-3. 예약 참조 축**
+- `referenceType = "MATERIAL_REQUIREMENT"` (§9-3 재사용).
+- `referenceId = MaterialRequirement.id` (`purchaseOrderItem.materialRequirementId` 경유).
+- `useDate = MealPlanGroup.planDate` (MR → MealPlanGroup FK 경유).
+- `inventoryLotId = ReceivingNoteItem.inventoryLotId` (입고 확정 트랜잭션 내에서 생성된 Lot).
+
+**§9-14-4. 예약 수량 정책 (§0 원칙 2 정합)**
+- 수량 = `ReceivingNoteItem.receivedQty` 그대로.
+- 수량 상한 없음. 초과 입고분도 전량 예약.
+- 초과분은 `confirmConsumption` FIFO 차감 후 잔여 예약으로 남아 free stock 또는 다음 사용 처리에서 자연 흡수.
+- 동일 MR에 대한 재발주·재입고 시 새 Lot마다 별도 예약 생성 (독립 누적).
+
+**§9-14-5. 매칭 실패 처리**
+- `purchaseOrderItem.materialRequirementId=null` (수동 발주): skip (로그 기록).
+- FK 존재하지만 MR 미조회 (soft-delete 등): skip (로그 기록).
+- Lot 미생성 (트랜잭션 순서 위반): FK 무결성 위반으로 예외 throw, 전체 롤백.
+
+**§9-14-6. 실패 정책 (§0 원칙 3 정합)**
+- 재고 부족 검증 없음 — 입고 확정분 자체가 예약 대상이므로 부족 케이스 원천 불가.
+- 시스템 오류(FK 무결성, DB 락 등)만 트랜잭션 롤백.
+
+**§9-14-7. 중복 방지**
+- 동일 MR에 대한 다중 예약은 §0 원칙 2에 따라 허용.
+- 재실행 방어는 `ReceivingNoteAlreadyConfirmedError` (수신 확정 재진입 차단)로 자연 충족.
+- `InventoryReservation`에 별도 유니크 제약 추가 불필요.
+
+**§9-14-8. R5-R1과의 관계**
+- R5-R1은 §0 원칙 1 위반으로 폐기 (2026-07-30).
+- R14가 예약 생성의 **유일한** 지점.
+- 기존 R5-R1 로직이 커버하던 T1(기존 재고 충당) 케이스는 `confirmConsumption` FIFO 차감(§0 원칙 3)에서 자연 처리.
 
 
 ## §10. R6 상세 설계 (가용재고 정본 서비스, 2026-07-23 사전 결정 박제, 2026-07-24 D-R6-f 정정)
@@ -520,9 +590,9 @@ R6 및 관련 도메인에서 스코프상 R6-B 에 포함되지 않고 별도 �
 - R7-b~e: Consumption/PO/Receiving/Inventory 도메인별 스코프 필터 적용. R6-B 와 병행 진행 가능.
 - 현재 서버측 스코프 필터는 `session.companyId` 단일 축만 사용 중 (60-A 조사 확인).
 
-### §11-2. R14 — 발주 → 입고 흐름 예약 생성 (분리 이관)
-- 입고 확정 트랜잭션 내 `MaterialRequirement` 매칭 후 `InventoryReservation` 자동 생성.
-- R5-R1 이 MealPlan CONFIRMED → IN_PROGRESS 시점 예약을 다뤘다면, R14 는 입고 시점 예약을 다룸.
+### §11-2. R14 — 입고 확정 시 예약 자동 생성 (예약 생성의 유일 지점)
+- 상세 설계: §9-14.
+- R5-R1 폐기(2026-07-30)로 R14가 예약 생성의 유일 지점(§0 원칙 1).
 
 ### §11-3. R15 — MealPlan CANCELLED 시 활성 Reservation 일괄 release (분리 이관)
 - 감사서 §9-5 근거. 현재 미구현 상태 확인 (56-3 조사).
