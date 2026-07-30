@@ -403,11 +403,13 @@ R5-R1 로 생성된 `InventoryReservation` 이 R8 (Consumption 재작성) 시점
 |------|---------|------|
 | `src/features/inventory/services/auto-reserve-on-receiving-confirm.service.ts` | `autoReserveOnReceivingConfirm(tx, { companyId, receivingNoteId, actorUserId })` | `{ reserved: number; skipped: number }` |
 
-**§9-14-3. 예약 참조 축**
+**§9-14-3. 예약 참조 축 및 조회 경로**
 - `referenceType = "MATERIAL_REQUIREMENT"` (§9-3 재사용).
 - `referenceId = MaterialRequirement.id` (`purchaseOrderItem.materialRequirementId` 경유).
 - `useDate = MealPlanGroup.planDate` (MR → MealPlanGroup FK 경유).
-- `inventoryLotId = ReceivingNoteItem.inventoryLotId` (입고 확정 트랜잭션 내에서 생성된 Lot).
+- `inventoryLotId`: `InventoryLot.receivingNoteItemId` **역방향 조회**로 획득 (2026-07-30 H-89 실측 정정). `ReceivingNoteItem`에는 `inventoryLotId` 필드 없음 — 관계는 `InventoryLot → ReceivingNoteItem` 방향으로만 존재. R14 서비스는 `inventoryLot.findFirst({ where: { receivingNoteItemId: rItem.id, companyId } })`로 조회.
+- `materialMasterId = InventoryLot.materialMasterId` (Lot 생성 시 확정, itemType=SUBSIDIARY 인 경우 예약 대상 아님).
+- **부자재(SUBSIDIARY) 처리**: `InventoryReservation` 스키마에 `subsidiaryMasterId` 필드 없음 → 부자재 Lot은 예약 대상에서 제외 (감사서 §10 D-R6-f α 정합).
 
 **§9-14-4. 예약 수량 정책 (§0 원칙 2 정합)**
 - 수량 = `ReceivingNoteItem.receivedQty` 그대로.
