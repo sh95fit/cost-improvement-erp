@@ -493,15 +493,11 @@ vi.mock("@/features/material-requirement/services/material-requirement.service",
 vi.mock("@/features/consumption/services/auto-create-pending-consumption-headers.service", () => ({
   autoCreatePendingConsumptionHeaders: vi.fn(),
 }));
-vi.mock("@/features/inventory/services/auto-reserve-from-material-requirements.service", () => ({
-  autoReserveFromMaterialRequirements: vi.fn(),
-}));
 vi.mock("@/features/inventory/services/release-reservations-on-meal-plan-cancel.service", () => ({
   releaseReservationsOnMealPlanCancel: vi.fn(),
 }));
 
 import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
-import { autoReserveFromMaterialRequirements } from "@/features/inventory/services/auto-reserve-from-material-requirements.service";
 
 // ════════════════════════════════════════════════════════════════
 // 6. Phase 4-G G-1: updateMealPlanGroup 상태 전이 hook (MR 자동 산출)
@@ -518,8 +514,6 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     vi.mocked(generateMaterialRequirements).mockReset();
     vi.mocked(autoCreatePendingConsumptionHeaders).mockReset();
     vi.mocked(autoCreatePendingConsumptionHeaders).mockResolvedValue({ created: 0, existing: 0 });
-    vi.mocked(autoReserveFromMaterialRequirements).mockReset();
-    vi.mocked(autoReserveFromMaterialRequirements).mockResolvedValue({ reserved: 0, skipped: 0 });
   });
 
   /**
@@ -754,7 +748,7 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     expect(generateMaterialRequirements).not.toHaveBeenCalled();
   });
 
-  it("CONFIRMED → IN_PROGRESS 전진 시 autoCreatePendingConsumptionHeaders + autoReserveFromMaterialRequirements 를 호출 (§9-1 R5)", async () => {
+  it("CONFIRMED → IN_PROGRESS 전진 시 autoCreatePendingConsumptionHeaders 를 호출 (§9-1 R5-P)", async () => {
     setupForwardValidationPass();
     vi.mocked(generateMaterialRequirements).mockResolvedValueOnce({
       mealPlanGroupId: MEAL_PLAN_GROUP_ID,
@@ -780,19 +774,9 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
         actorUserId: ACTOR_USER_ID,
       }),
     );
-    expect(autoReserveFromMaterialRequirements).toHaveBeenCalledTimes(1);
-    expect(autoReserveFromMaterialRequirements).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        companyId: COMPANY_ID,
-        mealPlanGroupId: MEAL_PLAN_GROUP_ID,
-        countSource: "ESTIMATED",
-        actorUserId: ACTOR_USER_ID,
-      }),
-    );
   });
 
-  it("IN_PROGRESS → COMPLETED 전진 시 autoCreatePendingConsumptionHeaders / autoReserveFromMaterialRequirements 를 호출하지 않음 (§9-4 α3)", async () => {
+  it("IN_PROGRESS → COMPLETED 전진 시 autoCreatePendingConsumptionHeaders 를 호출하지 않음 (§9-4 α3)", async () => {
     // 그룹 findFirst: IN_PROGRESS 반환
     mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
       id: MEAL_PLAN_GROUP_ID,
@@ -857,7 +841,6 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     }, ACTOR_USER_ID);
 
     expect(autoCreatePendingConsumptionHeaders).not.toHaveBeenCalled();
-    expect(autoReserveFromMaterialRequirements).not.toHaveBeenCalled();
   });
 
   it("역행 전이(IN_PROGRESS → CONFIRMED)는 MR 자동 산출을 호출하지 않음", async () => {
@@ -879,7 +862,6 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     expect(mockPrisma.mealPlan.findMany).not.toHaveBeenCalled();
     // ★ S4-3-c-R5 (§9-1, §9-4 α3): 역행 전이 시 신규 auto 서비스도 호출 안 함
     expect(autoCreatePendingConsumptionHeaders).not.toHaveBeenCalled();
-    expect(autoReserveFromMaterialRequirements).not.toHaveBeenCalled();
   });
 });
 

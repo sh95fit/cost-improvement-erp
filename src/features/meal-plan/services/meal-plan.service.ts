@@ -29,7 +29,6 @@ import { MealPlanStatus, MealCountSource } from "@prisma/client";
 import { generateMaterialRequirements } from "@/features/material-requirement/services/material-requirement.service";
 
 import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
-import { autoReserveFromMaterialRequirements } from "@/features/inventory/services/auto-reserve-from-material-requirements.service";
 import { releaseReservationsOnMealPlanCancel } from "@/features/inventory/services/release-reservations-on-meal-plan-cancel.service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -744,19 +743,14 @@ export async function updateMealPlanGroup(
         { existingTx: tx },
       );
 
-      // ★ S4-3-c-R5 (§9-1 R5-P + R5-R1, §9-4 α3): CONFIRMED→IN_PROGRESS 진입 시에만
-      //   autoCreatePendingConsumptionHeaders + autoReserveFromMaterialRequirements 호출.
-      //   IN_PROGRESS→COMPLETED (FINAL) 시점은 예약 재생성 안 함 (§9-4 α3).
+      // ★ S4-3-c-R5-P (§9-1, §0 원칙 1): CONFIRMED→IN_PROGRESS 진입 시에만
+      //   autoCreatePendingConsumptionHeaders 호출.
+      //   IN_PROGRESS→COMPLETED (FINAL) 시점은 재호출 안 함.
+      //   (R5-R1 autoReserveFromMaterialRequirements 폐기 2026-07-30 · §0 원칙 1 · 예약 생성은 R14 입고 확정 시점 전담)
       if (isForwardToInProgress) {
         await autoCreatePendingConsumptionHeaders(tx, {
           companyId,
           mealPlanGroupId: id,
-          actorUserId,
-        });
-        await autoReserveFromMaterialRequirements(tx, {
-          companyId,
-          mealPlanGroupId: id,
-          countSource: MealCountSource.ESTIMATED,
           actorUserId,
         });
       }
