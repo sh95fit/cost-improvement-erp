@@ -76,6 +76,7 @@ describe("confirmReceivingNote", () => {
     mockPrisma.purchaseOrderItem.update.mockResolvedValue({});
     mockPrisma.receivingDiscrepancy.create.mockResolvedValue({});
     mockPrisma.receivingNote.update.mockResolvedValue({ id: NOTE_ID, status: "CONFIRMED" });
+    mockPrisma.receivingNote.findFirst.mockResolvedValue({ id: NOTE_ID, items: [] });
   });
 
   it("정상 케이스: 수량·단가 일치 시 Lot/Tx 생성, Discrepancy 없음, PO → RECEIVED", async () => {

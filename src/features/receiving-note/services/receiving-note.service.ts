@@ -4,6 +4,7 @@ import { buildDiscrepancyKey } from "../lib/discrepancy-key";
 
 import { withTransaction } from "@/lib/auth/transaction";
 import { transitionPurchaseOrderStatus } from "@/features/purchase-order/services/purchase-order.service";
+import { autoReserveOnReceivingConfirm } from "@/features/inventory/services/auto-reserve-on-receiving-confirm.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -330,6 +331,15 @@ export async function confirmReceivingNote(
         { toStatus: "RECEIVED", actorUserId },
         tx, // ★ 4번째 인자는 tx 자체, 옵션 객체 아님
       );
+
+      // 6) ★ S4-3-c-R14 (§0 원칙 1·2, §9-14, §11-2): 입고 확정 시 예약 자동 생성.
+      //    위저드 발주(materialRequirementId 존재) → InventoryReservation 생성.
+      //    수동 발주 / 부자재 Lot → skip. 독립 누적 (중복 체크 없음).
+      await autoReserveOnReceivingConfirm(tx, {
+        companyId,
+        receivingNoteId: note.id,
+        actorUserId,
+      });
 
       return updatedNote;
     },
