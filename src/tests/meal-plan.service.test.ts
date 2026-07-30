@@ -481,6 +481,7 @@ describe("applyMealTemplate", () => {
 });
 
 import { updateMealPlanGroup } from "@/features/meal-plan/services/meal-plan.service";
+import { releaseReservationsOnMealPlanCancel } from "@/features/inventory/services/release-reservations-on-meal-plan-cancel.service";
 import { generateMaterialRequirements } from "@/features/material-requirement/services/material-requirement.service";
 
 // ★ Phase 4-G G-1: MR 자동 산출 훅 검증용 mock
@@ -494,6 +495,9 @@ vi.mock("@/features/consumption/services/auto-create-pending-consumption-headers
 }));
 vi.mock("@/features/inventory/services/auto-reserve-from-material-requirements.service", () => ({
   autoReserveFromMaterialRequirements: vi.fn(),
+}));
+vi.mock("@/features/inventory/services/release-reservations-on-meal-plan-cancel.service", () => ({
+  releaseReservationsOnMealPlanCancel: vi.fn(),
 }));
 
 import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
@@ -876,5 +880,80 @@ describe("Phase 4-G G-1: updateMealPlanGroup MR 자동 산출 hook", () => {
     // ★ S4-3-c-R5 (§9-1, §9-4 α3): 역행 전이 시 신규 auto 서비스도 호출 안 함
     expect(autoCreatePendingConsumptionHeaders).not.toHaveBeenCalled();
     expect(autoReserveFromMaterialRequirements).not.toHaveBeenCalled();
+  });
+});
+
+describe("Phase S4-3-c-R15: updateMealPlanGroup CANCELLED 전이 시 예약 release (§9-5, §11-3)", () => {
+  beforeEach(() => {
+    vi.mocked(releaseReservationsOnMealPlanCancel).mockReset();
+    vi.mocked(releaseReservationsOnMealPlanCancel).mockResolvedValue({ released: 0 });
+  });
+
+  it("CONFIRMED → CANCELLED 전이 시 releaseReservationsOnMealPlanCancel 을 호출한다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CONFIRMED",
+    } as never);
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CANCELLED",
+    } as never);
+
+    await updateMealPlanGroup(
+      COMPANY_ID,
+      MEAL_PLAN_GROUP_ID,
+      { status: "CANCELLED" },
+      ACTOR_USER_ID,
+    );
+
+    expect(releaseReservationsOnMealPlanCancel).toHaveBeenCalledTimes(1);
+    expect(releaseReservationsOnMealPlanCancel).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        companyId: COMPANY_ID,
+        mealPlanGroupId: MEAL_PLAN_GROUP_ID,
+        actorUserId: ACTOR_USER_ID,
+      },
+    );
+  });
+
+  it("IN_PROGRESS → CANCELLED 전이 시에도 releaseReservationsOnMealPlanCancel 을 호출한다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "IN_PROGRESS",
+    } as never);
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CANCELLED",
+    } as never);
+
+    await updateMealPlanGroup(
+      COMPANY_ID,
+      MEAL_PLAN_GROUP_ID,
+      { status: "CANCELLED" },
+      ACTOR_USER_ID,
+    );
+
+    expect(releaseReservationsOnMealPlanCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("CANCELLED → CANCELLED (동일 상태) 는 releaseReservationsOnMealPlanCancel 을 호출하지 않는다", async () => {
+    mockPrisma.mealPlanGroup.findFirst.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CANCELLED",
+    } as never);
+    mockPrisma.mealPlanGroup.update.mockResolvedValueOnce({
+      id: MEAL_PLAN_GROUP_ID,
+      status: "CANCELLED",
+    } as never);
+
+    await updateMealPlanGroup(
+      COMPANY_ID,
+      MEAL_PLAN_GROUP_ID,
+      { status: "CANCELLED" },
+      ACTOR_USER_ID,
+    );
+
+    expect(releaseReservationsOnMealPlanCancel).not.toHaveBeenCalled();
   });
 });

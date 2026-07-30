@@ -30,6 +30,7 @@ import { generateMaterialRequirements } from "@/features/material-requirement/se
 
 import { autoCreatePendingConsumptionHeaders } from "@/features/consumption/services/auto-create-pending-consumption-headers.service";
 import { autoReserveFromMaterialRequirements } from "@/features/inventory/services/auto-reserve-from-material-requirements.service";
+import { releaseReservationsOnMealPlanCancel } from "@/features/inventory/services/release-reservations-on-meal-plan-cancel.service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -696,6 +697,10 @@ export async function updateMealPlanGroup(
     isStatusChange &&
     existing.status === MealPlanStatus.IN_PROGRESS &&
     input.status === MealPlanStatus.COMPLETED;
+  const isTransitionToCancelled =
+    isStatusChange &&
+    existing.status !== MealPlanStatus.CANCELLED &&
+    input.status === MealPlanStatus.CANCELLED;
 
   // ★ Phase 4-G G-1: 전진 전이는 [검증 → 상태 update → MR 자동 산출] 을
   //   단일 트랜잭션에 묶어 부분 상태 방지.
@@ -755,6 +760,30 @@ export async function updateMealPlanGroup(
           actorUserId,
         });
       }
+
+      return updated;
+    });
+  }
+
+  // ★ S4-3-c-R15 (§9-5, §11-3): 어느 상태 → CANCELLED 전이 시
+  //   해당 그룹의 MR 참조 활성 Reservation 일괄 release.
+  //   MR soft-delete · PENDING Consumption 정리는 범위 밖 (R5-R1-B/R12).
+  if (isTransitionToCancelled) {
+    return await prisma.$transaction(async (tx) => {
+      const updated = await tx.mealPlanGroup.update({
+        where: { id },
+        data: {
+          status: input.status,
+          note: input.note,
+        },
+        include: GROUP_DETAIL_INCLUDE,
+      });
+
+      await releaseReservationsOnMealPlanCancel(tx, {
+        companyId,
+        mealPlanGroupId: id,
+        actorUserId,
+      });
 
       return updated;
     });
