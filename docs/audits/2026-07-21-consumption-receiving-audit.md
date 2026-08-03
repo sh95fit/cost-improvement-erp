@@ -236,7 +236,7 @@ PROGRESS.md 의 Sprint 4 진행 현황 서브섹션에 삽입되는 R0~R13 표�
 
 ### §9-1. 스코프 정의
 - **R5-P**: `autoCreatePendingConsumptionHeaders` — MealPlan CONFIRMED→IN_PROGRESS 시 (mealPlanGroupId, locationId, productionLineId, source=AUTO_MEAL_PLAN) 조합별 idempotent upsert. Header 만 생성, Item 은 R8-c 소관.
-- **R8-c** (2026-07-30 신설, §9-15): `appendConsumptionItemsFromMR` — CONFIRMED→IN_PROGRESS 시 ESTIMATED MR 기반 PENDING ConsumptionItem 자동 생성. IN_PROGRESS→COMPLETED 시 FINAL MR 기반 PENDING Item 재계산(덮어쓰기). CONFIRMED Item 은 불변.
+- ~~**R8-c**: `appendConsumptionItemsFromMR`~~ — **폐기 (2026-07-30 Cycle 3-A)**. draft 서비스가 MR/Accessory 기반 실시간 재계산 방식이므로 PENDING Item 사전 생성 불필요. UI 공백의 실제 원인은 §9-16 가드가 IN_PROGRESS 를 차단한 것이며, `assertMealPlanInProgressForDraftView` 완화로 해결됨. `confirmConsumption` 은 client 가 보낸 layerAItems 를 rebuilt draft 와 대조(drift 감지) 후 CONFIRMED Item 생성 (`confirm-consumption.service.ts:124/148/156/309`). §9-15 폐기 처리 참조.
 - ~~**R5-R1**: `autoReserveFromMaterialRequirements`~~ — **폐기 (2026-07-30)**. §0 원칙 1 위반 (식단 전환 시점 예약 생성은 실물 자재 부재로 성립 불가). 예약 생성은 R14 입고 확정 시점으로 완전 이관. 상세: §9-14.
 - **R5-R2**: 발주→입고 흐름 예약 생성. **본 페이즈 제외**, 신규 페이즈 **R14** 로 이관 (§0 원칙 1에 따라 예약 생성의 유일 지점).
 
@@ -255,16 +255,15 @@ PROGRESS.md 의 Sprint 4 진행 현황 서브섹션에 삽입되는 R0~R13 표�
 
 ### §9-4. 재산출/재편집 정책 (2026-07-23 재정정, 사용자 확인)
 
-**순방향 (전진 전이)** — 2026-07-30 β 방향 재정정:
+**순방향 (전진 전이)** — 2026-07-30 β 방향 재정정, 2026-07-30 Cycle 3-A hot-fix (R8-c 폐기):
 - CONFIRMED → IN_PROGRESS:
   1) `generateMaterialRequirements(ESTIMATED)` (기존)
-  2) `autoCreatePendingConsumptionHeaders` (R5-P, Header만)
-  3) `appendConsumptionItemsFromMR(basisCountSource=ESTIMATED)` (R8-c, NEW)
+  2) `autoCreatePendingConsumptionHeaders` (R5-P, Header만 — Item 은 draft 서비스가 MR 기반 실시간 재계산)
+  3) ~~`appendConsumptionItemsFromMR(basisCountSource=ESTIMATED)`~~ — 폐기 (§9-15 참조).
 - IN_PROGRESS → COMPLETED:
-  1) `generateMaterialRequirements(FINAL)` (기존, 원가 검증 지표)
-  2) `appendConsumptionItemsFromMR(basisCountSource=FINAL)` (R8-c, NEW) — PENDING Layer A Item 전량 FINAL MR 기반 재계산(덮어쓰기). CONFIRMED Item 및 Layer B Item 은 절대 덮어쓰지 않음.
+  1) `generateMaterialRequirements(FINAL)` (기존, 원가 검증 지표 및 draft 서비스 FINAL MR 조회의 정본)
+  2) ~~`appendConsumptionItemsFromMR(basisCountSource=FINAL)`~~ — 폐기 (§9-15 참조). FINAL 기준 사용량은 `confirmConsumption` 시점의 rebuilt draft 가 정본.
   3) 예약 생성 안 함 (§0 원칙 1). 예약은 R14 입고 확정 시점에서만 발생.
-- 근거: 사용자는 IN_PROGRESS 진입 시점부터 사용 대상 목록을 미리 확인 가능(draft 조회 완화 §9-16). 확정식수 확정(COMPLETED 전이) 후 FINAL 레퍼런스로 재계산된 값을 정본으로 사용량 처리 진행.
 
 **역방향 (후진 전이)** — R5-R1-B 신규 서비스 위임:
 - COMPLETED → IN_PROGRESS · IN_PROGRESS → CONFIRMED · IN_PROGRESS → DRAFT · COMPLETED → DRAFT 모두:
@@ -327,11 +326,11 @@ R14 신규 서비스 스펙은 **§9-14**를 참조.
 - MealPlanSlot.productionLineId 는 nullable 이나 실사용상 라인 미배정 슬롯은 MR 산출 단계에서도 제외되므로(§9-6 일치) 축 정합성 보존.
 - MealPlanSlot.productionLineId 재확인 필요 시 R5-R1 착수 전 8-H 로 별도 검증.
 
-**§9-10-i. Item 자동 갱신 규칙 (2026-07-30 신설, R8-c 소관, §9-15 참조)**
-- IN_PROGRESS 진입 시: ESTIMATED MR 기반 PENDING Item 생성. Header 는 R5-P 가 이미 만든 것 재사용(idempotent).
-- COMPLETED 진입 시: 동일 Header 하의 PENDING Layer A Item 전량 삭제 후 FINAL MR 기반 재삽입.
-- CONFIRMED Item (사용량 확정 완료) 은 불변. 어떤 재계산에서도 건드리지 않음.
-- Layer B 수동 추가 Item (`sourceType=MANUAL_ADDITION`) 은 재계산 대상에서 제외. Layer A (`sourceType=MEAL_PLAN_AUTO`) 만 대상.
+**§9-10-i. Item 자동 갱신 규칙 — 폐기 (2026-07-30 Cycle 3-A hot-fix)**
+- ~~IN_PROGRESS 진입 시 ESTIMATED MR 기반 PENDING Item 생성~~ — 폐기.
+- ~~COMPLETED 진입 시 PENDING Layer A Item 전량 삭제 후 FINAL MR 기반 재삽입~~ — 폐기.
+- **폐기 사유**: draft 서비스(`buildConsumptionDraft`)가 MR/Accessory 기반 실시간 재계산 방식이므로 PENDING Item 사전 생성이 불필요함이 실측 확인됨. `confirmConsumption` 은 client layerAItems 와 rebuilt draft 를 대조(drift 감지)해 CONFIRMED Item 생성. §9-15 폐기 배너 및 §9-1 R8-c 폐기 라인 참조.
+- **불변량 유지**: CONFIRMED Item 은 이후에도 절대 불변. Layer B Item 은 §10-14 진입 조건(COMPLETED 이상)으로 보호.
 
 ### §9-11. Location 경계 원칙 (P4 준수, 2026-07-23 사용자 확인)
 - **Lot 조회 필터**: `where: { locationId: mr.locationId }` 로 강제. 다른 Location 의 lot 합산 금지.
@@ -449,41 +448,30 @@ R5-R1 로 생성된 `InventoryReservation` 이 R8 (Consumption 재작성) 시점
 - R14가 예약 생성의 **유일한** 지점.
 - 기존 R5-R1 로직이 커버하던 T1(기존 재고 충당) 케이스는 `confirmConsumption` FIFO 차감(§0 원칙 3)에서 자연 처리.
 
-### §9-15. R8-c 상세 설계 — 사용 Item 자동 생성/갱신 (2026-07-30 신설)
+### §9-15. R8-c 상세 설계 — 폐기 (2026-07-30 Cycle 3-A hot-fix, 신설 당일 폐기)
 
-**§9-15-1. 스코프**
-- MealPlan CONFIRMED→IN_PROGRESS: MR ESTIMATED 기반 PENDING ConsumptionItem 생성.
-- MealPlan IN_PROGRESS→COMPLETED: 동일 Header 의 PENDING Layer A Item 을 FINAL MR 기반으로 재계산(덮어쓰기).
+**폐기 사유 (2026-07-30 실측 재판정)**:
+- `buildConsumptionDraft` 서비스는 이미 `MaterialRequirement` + `MealPlanAccessory` 기반 실시간 재계산 방식으로 `layerAItems` 를 조립함 (`consumption-draft.service.ts:181-296`). 즉 `ConsumptionItem` DB 레코드 없이도 draft 조회 가능.
+- `confirmConsumption` 은 client 가 보낸 `input.layerAItems` 를 `buildConsumptionDraft` 재실행 결과와 대조하여 drift 를 감지한 뒤(`confirm-consumption.service.ts:124/148/156/309`) 그 시점에만 CONFIRMED `ConsumptionItem` 을 생성. PENDING Item 을 사전에 만들어둘 필요 없음.
+- UI 공백의 진짜 원인은 `assertMealPlanCompletedForConsumption` 가드가 IN_PROGRESS 를 차단한 것이었으며, 이는 §9-16 `assertMealPlanInProgressForDraftView` 신설(Cycle 2, 커밋 `120f3ca`)로 해결됨. Item 자동 생성 없이도 β방향 결정 1 요구사항(IN_PROGRESS 부터 draft 조회) 완전 충족.
+- 감사서 §9-15 신설(2026-07-30 Cycle 1, 커밋 `656c4a6`) 시점에는 draft 서비스 내부 로직을 실측하지 않은 상태에서 "Header 만 있고 Item 없어서 UI 공백" 이라고 오판정. Cycle 3 착수 전 원문 실측 후 재판정.
 
-**§9-15-2. 신규 서비스 스펙**
-| 파일 | 시그니처 | 반환 |
-|------|---------|------|
-| `src/features/consumption/services/append-consumption-items.service.ts` | `appendConsumptionItemsFromMR(tx, { companyId, mealPlanGroupId, basisCountSource, actorUserId })` | `{ created: number; updated: number; deleted: number }` |
+**연쇄 폐기 항목**:
+- §9-1 R8-c 라인 (편집 1 참조).
+- §9-4 순방향 전이 블록 내 `appendConsumptionItemsFromMR` 호출 2건 (편집 2 참조).
+- §9-10-i Item 자동 갱신 규칙 (편집 3 참조).
 
-**§9-15-3. 처리 규칙**
-- Header 조회: R5-P 가 생성한 AUTO_MEAL_PLAN Header 를 (mealPlanGroupId, locationId, productionLineId, source) 로 조회. 없으면 skip (R5-P 미실행 상태).
-- MR 조회: `basisCountSource` (ESTIMATED | FINAL) 기준.
-- Item 산출: MR × BOM × 라인업 → (SupplierItem, lineupId, materialMasterId/subsidiaryMasterId, requiredQty) 튜플.
-- ESTIMATED 진입 시: 각 튜플에 대응하는 Item upsert (status=PENDING). 기존 PENDING Item 은 requiredQty 갱신.
-- FINAL 진입 시: 동일 Header 의 status=PENDING Layer A Item 전량 삭제 후 FINAL MR 기반 재삽입. CONFIRMED Item 및 Layer B Item 은 불변.
+**유지되는 항목** (Cycle 1 개정 중 β방향 정합에 필수적인 부분):
+- §9-16 가드 축 분리 (`assertMealPlanInProgressForDraftView` 신규, `assertMealPlanCompletedForConsumption` 기존). draft 조회 IN_PROGRESS 허용의 유일한 기술 수단.
+- §10-14 Layer B 진입 조건 (COMPLETED 이상). 결정 2 정합 유지.
+- 결정 1 β · 결정 2 · 결정 4 Q 자체는 유효 (β방향 및 CONFIRMED Item 불변 원칙 유지).
 
-**§9-15-4. CONFIRMED Item 보호**
-- 재계산 로직은 반드시 `where: { status: PENDING, sourceType: MEAL_PLAN_AUTO }` 로 스코프 제한.
-- CONFIRMED Item 이 존재하는데 FINAL 재계산에서 그 항목이 사라졌다면 → 로그 경고 (부분 확정 후 식수 조정 시나리오, R12/후속 논의).
-
-**§9-15-5. 트리거 지점**
-- `meal-plan.service.ts:updateMealPlanGroup` 트랜잭션.
-- `isForwardToInProgress` 블록: `autoCreatePendingConsumptionHeaders` 다음 줄에 `appendConsumptionItemsFromMR(basisCountSource=ESTIMATED)` 삽입.
-- `isForwardToCompleted` 블록: `generateMaterialRequirements(FINAL)` 다음 줄에 `appendConsumptionItemsFromMR(basisCountSource=FINAL)` 삽입.
-
-**§9-15-6. 실패 정책**
-- MR 미생성: skip (선행 단계 실패).
-- BOM 미매핑: 감사 로그 후 스킵 (기존 draft 서비스 정책 계승).
-- 시스템 오류: 트랜잭션 롤백.
-
-**§9-15-7. 미해결 항목**
-- Layer B 수동 추가 Item 이 존재할 때 라인업/식수 조정 후 재계산과의 상호작용 → R8-d 착수 시 결정.
-- 재계산 대신 UPDATE 로 처리하는 경우 이력 감사(auditLog) 어떻게 기록할지 → 구현 시 결정.
+**Cycle 3-B 예정 작업** (§9-15 폐기와 무관하게 진행):
+- `consumption-draft.service.ts` 가드 교체 (`assertMealPlanCompletedForConsumption` → `assertMealPlanInProgressForDraftView`).
+- Group filter 확장 (`status: COMPLETED` → `status: { in: [IN_PROGRESS, COMPLETED] }`).
+- MR `countSource` 자동 분기 (IN_PROGRESS → ESTIMATED, COMPLETED → FINAL).
+- 반환 타입에 `basisCountSource: "ESTIMATED" | "FINAL"` 필드 추가.
+- `build-consumption-draft.action.ts` 가드 교체, 신규 에러 매핑 추가.
 
 ### §9-16. 가드 축 분리 (2026-07-30 신설, 결정 1·2 정합)
 
