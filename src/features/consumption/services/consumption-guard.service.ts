@@ -79,3 +79,92 @@ export async function assertMealPlanCompletedForConsumption(
     );
   }
 }
+
+/**
+ * ════════════════════════════════════════
+ * S4-3-c-R8 Cycle 2 — Draft 조회용 완화 가드 (§9-16, 2026-07-30 신설)
+ * ════════════════════════════════════════
+ *
+ * 배경 (결정 1 β): 사용자는 IN_PROGRESS 진입 시점부터 사용 대상 목록(draft)을
+ * 미리 확인할 수 있어야 한다. 확정식수 입력 후 COMPLETED 진입 시 FINAL MR
+ * 기반으로 재계산된 값을 정본으로 사용량 처리 진행.
+ *
+ * 두 가드의 역할 분담 (§9-16):
+ *   - `assertMealPlanCompletedForConsumption` (기존): 사용량 확정·Layer B 수동
+ *     추가용, COMPLETED 만 허용.
+ *   - `assertMealPlanInProgressForDraftView` (신규, 본 함수): draft 조회용,
+ *     IN_PROGRESS ∪ COMPLETED 허용.
+ *
+ * 실패 시 `MealPlanNotReadyForDraftViewError` throw (action 계층에서
+ * `MEAL_PLAN_NOT_READY_FOR_DRAFT_VIEW` 코드로 매핑).
+ *
+ * 본 함수는 신설만 하고 실제 wire 는 Cycle 3(R8-a draft 재작성)에서 진행.
+ */
+
+export class MealPlanNotReadyForDraftViewError extends Error {
+  constructor(
+    public readonly companyId: string,
+    public readonly targetDate: Date,
+    public readonly locationId: string,
+    public readonly actualStatus: MealPlanStatus | null,
+  ) {
+    super(
+      `MealPlanGroup 이 IN_PROGRESS 또는 COMPLETED 상태가 아니어서 draft 조회 불가: ` +
+        `companyId=${companyId}, planDate=${targetDate.toISOString().slice(0, 10)}, ` +
+        `locationId=${locationId}, actualStatus=${actualStatus ?? "NOT_FOUND"}`,
+    );
+    this.name = "MealPlanNotReadyForDraftViewError";
+  }
+}
+
+/**
+ * Draft 조회 진입 가드 (§9-16).
+ *
+ * 진입 조건:
+ *   해당 (companyId, targetDate) 의 MealPlanGroup.status ∈ { IN_PROGRESS, COMPLETED }.
+ *
+ * DRAFT/CONFIRMED/CANCELLED 는 차단.
+ *
+ * @param companyId  현재 세션의 회사 ID
+ * @param targetDate 조회 대상 일자 (시간 부분 무시, planDate 는 @db.Date)
+ * @param locationId 대상 공장/거점 ID (판정에는 사용하지 않음, 계약 유지용)
+ */
+export async function assertMealPlanInProgressForDraftView(
+    companyId: string,
+    targetDate: Date,
+    locationId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? prisma;
+  // planDate 는 @db.Date 이므로 자정으로 정규화 (시분초 제거)
+  const normalizedDate = new Date(
+    Date.UTC(
+      targetDate.getUTCFullYear(),
+      targetDate.getUTCMonth(),
+      targetDate.getUTCDate(),
+    ),
+  );
+
+  const group = await client.mealPlanGroup.findFirst({
+    where: {
+      companyId,
+      planDate: normalizedDate,
+      deletedAt: null,
+    },
+    select: { id: true, status: true },
+  });
+
+  const allowedStatuses: MealPlanStatus[] = [
+    MealPlanStatus.IN_PROGRESS,
+    MealPlanStatus.COMPLETED,
+  ];
+
+  if (!group || !allowedStatuses.includes(group.status)) {
+    throw new MealPlanNotReadyForDraftViewError(
+      companyId,
+      normalizedDate,
+      locationId,
+      group?.status ?? null,
+    );
+  }
+}

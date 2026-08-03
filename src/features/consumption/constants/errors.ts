@@ -7,6 +7,8 @@
 export const CONSUMPTION_ERRORS = {
     /** S4-3-a: MealPlanGroup.status !== COMPLETED */
     MEAL_PLAN_NOT_COMPLETED_FOR_CONSUMPTION: "MEAL_PLAN_NOT_COMPLETED_FOR_CONSUMPTION",
+    /** S4-3-c-R8 Cycle 2 (§9-16): MealPlanGroup.status ∉ { IN_PROGRESS, COMPLETED } — draft 조회용 완화 가드 실패 */
+    MEAL_PLAN_NOT_READY_FOR_DRAFT_VIEW: "MEAL_PLAN_NOT_READY_FOR_DRAFT_VIEW",
     /** S4-3-b: FINAL MaterialRequirement 가 없음 (데이터 무결성 방어) */
     MATERIAL_REQUIREMENT_NOT_GENERATED: "MATERIAL_REQUIREMENT_NOT_GENERATED",
     /** S4-3-b: MealPlanGroup 자체 없음 (진입 가드 뒤라 이론상 도달 불가) */
