@@ -110,6 +110,7 @@ function setupCompletedGroup(overrides?: { mealCounts?: MealCountMock[] }) {
     .mockResolvedValueOnce({
       id: GROUP_ID,
       planDate: TARGET_DATE,
+      status: MealPlanStatus.COMPLETED,
       mealCounts:
         overrides?.mealCounts ??
         [
@@ -118,6 +119,29 @@ function setupCompletedGroup(overrides?: { mealCounts?: MealCountMock[] }) {
             lineupId: "lu-1",
             estimatedCount: 100,
             finalCount: 95,
+          },
+        ],
+    });
+}
+
+/**
+ * Cycle 3-B: IN_PROGRESS 상태 setup 헬퍼 (basisCountSource=ESTIMATED 시나리오).
+ */
+function setupInProgressGroup(overrides?: { mealCounts?: MealCountMock[] }) {
+  mockPrisma.mealPlanGroup.findFirst
+    .mockResolvedValueOnce({ id: GROUP_ID, status: MealPlanStatus.IN_PROGRESS })
+    .mockResolvedValueOnce({
+      id: GROUP_ID,
+      planDate: TARGET_DATE,
+      status: MealPlanStatus.IN_PROGRESS,
+      mealCounts:
+        overrides?.mealCounts ??
+        [
+          {
+            companyMealSlotId: "cms-1",
+            lineupId: "lu-1",
+            estimatedCount: 100,
+            finalCount: null,
           },
         ],
     });
@@ -336,7 +360,8 @@ describe("buildConsumptionDraft (S4-3-c-R3-a)", () => {
     ).rejects.toBeInstanceOf(MaterialRequirementNotGeneratedError);
   });
 
-  it("MealPlanGroup(status=COMPLETED) 부재 시 MealPlanGroupNotFoundError", async () => {
+  it("MealPlanGroup(status IN_PROGRESS/COMPLETED) 부재 시 MealPlanGroupNotFoundError", async () => {
+    // Cycle 3-B: 가드는 통과했으나 본 조회에서 그룹이 없는 경우
     mockPrisma.mealPlanGroup.findFirst
       .mockResolvedValueOnce({ id: GROUP_ID, status: MealPlanStatus.COMPLETED })
       .mockResolvedValueOnce(null);
@@ -344,6 +369,99 @@ describe("buildConsumptionDraft (S4-3-c-R3-a)", () => {
     await expect(
       buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID),
     ).rejects.toBeInstanceOf(MealPlanGroupNotFoundError);
+  });
+
+  // ═════════════════════════════════════════════════════════
+  // Cycle 3-B 신규 케이스: IN_PROGRESS 지원 + basisCountSource
+  // ═════════════════════════════════════════════════════════
+
+  it("Cycle 3-B: COMPLETED 상태 → basisCountSource='FINAL' + MR(FINAL) 조회", async () => {
+    setupCompletedGroup();
+    mockPrisma.materialRequirement.findMany.mockResolvedValue([
+      makeMRMock({
+        materialMasterId: "mat-1",
+        requiredQty: 100,
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
+    ]);
+
+    const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
+
+    expect(draft.basisCountSource).toBe("FINAL");
+    expect(mockPrisma.materialRequirement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          countSource: MealCountSource.FINAL,
+        }),
+      }),
+    );
+  });
+
+  it("Cycle 3-B: IN_PROGRESS 상태 → basisCountSource='ESTIMATED' + MR(ESTIMATED) 조회", async () => {
+    setupInProgressGroup();
+    mockPrisma.materialRequirement.findMany.mockResolvedValue([
+      makeMRMock({
+        materialMasterId: "mat-1",
+        requiredQty: 80,
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
+    ]);
+
+    const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
+
+    expect(draft.basisCountSource).toBe("ESTIMATED");
+    expect(mockPrisma.materialRequirement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          countSource: MealCountSource.ESTIMATED,
+        }),
+      }),
+    );
+    expect(draft.layerAItems[0].suggestedQty).toBe(80);
+  });
+
+  it("Cycle 3-B: IN_PROGRESS 상태 부자재 산출은 estimatedCount 기반", async () => {
+    setupInProgressGroup({
+      mealCounts: [
+        {
+          companyMealSlotId: "cms-1",
+          lineupId: "lu-1",
+          estimatedCount: 100,
+          finalCount: null,
+        },
+      ],
+    });
+    mockPrisma.materialRequirement.findMany.mockResolvedValue([
+      makeMRMock({
+        materialMasterId: "mat-1",
+        requiredQty: 100,
+        materialName: "자재A",
+        materialCode: "M001",
+      }),
+    ]);
+    mockPrisma.mealPlan.findMany.mockResolvedValue([
+      {
+        id: "mp-1",
+        companyMealSlotId: "cms-1",
+        lineupId: "lu-1",
+        accessories: [
+          {
+            id: "acc-1",
+            subsidiaryMasterId: "sub-1",
+            quantity: 2,
+            fixedQuantity: null,
+            consumptionMode: ConsumptionMode.PER_MEAL_COUNT,
+            subsidiaryMaster: makeSubsidiaryMasterMock("sub-1", "젓가락", "S001", "ea"),
+          },
+        ],
+      },
+    ]);
+
+    const draft = await buildConsumptionDraft(COMPANY_ID, TARGET_DATE, LOCATION_ID);
+    const subsidiary = draft.layerAItems.find((i) => i.itemType === ItemType.SUBSIDIARY);
+    expect(subsidiary?.suggestedQty).toBe(200); // 100 (estimated) × 2
   });
 
   it("자재+부자재 혼합 반환은 이름 오름차순으로 정렬된다", async () => {

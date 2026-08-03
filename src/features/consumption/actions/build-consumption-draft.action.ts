@@ -12,22 +12,23 @@ import {
   type ConsumptionDraft,
 } from "../services/consumption-draft.service";
 import {
-  assertMealPlanCompletedForConsumption,
-  MealPlanNotCompletedForConsumptionError,
+  assertMealPlanInProgressForDraftView,
+  MealPlanNotReadyForDraftViewError,
 } from "../services/consumption-guard.service";
 import { CONSUMPTION_ERRORS } from "../constants/errors";
 
 // ════════════════════════════════════════
-// S4-3-c-1: 사용 처리 초안 조회 Server Action
+// S4-3-c-1: 사용 처리 초안 조회 Server Action (Cycle 3-B 개정)
 // ════════════════════════════════════════
 //
 // 권한 순서 (P4 재고는 FACTORY/HYBRID 소속 Location 에서만):
 //   1) assertPermission(consumption, READ)   — 신규 리소스 키
 //   2) assertScope(LOCATION, locationId)
-//   3) assertMealPlanCompletedForConsumption(companyId, targetDate, locationId)
-//   4) buildConsumptionDraft(...) — 순수 계산·조회
+//   3) assertMealPlanInProgressForDraftView(companyId, targetDate, locationId)
+//      — §9-16 가드 축 분리, 결정 1β: IN_PROGRESS/COMPLETED 허용
+//   4) buildConsumptionDraft(...) — basisCountSource 자동 분기 (ESTIMATED/FINAL)
 //
-// 성공 반환: { header, layerAItems, references } (DB 쓰기 없음)
+// 성공 반환: { header, basisCountSource, layerAItems, references } (DB 쓰기 없음)
 
 export type BuildConsumptionDraftInput = {
   targetDate: string;   // YYYY-MM-DD
@@ -47,7 +48,7 @@ export async function buildConsumptionDraftAction(
     const targetDate = new Date(Date.UTC(y, m - 1, d));
 
     try {
-      await assertMealPlanCompletedForConsumption(
+      await assertMealPlanInProgressForDraftView(
         session.companyId,
         targetDate,
         input.locationId,
@@ -61,8 +62,8 @@ export async function buildConsumptionDraftAction(
       return actionOk(draft);
     } catch (err) {
       // 서비스 커스텀 에러 → 코드 문자열로 재발화 (receiving-note 컨벤션)
-      if (err instanceof MealPlanNotCompletedForConsumptionError) {
-        throw new Error(CONSUMPTION_ERRORS.MEAL_PLAN_NOT_COMPLETED_FOR_CONSUMPTION);
+      if (err instanceof MealPlanNotReadyForDraftViewError) {
+        throw new Error(CONSUMPTION_ERRORS.MEAL_PLAN_NOT_READY_FOR_DRAFT_VIEW);
       }
       if (err instanceof MealPlanGroupNotFoundError) {
         throw new Error(CONSUMPTION_ERRORS.MEAL_PLAN_GROUP_NOT_FOUND);
@@ -74,12 +75,12 @@ export async function buildConsumptionDraftAction(
     }
   } catch (error) {
     return handleActionError(error, "사용 처리 초안을 불러오지 못했습니다", {
-      [CONSUMPTION_ERRORS.MEAL_PLAN_NOT_COMPLETED_FOR_CONSUMPTION]:
-        "해당 일자·공장의 식단 계획이 확정(COMPLETED) 상태가 아닙니다",
+      [CONSUMPTION_ERRORS.MEAL_PLAN_NOT_READY_FOR_DRAFT_VIEW]:
+        "해당 일자·공장의 식단 계획이 조리 진행(IN_PROGRESS) 또는 확정(COMPLETED) 상태가 아닙니다",
       [CONSUMPTION_ERRORS.MEAL_PLAN_GROUP_NOT_FOUND]:
         "해당 일자의 식단 계획을 찾을 수 없습니다",
       [CONSUMPTION_ERRORS.MATERIAL_REQUIREMENT_NOT_GENERATED]:
-        "자재 소요량이 생성되어 있지 않습니다 (식단 계획 확정 로직 오류)",
+        "자재 소요량이 생성되어 있지 않습니다 (식단 계획 상태 전이 로직 오류)",
     });
   }
 }

@@ -9,7 +9,7 @@ import {
 
 import { prisma } from "@/lib/prisma";
 import { getAvailableQty } from "@/features/inventory/services/reservation.service";
-import { assertMealPlanCompletedForConsumption } from "./consumption-guard.service";
+import { assertMealPlanInProgressForDraftView } from "./consumption-guard.service";
 
 /**
  * ════════════════════════════════════════
@@ -91,6 +91,13 @@ export type ConsumptionDraftItem = {
 
 export type ConsumptionDraft = {
   header: ConsumptionDraftHeader;
+  /**
+   * draft 산출 기반 countSource (§9-4 순방향 전이 개정, Cycle 3-B).
+   * - IN_PROGRESS 상태 진입 시 → "ESTIMATED" (MR ESTIMATED 기반)
+   * - COMPLETED 상태 진입 시 → "FINAL" (MR FINAL 기반)
+   * UI 배지 표시 및 사용자 인지용.
+   */
+  basisCountSource: "ESTIMATED" | "FINAL";
   layerAItems: ConsumptionDraftItem[];
   references: {
     generatedAt: Date;
@@ -99,10 +106,10 @@ export type ConsumptionDraft = {
 };
 
 export class MaterialRequirementNotGeneratedError extends Error {
-  constructor(mealPlanGroupId: string) {
+  constructor(mealPlanGroupId: string, countSource: "ESTIMATED" | "FINAL" = "FINAL") {
     super(
-      `MaterialRequirement(FINAL) 이 존재하지 않음. meal-plan.service 의 ` +
-        `COMPLETED 전이 로직이 실패했을 가능성. mealPlanGroupId=${mealPlanGroupId}`,
+      `MaterialRequirement(${countSource}) 이 존재하지 않음. meal-plan.service 의 ` +
+        `상태 전이 로직이 실패했을 가능성. mealPlanGroupId=${mealPlanGroupId}`,
     );
     this.name = "MaterialRequirementNotGeneratedError";
   }
@@ -141,18 +148,19 @@ export async function buildConsumptionDraft(
 ): Promise<ConsumptionDraft> {
   const client = tx ?? prisma;
 
-  // 0) 진입 가드 (P13)
-  await assertMealPlanCompletedForConsumption(companyId, targetDate, locationId, tx);
+  // 0) 진입 가드 (P13, §9-16 가드 축 분리, Cycle 3-B)
+  // draft 조회는 IN_PROGRESS/COMPLETED 모두 허용 (결정 1β)
+  await assertMealPlanInProgressForDraftView(companyId, targetDate, locationId, tx);
 
   const normalizedDate = normalizeToUtcDate(targetDate);
 
-  // 1) MealPlanGroup 확정 — include 방식
+  // 1) MealPlanGroup 확정 — IN_PROGRESS/COMPLETED 모두 허용
   const group = await client.mealPlanGroup.findFirst({
     where: {
       companyId,
       planDate: normalizedDate,
       deletedAt: null,
-      status: MealPlanStatus.COMPLETED,
+      status: { in: [MealPlanStatus.IN_PROGRESS, MealPlanStatus.COMPLETED] },
     },
     include: {
       mealCounts: {
@@ -164,6 +172,10 @@ export async function buildConsumptionDraft(
     throw new MealPlanGroupNotFoundError(companyId, normalizedDate);
   }
 
+  // basisCountSource 자동 분기 (§9-4 순방향 전이 개정, Cycle 3-B)
+  const basisCountSource: "ESTIMATED" | "FINAL" =
+    group.status === MealPlanStatus.COMPLETED ? "FINAL" : "ESTIMATED";
+
   const totalEstimatedCount = group.mealCounts.reduce(
     (sum, mc) => sum + (mc.estimatedCount ?? 0),
     0,
@@ -173,20 +185,24 @@ export async function buildConsumptionDraft(
     0,
   );
 
-  const finalCountByKey = new Map<string, number>();
+  // basisCountSource 에 따라 부자재 산출용 count 선택 (Cycle 3-B)
+  // ESTIMATED: estimatedCount / FINAL: finalCount
+  const mealCountByKey = new Map<string, number>();
   for (const mc of group.mealCounts) {
-    finalCountByKey.set(
-      `${mc.companyMealSlotId}::${mc.lineupId}`,
-      mc.finalCount ?? 0,
-    );
+    const count =
+      basisCountSource === "FINAL"
+        ? mc.finalCount ?? 0
+        : mc.estimatedCount ?? 0;
+    mealCountByKey.set(`${mc.companyMealSlotId}::${mc.lineupId}`, count);
   }
 
-  // 2) MaterialRequirement(FINAL) — include 방식으로 relation 로드
+  // 2) MaterialRequirement — basisCountSource 에 따라 ESTIMATED/FINAL 동적 조회 (Cycle 3-B)
   const mrRows = await client.materialRequirement.findMany({
     where: {
       companyId,
       mealPlanGroupId: group.id,
-      countSource: MealCountSource.FINAL,
+      countSource:
+        basisCountSource === "FINAL" ? MealCountSource.FINAL : MealCountSource.ESTIMATED,
       locationId,
       deletedAt: null,
     },
@@ -206,7 +222,7 @@ export async function buildConsumptionDraft(
   });
 
   if (mrRows.length === 0) {
-    throw new MaterialRequirementNotGeneratedError(group.id);
+    throw new MaterialRequirementNotGeneratedError(group.id, basisCountSource);
   }
 
   // 자재 집계 키: materialId::lineupId::productionLineId
@@ -290,13 +306,13 @@ export async function buildConsumptionDraft(
 
   for (const mp of mealPlans) {
     const key = `${mp.companyMealSlotId}::${mp.lineupId}`;
-    const finalCount = finalCountByKey.get(key) ?? 0;
+    const mealCount = mealCountByKey.get(key) ?? 0;
 
     for (const acc of mp.accessories) {
       let addQty = 0;
       if (acc.consumptionMode === ConsumptionMode.PER_MEAL_COUNT) {
-        if (finalCount === 0) continue;
-        addQty = finalCount * acc.quantity;
+        if (mealCount === 0) continue;
+        addQty = mealCount * acc.quantity;
       } else if (acc.consumptionMode === ConsumptionMode.FIXED_QUANTITY) {
         // D2 α: mealCount 무관, fixedQuantity 그대로
         addQty = acc.fixedQuantity ?? 0;
@@ -418,10 +434,11 @@ export async function buildConsumptionDraft(
       totalEstimatedCount,
       totalFinalCount,
     },
+    basisCountSource,
     layerAItems,
     references: {
       generatedAt: new Date(),
-      note: "S4-3-c-R3-a buildConsumptionDraft (라인업/라인별 세분화, 공급단위 정본, 필드명 정합화: suggestedQty/supplyUnit/supplyUnitQty)",
+      note: `S4-3-c-R8 Cycle 3-B buildConsumptionDraft (basisCountSource=${basisCountSource}, IN_PROGRESS/COMPLETED 지원, §9-4/§9-16 정합)`,
     },
   };
 }
