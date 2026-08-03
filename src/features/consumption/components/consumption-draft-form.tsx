@@ -273,7 +273,19 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId, availableL
       <div className="space-y-6">
         {/* 헤더 */}
         <div className="rounded-md border bg-white p-4">
-          <h1 className="text-lg font-semibold">사용 처리</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold">사용 처리</h1>
+            {/* Cycle 3-C: §9-4 basisCountSource 배지 — 산출 기반 시각화 */}
+            {draft.basisCountSource === "FINAL" ? (
+              <Badge variant="default" className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100">
+                확정 산출 (최종 식수 기준)
+              </Badge>
+            ) : (
+              <Badge variant="default" className="bg-amber-100 text-amber-900 hover:bg-amber-100">
+                임시 산출 (예상 식수 기준)
+              </Badge>
+            )}
+          </div>
           <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
             <dt className="text-gray-600">출고일자</dt>
             <dd>{targetDate}</dd>
@@ -284,6 +296,13 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId, availableL
             <dt className="text-gray-600">확정 식수 합계</dt>
             <dd>{numberFmt(draft.header.totalFinalCount)}</dd>
           </dl>
+          {/* Cycle 3-C: ESTIMATED 시 안내 배너 (§10-14 진입 조건) */}
+          {draft.basisCountSource === "ESTIMATED" && (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              현재 식단 계획이 조리 진행(IN_PROGRESS) 상태입니다. 예상 식수 기반의 임시 산출이 표시되며,
+              최종 확정 및 수동 항목 추가는 식단 계획이 확정(COMPLETED)된 후에 가능합니다.
+            </div>
+          )}
         </div>
 
         {/* 검증 배너 */}
@@ -573,12 +592,19 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId, availableL
         </div>
 
         {/* Layer B — 수동 추가 (D1=β: quantity 만 입력) */}
-        <ConsumptionLayerBEditor
-          layerAItems={draft.layerAItems}
-          items={layerBItems}
-          onChange={setLayerBItems}
-          availableLineups={availableLineups}
-        />
+        {/* Cycle 3-C: §10-14 진입 조건 — basisCountSource=FINAL(COMPLETED) 인 경우에만 렌더링 */}
+        {draft.basisCountSource === "FINAL" ? (
+          <ConsumptionLayerBEditor
+            layerAItems={draft.layerAItems}
+            items={layerBItems}
+            onChange={setLayerBItems}
+            availableLineups={availableLineups}
+          />
+        ) : (
+          <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            수동 항목 추가(Layer B)는 식단 계획이 확정(COMPLETED)된 후에 가능합니다. (§10-14)
+          </div>
+        )}
 
         {/* 확정 버튼 */}
         <div className="flex justify-end gap-2">
@@ -588,12 +614,18 @@ export function ConsumptionDraftForm({ draft, targetDate, locationId, availableL
             </Button>
           </Link>
           <Button
-            disabled={isPending || !validation.canConfirm}
+            disabled={
+              isPending ||
+              !validation.canConfirm ||
+              draft.basisCountSource !== "FINAL"
+            }
             onClick={handleConfirm}
             title={
-              !validation.canConfirm
-                ? "입력 오류가 있습니다. 상단 배너를 확인해 주세요"
-                : undefined
+              draft.basisCountSource !== "FINAL"
+                ? "식단 계획이 확정(COMPLETED) 상태여야 사용 처리를 확정할 수 있습니다 (§10-14)"
+                : !validation.canConfirm
+                  ? "입력 오류가 있습니다. 상단 배너를 확인해 주세요"
+                  : undefined
             }
           >
             {isPending ? "확정 중..." : "사용 처리 확정"}
